@@ -1,0 +1,39 @@
+# Oil Trading Dashboard - Research & ML Dependencies
+# ==================================================
+# Install with: pip install -r requirements-research.txt
+
+# Include core dependencies
+-r requirements.txt
+
+# Visualization
+seaborn>=0.13.0
+
+# Backtesting
+vectorbt>=0.26.0
+empyrical>=0.5.5
+pyfolio-reloaded>=0.9.5
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.1.0
+statsmodels>=0.14.0
+
+# Deep Learning (optional)
+# tensorflow>=2.14.0
+# torch>=2.1.0
+
+# NLP
+# transformers>=4.35.0
+# nltk>=3.8.1
+
+# Experiment Tracking
+mlflow>=2.8.0
+
+# Jupyter
+jupyterlab>=4.0.0
+ipywidgets>=8.1.0
+
+# Technical Analysis
+ta-lib>=0.4.28
+pandas-ta>=0.3.14b0

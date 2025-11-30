@@ -1,0 +1,88 @@
+# Bloomberg Ticker Reference
+# ==================================================
+
+# Price Fields
+price_fields:
+  last: "PX_LAST"
+  bid: "PX_BID"
+  ask: "PX_ASK"
+  volume: "PX_VOLUME"
+  open_interest: "OPEN_INT"
+
+# OHLCV Fields for Historical Data
+ohlcv_fields:
+  open: "PX_OPEN"
+  high: "PX_HIGH"
+  low: "PX_LOW"
+  close: "PX_LAST"
+  volume: "PX_VOLUME"
+
+# Reference Data Fields
+reference_fields:
+  name: "NAME"
+  ticker: "TICKER"
+  exchange: "EXCH_CODE"
+  currency: "CRNCY"
+  last_tradeable_date: "LAST_TRADEABLE_DT"
+  contract_size: "FUT_CONT_SIZE"
+  tick_size: "FUT_TICK_SIZE"
+
+# Front Month Tickers
+front_month:
+  wti: "CL1 Comdty"
+  brent: "CO1 Comdty"
+  rbob: "XB1 Comdty"
+  heating_oil: "HO1 Comdty"
+  gasoil: "QS1 Comdty"
+
+# Second Month Tickers
+second_month:
+  wti: "CL2 Comdty"
+  brent: "CO2 Comdty"
+  rbob: "XB2 Comdty"
+  heating_oil: "HO2 Comdty"
+  gasoil: "QS2 Comdty"
+
+# Generic Month Patterns
+generic_patterns:
+  wti: "CL{month}{year} Comdty"
+  brent: "CO{month}{year} Comdty"
+  rbob: "XB{month}{year} Comdty"
+  heating_oil: "HO{month}{year} Comdty"
+
+# Month Codes
+month_codes:
+  F: 1   # January
+  G: 2   # February
+  H: 3   # March
+  J: 4   # April
+  K: 5   # May
+  M: 6   # June
+  N: 7   # July
+  Q: 8   # August
+  U: 9   # September
+  V: 10  # October
+  X: 11  # November
+  Z: 12  # December
+
+# EIA Fundamental Data
+eia_tickers:
+  crude_inventory: "DOE WCRSTUS Index"
+  crude_inventory_change: "DOE WCRSTCH Index"
+  cushing_stocks: "DOE WCSTOCUS Index"
+  gasoline_inventory: "DOE WGTSTUS Index"
+  distillate_inventory: "DOE WDISTUS Index"
+  refinery_utilization: "DOE WOCIRP Index"
+  crude_production: "DOE WCRFPUS Index"
+  crude_imports: "DOE WCRIMPT Index"
+  spr_stocks: "DOE WCSSTUS Index"
+
+# OPEC Data
+opec_tickers:
+  reference_basket: "OPCRPUSD Index"
+  
+# Indices
+indices:
+  usd_index: "DXY Index"
+  sp500: "SPX Index"
+  vix: "VIX Index"

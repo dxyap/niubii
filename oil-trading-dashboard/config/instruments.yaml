@@ -1,0 +1,127 @@
+# Oil Trading Instruments Configuration
+# ==================================================
+
+futures:
+  # Crude Oil
+  wti:
+    name: "WTI Crude Oil"
+    bloomberg_ticker: "CL1 Comdty"
+    exchange: "NYMEX"
+    contract_size: 1000  # barrels
+    tick_size: 0.01
+    tick_value: 10.00
+    currency: "USD"
+    trading_hours: "18:00-17:00 ET"
+    months: ["F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"]
+    
+  brent:
+    name: "Brent Crude Oil"
+    bloomberg_ticker: "CO1 Comdty"
+    exchange: "ICE"
+    contract_size: 1000
+    tick_size: 0.01
+    tick_value: 10.00
+    currency: "USD"
+    trading_hours: "20:00-18:00 ET"
+    months: ["F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"]
+
+  # Refined Products
+  rbob_gasoline:
+    name: "RBOB Gasoline"
+    bloomberg_ticker: "XB1 Comdty"
+    exchange: "NYMEX"
+    contract_size: 42000  # gallons
+    tick_size: 0.0001
+    tick_value: 4.20
+    currency: "USD"
+    trading_hours: "18:00-17:00 ET"
+    
+  heating_oil:
+    name: "Heating Oil"
+    bloomberg_ticker: "HO1 Comdty"
+    exchange: "NYMEX"
+    contract_size: 42000
+    tick_size: 0.0001
+    tick_value: 4.20
+    currency: "USD"
+    trading_hours: "18:00-17:00 ET"
+    
+  gasoil:
+    name: "Gasoil (ICE)"
+    bloomberg_ticker: "QS1 Comdty"
+    exchange: "ICE"
+    contract_size: 100  # metric tonnes
+    tick_size: 0.25
+    tick_value: 25.00
+    currency: "USD"
+    trading_hours: "01:00-23:00 GMT"
+
+spreads:
+  wti_brent:
+    name: "WTI-Brent Spread"
+    legs:
+      - instrument: "wti"
+        ratio: 1
+      - instrument: "brent"
+        ratio: -1
+    type: "inter_commodity"
+    
+  wti_calendar:
+    name: "WTI Calendar Spread"
+    legs:
+      - month: 1
+        ratio: 1
+      - month: 2
+        ratio: -1
+    type: "calendar"
+    
+  crack_321:
+    name: "3-2-1 Crack Spread"
+    legs:
+      - instrument: "wti"
+        ratio: -3
+      - instrument: "rbob_gasoline"
+        ratio: 2
+      - instrument: "heating_oil"
+        ratio: 1
+    type: "crack"
+
+# Bloomberg Ticker Mappings for Curve Construction
+curve_tickers:
+  wti_curve:
+    - "CLF5 Comdty"  # January
+    - "CLG5 Comdty"  # February
+    - "CLH5 Comdty"  # March
+    - "CLJ5 Comdty"  # April
+    - "CLK5 Comdty"  # May
+    - "CLM5 Comdty"  # June
+    - "CLN5 Comdty"  # July
+    - "CLQ5 Comdty"  # August
+    - "CLU5 Comdty"  # September
+    - "CLV5 Comdty"  # October
+    - "CLX5 Comdty"  # November
+    - "CLZ5 Comdty"  # December
+    
+  brent_curve:
+    - "COF5 Comdty"
+    - "COG5 Comdty"
+    - "COH5 Comdty"
+    - "COJ5 Comdty"
+    - "COK5 Comdty"
+    - "COM5 Comdty"
+    - "CON5 Comdty"
+    - "COQ5 Comdty"
+    - "COU5 Comdty"
+    - "COV5 Comdty"
+    - "COX5 Comdty"
+    - "COZ5 Comdty"
+
+# Fundamental Data Sources
+fundamental_tickers:
+  eia:
+    crude_inventory: "DOE WCRSTUS Index"
+    cushing_stocks: "DOE WCSTOCUS Index"
+    gasoline_inventory: "DOE WGTSTUS Index"
+    distillate_inventory: "DOE WDISTUS Index"
+    refinery_utilization: "DOE WOCIRP Index"
+    crude_production: "DOE WCRFPUS Index"

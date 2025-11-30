@@ -1,0 +1,366 @@
+"""
+Data Caching Layer
+==================
+Caching strategy to minimize API calls and improve performance.
+"""
+
+import os
+import json
+import hashlib
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import Any, Optional, Callable
+from pathlib import Path
+import logging
+
+try:
+    import diskcache
+    HAS_DISKCACHE = True
+except ImportError:
+    HAS_DISKCACHE = False
+
+logger = logging.getLogger(__name__)
+
+
+class DataCache:
+    """
+    Multi-layer caching system for market data.
+    
+    Caching Strategy:
+    - Real-time prices: 5 seconds (in-memory)
+    - Historical OHLCV: 24 hours (disk)
+    - Reference data: 7 days (disk)
+    - Fundamental data: Until next release (disk)
+    """
+    
+    # Cache durations in seconds
+    DURATIONS = {
+        "real_time": 5,
+        "intraday": 60,
+        "historical": 86400,  # 24 hours
+        "reference": 604800,  # 7 days
+        "fundamental": 604800,  # 7 days
+    }
+    
+    def __init__(self, cache_dir: str = "data/cache"):
+        """
+        Initialize cache.
+        
+        Args:
+            cache_dir: Directory for disk cache
+        """
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # In-memory cache for real-time data
+        self._memory_cache: dict = {}
+        self._memory_timestamps: dict = {}
+        
+        # Disk cache for persistent data
+        if HAS_DISKCACHE:
+            self._disk_cache = diskcache.Cache(str(self.cache_dir / "diskcache"))
+        else:
+            self._disk_cache = None
+            logger.warning("diskcache not available, using file-based caching")
+    
+    def _get_cache_key(self, prefix: str, *args, **kwargs) -> str:
+        """Generate unique cache key."""
+        key_data = f"{prefix}:{args}:{sorted(kwargs.items())}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+    
+    def get(
+        self,
+        key: str,
+        cache_type: str = "historical",
+        default: Any = None
+    ) -> Optional[Any]:
+        """
+        Get value from cache.
+        
+        Args:
+            key: Cache key
+            cache_type: Type of cache (determines expiry)
+            default: Default value if not found
+            
+        Returns:
+            Cached value or default
+        """
+        duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
+        
+        # Check memory cache first (for real-time data)
+        if cache_type in ("real_time", "intraday"):
+            if key in self._memory_cache:
+                timestamp = self._memory_timestamps.get(key, 0)
+                if datetime.now().timestamp() - timestamp < duration:
+                    return self._memory_cache[key]
+        
+        # Check disk cache
+        if self._disk_cache is not None:
+            try:
+                value = self._disk_cache.get(key, default=None)
+                if value is not None:
+                    return value
+            except Exception as e:
+                logger.warning(f"Disk cache read error: {e}")
+        
+        # Fall back to file cache
+        cache_file = self.cache_dir / f"{key}.pkl"
+        if cache_file.exists():
+            try:
+                mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
+                if datetime.now() - mtime < timedelta(seconds=duration):
+                    return pd.read_pickle(cache_file)
+            except Exception as e:
+                logger.warning(f"File cache read error: {e}")
+        
+        return default
+    
+    def set(
+        self,
+        key: str,
+        value: Any,
+        cache_type: str = "historical"
+    ) -> None:
+        """
+        Set value in cache.
+        
+        Args:
+            key: Cache key
+            value: Value to cache
+            cache_type: Type of cache
+        """
+        duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
+        
+        # Memory cache for real-time data
+        if cache_type in ("real_time", "intraday"):
+            self._memory_cache[key] = value
+            self._memory_timestamps[key] = datetime.now().timestamp()
+            return
+        
+        # Disk cache
+        if self._disk_cache is not None:
+            try:
+                self._disk_cache.set(key, value, expire=duration)
+                return
+            except Exception as e:
+                logger.warning(f"Disk cache write error: {e}")
+        
+        # Fall back to file cache
+        try:
+            cache_file = self.cache_dir / f"{key}.pkl"
+            if isinstance(value, pd.DataFrame):
+                value.to_pickle(cache_file)
+            else:
+                pd.to_pickle(value, cache_file)
+        except Exception as e:
+            logger.warning(f"File cache write error: {e}")
+    
+    def cached(
+        self,
+        cache_type: str = "historical",
+        key_prefix: str = ""
+    ) -> Callable:
+        """
+        Decorator for caching function results.
+        
+        Args:
+            cache_type: Type of cache
+            key_prefix: Prefix for cache key
+            
+        Returns:
+            Decorated function
+        """
+        def decorator(func: Callable) -> Callable:
+            def wrapper(*args, **kwargs):
+                key = self._get_cache_key(
+                    key_prefix or func.__name__,
+                    *args,
+                    **kwargs
+                )
+                
+                # Try cache first
+                cached_value = self.get(key, cache_type)
+                if cached_value is not None:
+                    return cached_value
+                
+                # Call function and cache result
+                result = func(*args, **kwargs)
+                self.set(key, result, cache_type)
+                return result
+            
+            return wrapper
+        return decorator
+    
+    def clear(self, cache_type: Optional[str] = None) -> None:
+        """
+        Clear cache.
+        
+        Args:
+            cache_type: Type of cache to clear (None = all)
+        """
+        if cache_type in ("real_time", "intraday", None):
+            self._memory_cache.clear()
+            self._memory_timestamps.clear()
+        
+        if cache_type not in ("real_time", "intraday"):
+            if self._disk_cache is not None:
+                self._disk_cache.clear()
+            
+            # Clear file cache
+            for f in self.cache_dir.glob("*.pkl"):
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+    
+    def get_stats(self) -> dict:
+        """Get cache statistics."""
+        stats = {
+            "memory_entries": len(self._memory_cache),
+            "disk_entries": 0,
+            "file_entries": len(list(self.cache_dir.glob("*.pkl"))),
+        }
+        
+        if self._disk_cache is not None:
+            try:
+                stats["disk_entries"] = len(self._disk_cache)
+            except Exception:
+                pass
+        
+        return stats
+
+
+class ParquetStorage:
+    """
+    Parquet-based storage for historical data.
+    
+    Optimized for:
+    - Fast columnar queries
+    - Efficient compression
+    - Easy Snowflake migration
+    """
+    
+    def __init__(self, base_dir: str = "data/historical"):
+        """Initialize Parquet storage."""
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+    
+    def save_ohlcv(
+        self,
+        ticker: str,
+        data: pd.DataFrame,
+        frequency: str = "daily"
+    ) -> None:
+        """
+        Save OHLCV data to Parquet.
+        
+        Args:
+            ticker: Instrument ticker
+            data: OHLCV DataFrame
+            frequency: Data frequency
+        """
+        ohlcv_dir = self.base_dir / "ohlcv"
+        ohlcv_dir.mkdir(exist_ok=True)
+        
+        # Clean ticker for filename
+        clean_ticker = ticker.replace(" ", "_").replace("/", "_")
+        filepath = ohlcv_dir / f"{clean_ticker}_{frequency}.parquet"
+        
+        data.to_parquet(filepath, engine="pyarrow", compression="snappy")
+    
+    def load_ohlcv(
+        self,
+        ticker: str,
+        frequency: str = "daily",
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> Optional[pd.DataFrame]:
+        """
+        Load OHLCV data from Parquet.
+        
+        Args:
+            ticker: Instrument ticker
+            frequency: Data frequency
+            start_date: Filter start date
+            end_date: Filter end date
+            
+        Returns:
+            OHLCV DataFrame or None
+        """
+        clean_ticker = ticker.replace(" ", "_").replace("/", "_")
+        filepath = self.base_dir / "ohlcv" / f"{clean_ticker}_{frequency}.parquet"
+        
+        if not filepath.exists():
+            return None
+        
+        df = pd.read_parquet(filepath)
+        
+        # Apply date filters
+        if start_date is not None:
+            df = df[df.index >= start_date]
+        if end_date is not None:
+            df = df[df.index <= end_date]
+        
+        return df
+    
+    def save_curve(self, date: datetime, commodity: str, data: pd.DataFrame) -> None:
+        """Save curve snapshot to Parquet."""
+        curves_dir = self.base_dir / "curves"
+        curves_dir.mkdir(exist_ok=True)
+        
+        date_str = date.strftime("%Y%m%d")
+        filepath = curves_dir / f"{commodity}_curve_{date_str}.parquet"
+        data.to_parquet(filepath, engine="pyarrow", compression="snappy")
+    
+    def load_curve(
+        self,
+        date: datetime,
+        commodity: str
+    ) -> Optional[pd.DataFrame]:
+        """Load curve snapshot from Parquet."""
+        date_str = date.strftime("%Y%m%d")
+        filepath = self.base_dir / "curves" / f"{commodity}_curve_{date_str}.parquet"
+        
+        if not filepath.exists():
+            return None
+        
+        return pd.read_parquet(filepath)
+    
+    def save_fundamentals(self, data_type: str, data: pd.DataFrame) -> None:
+        """Save fundamental data to Parquet."""
+        fund_dir = self.base_dir / "fundamentals"
+        fund_dir.mkdir(exist_ok=True)
+        
+        filepath = fund_dir / f"{data_type}.parquet"
+        data.to_parquet(filepath, engine="pyarrow", compression="snappy")
+    
+    def load_fundamentals(self, data_type: str) -> Optional[pd.DataFrame]:
+        """Load fundamental data from Parquet."""
+        filepath = self.base_dir / "fundamentals" / f"{data_type}.parquet"
+        
+        if not filepath.exists():
+            return None
+        
+        return pd.read_parquet(filepath)
+    
+    def list_available_data(self) -> dict:
+        """List all available data files."""
+        available = {
+            "ohlcv": [],
+            "curves": [],
+            "fundamentals": [],
+        }
+        
+        ohlcv_dir = self.base_dir / "ohlcv"
+        if ohlcv_dir.exists():
+            available["ohlcv"] = [f.stem for f in ohlcv_dir.glob("*.parquet")]
+        
+        curves_dir = self.base_dir / "curves"
+        if curves_dir.exists():
+            available["curves"] = [f.stem for f in curves_dir.glob("*.parquet")]
+        
+        fund_dir = self.base_dir / "fundamentals"
+        if fund_dir.exists():
+            available["fundamentals"] = [f.stem for f in fund_dir.glob("*.parquet")]
+        
+        return available
