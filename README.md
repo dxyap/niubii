@@ -31,7 +31,7 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 
 ### Prerequisites
 - Python 3.10+
-- Bloomberg Terminal (optional - mock data available)
+- Bloomberg Terminal (optional - realistic mock data available)
 
 ### Installation
 
@@ -42,6 +42,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Configure environment (copy and edit)
+cp .env.example .env
 
 # Run the dashboard
 streamlit run app/main.py
@@ -61,13 +64,14 @@ Open in browser at `http://localhost:8501`
 │   │   ├── 4_💼_Trade_Entry.py
 │   │   ├── 5_📋_Blotter.py
 │   │   └── 6_📊_Analytics.py
-│   └── components/          # Reusable UI components
+│   ├── components/          # Reusable UI components
+│   └── shared_state.py      # Session state management
 │
 ├── core/                    # Core business logic
 │   ├── data/               # Data loading & caching
-│   │   ├── bloomberg.py    # Bloomberg API wrapper
-│   │   ├── cache.py        # Caching layer
-│   │   └── loader.py       # Data loader utilities
+│   │   ├── bloomberg.py    # Bloomberg API wrapper with TickerMapper
+│   │   ├── cache.py        # Multi-layer caching
+│   │   └── loader.py       # Unified data interface
 │   ├── analytics/          # Market analytics
 │   │   ├── curves.py       # Term structure analysis
 │   │   ├── spreads.py      # Spread calculations
@@ -88,12 +92,85 @@ Open in browser at `http://localhost:8501`
 ├── config/                  # Configuration files
 │   ├── instruments.yaml    # Instrument definitions
 │   ├── risk_limits.yaml    # Risk parameters
-│   └── bloomberg_tickers.yaml
+│   └── bloomberg_tickers.yaml  # Bloomberg ticker mappings
 │
-└── tests/                   # Test suite (43 tests)
+└── tests/                   # Test suite (64 tests)
+```
+
+## Bloomberg Integration
+
+### Mock Mode (Default)
+The dashboard includes a sophisticated price simulator that generates realistic market data:
+- Tick-by-tick price updates with GARCH-like volatility clustering
+- Proper term structure (contango/backwardation)
+- Realistic bid/ask spreads
+- Session-consistent prices with change tracking
+
+```python
+# Default: Uses mock data
+from core.data import DataLoader
+loader = DataLoader()  # use_mock=True by default
+```
+
+### Real Bloomberg Connection
+To connect to a real Bloomberg Terminal:
+
+1. Install Bloomberg API (blpapi):
+```bash
+pip install blpapi
+```
+
+2. Configure environment:
+```bash
+# In .env file
+BLOOMBERG_USE_MOCK=false
+BLOOMBERG_HOST=localhost
+BLOOMBERG_PORT=8194
+```
+
+3. Initialize with real API:
+```python
+from core.data import DataLoader
+loader = DataLoader(use_mock=False)
+```
+
+### Ticker Mapping
+
+The system includes a comprehensive `TickerMapper` utility for consistent ticker handling:
+
+```python
+from core.data import TickerMapper
+
+# Get front month ticker
+ticker = TickerMapper.get_front_month_ticker("wti")  # "CL1 Comdty"
+
+# Get specific contract
+ticker = TickerMapper.get_specific_month_ticker("CL", 1, 2025)  # "CLF5 Comdty"
+
+# Validate ticker
+valid, msg = TickerMapper.validate_ticker("CL1 Comdty")  # True, "Valid"
+
+# Get contract multiplier
+multiplier = TickerMapper.get_multiplier("CL1 Comdty")  # 1000 barrels
 ```
 
 ## Configuration
+
+### Environment Variables (`.env`)
+
+```bash
+# Bloomberg Configuration
+BLOOMBERG_USE_MOCK=true        # Use mock data (true/false)
+BLOOMBERG_HOST=localhost       # Bloomberg API host
+BLOOMBERG_PORT=8194            # Bloomberg API port
+
+# Risk Limits
+MAX_VAR_LIMIT=375000           # Maximum 1-day VaR
+MAX_GROSS_EXPOSURE=20000000    # Maximum gross exposure
+
+# Dashboard
+AUTO_REFRESH_INTERVAL=5        # Auto-refresh interval (seconds)
+```
 
 ### Risk Limits (`config/risk_limits.yaml`)
 
@@ -123,21 +200,14 @@ futures:
 ## Testing
 
 ```bash
-# Run tests
+# Run all tests
 pytest tests/ -v
 
 # Run with coverage
 pytest tests/ -v --cov=core --cov-report=html
-```
 
-## Bloomberg Integration
-
-The dashboard supports Bloomberg Desktop API for real-time data. When Bloomberg is not available, it uses realistic mock data.
-
-```python
-from core.data import DataLoader
-
-loader = DataLoader(use_mock=False)  # Enable real Bloomberg
+# Run specific test module
+pytest tests/test_data.py -v
 ```
 
 ## Status & Roadmap
@@ -150,18 +220,21 @@ loader = DataLoader(use_mock=False)  # Enable real Bloomberg
 | Risk Management | ✅ Complete |
 | Trading Module | ✅ Complete |
 | Dashboard UI | ✅ Complete |
-| Test Suite | ✅ 43 tests |
+| Test Suite | ✅ 64 tests |
 | **Live Price Simulation** | ✅ Complete |
 | **Auto-Refresh (5s)** | ✅ Complete |
+| **Bloomberg Integration** | ✅ Complete |
+| **Ticker Validation** | ✅ Complete |
 | ML Integration | 🔲 Planned |
 | Backtesting | 🔲 Planned |
 
-### Recent Updates (Phase 2)
-- **Realistic Price Simulator**: Prices now move realistically using GARCH-like volatility clustering
-- **Auto-Refresh**: Dashboard auto-updates every 5 seconds with live prices
-- **Consistent P&L**: All P&L values calculated from actual position data and current prices
-- **Historical Chart Integration**: Price charts end at current simulated price
-- **Live Risk Metrics**: VaR, exposure, and concentration calculated in real-time
+### Recent Updates (Phase 3)
+- **Real Bloomberg API Support**: Connect to Bloomberg Terminal when available
+- **Ticker Mapper Utility**: Comprehensive ticker validation and mapping
+- **Environment Configuration**: Full control via `.env` file
+- **Enhanced Mock Data**: GARCH-like volatility, proper term structure
+- **Expanded Test Suite**: 64 tests covering all modules
+- **Comprehensive Documentation**: Full ticker reference in YAML
 
 ### Planned Features
 - Real-time Bloomberg WebSocket streaming (for production)
@@ -170,6 +243,52 @@ loader = DataLoader(use_mock=False)  # Enable real Bloomberg
 - Multi-channel alerts (Email/SMS/Telegram)
 - LLM news summarization
 
+## API Reference
+
+### DataLoader
+```python
+from core.data import DataLoader
+
+loader = DataLoader(use_mock=True)
+
+# Prices
+loader.get_price("CL1 Comdty")
+loader.get_oil_prices()
+loader.get_price_with_change("CL1 Comdty")
+
+# Curves
+loader.get_futures_curve("wti", num_months=12)
+loader.get_term_structure("wti")
+
+# Spreads
+loader.get_wti_brent_spread()
+loader.get_crack_spread_321()
+
+# Historical
+loader.get_historical("CL1 Comdty", start_date, end_date)
+```
+
+### TickerMapper
+```python
+from core.data import TickerMapper
+
+# Ticker generation
+TickerMapper.get_front_month_ticker("wti")  # "CL1 Comdty"
+TickerMapper.get_nth_month_ticker("wti", 3)  # "CL3 Comdty"
+TickerMapper.get_specific_month_ticker("CL", 1, 2025)  # "CLF5 Comdty"
+
+# Validation
+valid, msg = TickerMapper.validate_ticker("CL1 Comdty")
+
+# Parsing
+info = TickerMapper.parse_ticker("CL1 Comdty")
+# {'ticker': 'CL1 Comdty', 'commodity': 'CL', 'type': 'generic', ...}
+
+# Contract info
+TickerMapper.get_multiplier("CL1 Comdty")  # 1000
+TickerMapper.get_field("last")  # "PX_LAST"
+```
+
 ## Design Philosophy
 
 **Lightweight & Local-First:**
@@ -177,6 +296,11 @@ loader = DataLoader(use_mock=False)  # Enable real Bloomberg
 - SQLite for transactions, Parquet for analytics
 - In-memory caching for real-time data
 - Scale to cloud only when needed
+
+**Bloomberg Fallback:**
+- Seamless mock mode when Bloomberg unavailable
+- Realistic price simulation for development
+- Same API interface for mock and real data
 
 ## Disclaimer
 
