@@ -13,7 +13,7 @@ import yaml
 import logging
 import os
 
-from .bloomberg import BloombergClient, MockBloombergData, TickerMapper
+from .bloomberg import BloombergClient, MockBloombergData, TickerMapper, BloombergSubscriptionService
 from .cache import DataCache, ParquetStorage
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,15 @@ class DataLoader:
         self.cache = DataCache(cache_dir=str(self.data_dir / "cache"))
         self.storage = ParquetStorage(base_dir=str(self.data_dir / "historical"))
         
+        # Initialize subscription service for real-time updates
+        self.subscription_service = BloombergSubscriptionService(self.bloomberg)
+        
         # Load configurations
         self._load_config()
         
-        logger.info(f"DataLoader initialized (mock={use_mock})")
+        # Determine actual mode
+        actual_mode = "live (Bloomberg)" if not self.bloomberg.use_mock and self.bloomberg.connected else "simulated"
+        logger.info(f"DataLoader initialized (mode={actual_mode})")
     
     def _load_config(self):
         """Load configuration files."""
@@ -470,4 +475,31 @@ class DataLoader:
             "connected": self.bloomberg.connected if not self.bloomberg.use_mock else True,
             "host": os.environ.get("BLOOMBERG_HOST", "localhost"),
             "port": os.environ.get("BLOOMBERG_PORT", "8194"),
+            "subscriptions_enabled": self.subscription_service.subscriptions_enabled,
+            "subscribed_tickers": self.subscription_service.get_subscribed_tickers(),
+            "data_mode": "live" if (not self.bloomberg.use_mock and self.bloomberg.connected) else "simulated",
         }
+    
+    def subscribe_to_core_tickers(self) -> None:
+        """Subscribe to core oil market tickers for real-time updates."""
+        core_tickers = [
+            "CL1 Comdty",  # WTI Front Month
+            "CL2 Comdty",  # WTI 2nd Month
+            "CO1 Comdty",  # Brent Front Month
+            "CO2 Comdty",  # Brent 2nd Month
+            "XB1 Comdty",  # RBOB Gasoline
+            "HO1 Comdty",  # Heating Oil
+        ]
+        
+        for ticker in core_tickers:
+            self.subscription_service.subscribe(ticker)
+        
+        logger.info(f"Subscribed to {len(core_tickers)} core tickers")
+    
+    def get_live_prices(self) -> Dict[str, Dict[str, float]]:
+        """Get live prices for all subscribed tickers."""
+        return self.subscription_service.get_latest_prices()
+    
+    def is_live_data(self) -> bool:
+        """Check if using live Bloomberg data."""
+        return not self.bloomberg.use_mock and self.bloomberg.connected

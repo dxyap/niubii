@@ -99,18 +99,32 @@ Open in browser at `http://localhost:8501`
 
 ## Bloomberg Integration
 
-### Mock Mode (Default)
+### Live Mode (Default)
+The dashboard is configured to use live Bloomberg data by default. When a Bloomberg Terminal is not available, it automatically falls back to the sophisticated price simulator.
+
+**Default behavior:**
+- Attempts to connect to Bloomberg Terminal via BLPAPI
+- Falls back to simulation if Bloomberg is unavailable
+- Real-time subscription service for streaming updates
+
+```python
+# Default: Uses environment configuration
+from core.data import DataLoader
+loader = DataLoader()  # Reads BLOOMBERG_USE_MOCK from .env (default: false for live)
+
+# Explicitly use live data
+loader = DataLoader(use_mock=False)  # Connect to Bloomberg
+
+# Explicitly use simulation
+loader = DataLoader(use_mock=True)   # Use price simulator
+```
+
+### Mock Mode (Fallback/Development)
 The dashboard includes a sophisticated price simulator that generates realistic market data:
 - Tick-by-tick price updates with GARCH-like volatility clustering
 - Proper term structure (contango/backwardation)
 - Realistic bid/ask spreads
 - Session-consistent prices with change tracking
-
-```python
-# Default: Uses mock data
-from core.data import DataLoader
-loader = DataLoader()  # use_mock=True by default
-```
 
 ### Real Bloomberg Connection
 To connect to a real Bloomberg Terminal:
@@ -225,19 +239,22 @@ pytest tests/test_data.py -v
 | **Auto-Refresh (5s)** | ✅ Complete |
 | **Bloomberg Integration** | ✅ Complete |
 | **Ticker Validation** | ✅ Complete |
+| **Live Data Mode** | ✅ Complete |
+| **Real-time Subscriptions** | ✅ Complete |
 | ML Integration | 🔲 Planned |
 | Backtesting | 🔲 Planned |
 
-### Recent Updates (Phase 3)
+### Phase 3 Complete ✅
+- **Live Bloomberg Data**: Dashboard defaults to live Bloomberg data (falls back to simulation if unavailable)
+- **Real-time Subscription Service**: Subscribe to core oil market tickers for streaming updates
+- **Environment-based Configuration**: Control data mode via `.env` file (`BLOOMBERG_USE_MOCK=false` for live data)
 - **Real Bloomberg API Support**: Connect to Bloomberg Terminal when available
 - **Ticker Mapper Utility**: Comprehensive ticker validation and mapping
-- **Environment Configuration**: Full control via `.env` file
 - **Enhanced Mock Data**: GARCH-like volatility, proper term structure
 - **Expanded Test Suite**: 64 tests covering all modules
 - **Comprehensive Documentation**: Full ticker reference in YAML
 
 ### Planned Features
-- Real-time Bloomberg WebSocket streaming (for production)
 - ML signal models (XGBoost/LightGBM)
 - Backtesting engine with vectorbt
 - Multi-channel alerts (Email/SMS/Telegram)

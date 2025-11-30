@@ -15,6 +15,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from core.data import DataLoader
 from core.signals import TechnicalSignals, FundamentalSignals, SignalAggregator
 
@@ -23,10 +26,11 @@ st.set_page_config(page_title="Signals | Oil Trading", page_icon="📡", layout=
 # Initialize components
 @st.cache_resource
 def get_components():
+    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
     data_loader = DataLoader(
         config_dir=str(project_root / "config"),
         data_dir=str(project_root / "data"),
-        use_mock=True
+        use_mock=None  # Auto-detect from environment (defaults to live data)
     )
     tech_signals = TechnicalSignals()
     fund_signals = FundamentalSignals()
