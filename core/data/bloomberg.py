@@ -877,6 +877,160 @@ class BloombergClient:
 
 
 # =============================================================================
+# REAL-TIME SUBSCRIPTION SERVICE
+# =============================================================================
+
+class BloombergSubscriptionService:
+    """
+    Real-time subscription service for Bloomberg data.
+    
+    Provides streaming price updates when connected to a real Bloomberg Terminal.
+    Falls back to polling-based updates when subscriptions are not available.
+    """
+    
+    def __init__(self, bloomberg_client: 'BloombergClient'):
+        """
+        Initialize subscription service.
+        
+        Args:
+            bloomberg_client: Bloomberg client instance for data access
+        """
+        self.client = bloomberg_client
+        self._subscriptions: Dict[str, dict] = {}
+        self._callbacks: Dict[str, List] = {}
+        self._running = False
+        self._subscription_session = None
+        
+        # Check if subscriptions are enabled
+        self.subscriptions_enabled = os.environ.get("BLOOMBERG_ENABLE_SUBSCRIPTIONS", "false").lower() == "true"
+    
+    def subscribe(self, ticker: str, callback=None) -> bool:
+        """
+        Subscribe to real-time updates for a ticker.
+        
+        Args:
+            ticker: Bloomberg ticker to subscribe to
+            callback: Optional callback function for updates
+            
+        Returns:
+            True if subscription successful
+        """
+        if ticker in self._subscriptions:
+            if callback:
+                self._callbacks.setdefault(ticker, []).append(callback)
+            return True
+        
+        if self.client.use_mock or not self.subscriptions_enabled:
+            # Register for simulated updates
+            self._subscriptions[ticker] = {
+                "mode": "simulated",
+                "last_update": datetime.now(),
+            }
+            if callback:
+                self._callbacks.setdefault(ticker, []).append(callback)
+            return True
+        
+        # Real Bloomberg subscription
+        try:
+            import blpapi
+            
+            if not self._subscription_session:
+                self._start_subscription_session()
+            
+            subscription_list = blpapi.SubscriptionList()
+            subscription_list.add(
+                ticker,
+                "LAST_PRICE,BID,ASK,VOLUME",
+                "",
+                blpapi.CorrelationId(ticker)
+            )
+            
+            self._subscription_session.subscribe(subscription_list)
+            
+            self._subscriptions[ticker] = {
+                "mode": "real",
+                "last_update": datetime.now(),
+            }
+            
+            if callback:
+                self._callbacks.setdefault(ticker, []).append(callback)
+            
+            logger.info(f"Subscribed to {ticker}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Could not subscribe to {ticker}: {e}")
+            # Fall back to simulated
+            self._subscriptions[ticker] = {
+                "mode": "simulated",
+                "last_update": datetime.now(),
+            }
+            if callback:
+                self._callbacks.setdefault(ticker, []).append(callback)
+            return True
+    
+    def unsubscribe(self, ticker: str) -> None:
+        """Unsubscribe from a ticker."""
+        if ticker in self._subscriptions:
+            del self._subscriptions[ticker]
+        if ticker in self._callbacks:
+            del self._callbacks[ticker]
+    
+    def get_subscribed_tickers(self) -> List[str]:
+        """Get list of subscribed tickers."""
+        return list(self._subscriptions.keys())
+    
+    def get_latest_prices(self) -> Dict[str, Dict[str, float]]:
+        """Get latest prices for all subscribed tickers."""
+        prices = {}
+        for ticker in self._subscriptions:
+            prices[ticker] = self.client.get_price_with_change(ticker)
+        return prices
+    
+    def _start_subscription_session(self) -> bool:
+        """Start Bloomberg subscription session."""
+        try:
+            import blpapi
+            
+            host = os.environ.get("BLOOMBERG_HOST", "localhost")
+            port = int(os.environ.get("BLOOMBERG_PORT", "8194"))
+            
+            session_options = blpapi.SessionOptions()
+            session_options.setServerHost(host)
+            session_options.setServerPort(port)
+            
+            self._subscription_session = blpapi.Session(session_options)
+            
+            if not self._subscription_session.start():
+                logger.warning("Failed to start subscription session")
+                return False
+            
+            if not self._subscription_session.openService("//blp/mktdata"):
+                logger.warning("Failed to open market data service")
+                return False
+            
+            logger.info("Subscription session started")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Could not start subscription session: {e}")
+            return False
+    
+    def stop(self) -> None:
+        """Stop all subscriptions and cleanup."""
+        self._running = False
+        self._subscriptions.clear()
+        self._callbacks.clear()
+        
+        if self._subscription_session:
+            try:
+                self._subscription_session.stop()
+            except:
+                pass
+            self._subscription_session = None
+
+
+# =============================================================================
 # MOCK DATA GENERATORS
 # =============================================================================
 

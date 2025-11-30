@@ -132,14 +132,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # Initialize session state
 if 'data_loader' not in st.session_state:
     from core.data import DataLoader
+    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
     st.session_state.data_loader = DataLoader(
         config_dir=str(project_root / "config"),
         data_dir=str(project_root / "data"),
-        use_mock=True
+        use_mock=None  # Auto-detect from environment (defaults to live data)
     )
+    # Subscribe to core tickers for real-time updates
+    st.session_state.data_loader.subscribe_to_core_tickers()
 
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
@@ -211,10 +218,19 @@ def main():
         st.divider()
         
         # Data status with live indicator
-        st.markdown(
-            '<span class="live-indicator"></span> <span style="color: #00D26A;">Live Data</span>',
-            unsafe_allow_html=True
-        )
+        connection_status = data_loader.get_connection_status()
+        data_mode = connection_status.get('data_mode', 'simulated')
+        
+        if data_mode == 'live':
+            st.markdown(
+                '<span class="live-indicator"></span> <span style="color: #00D26A;">Bloomberg Live</span>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                '<span class="live-indicator"></span> <span style="color: #00A3E0;">Simulated Data</span>',
+                unsafe_allow_html=True
+            )
         st.caption(f"Last Update: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
         
         # Auto-refresh toggle

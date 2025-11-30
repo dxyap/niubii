@@ -6,7 +6,13 @@ Handles data loading, caching, and Bloomberg API integration.
 
 from .loader import DataLoader
 from .cache import DataCache
-from .bloomberg import BloombergClient, TickerMapper, MockBloombergData
+from .bloomberg import (
+    BloombergClient, 
+    TickerMapper, 
+    MockBloombergData,
+    BloombergSubscriptionService,
+    PriceSimulator,
+)
 
 __all__ = [
     "DataLoader",
@@ -14,4 +20,6 @@ __all__ = [
     "BloombergClient",
     "TickerMapper",
     "MockBloombergData",
+    "BloombergSubscriptionService",
+    "PriceSimulator",
 ]

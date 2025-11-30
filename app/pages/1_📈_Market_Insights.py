@@ -17,6 +17,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from core.data import DataLoader
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
 
@@ -25,10 +28,11 @@ st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈",
 # Initialize components
 @st.cache_resource
 def get_data_loader():
+    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
     return DataLoader(
         config_dir=str(project_root / "config"),
         data_dir=str(project_root / "data"),
-        use_mock=True
+        use_mock=None  # Auto-detect from environment (defaults to live data)
     )
 
 data_loader = get_data_loader()

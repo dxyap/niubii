@@ -8,20 +8,26 @@ import streamlit as st
 from datetime import datetime
 from pathlib import Path
 import sys
+import os
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def get_data_loader():
     """Get or create the shared data loader."""
     if 'data_loader' not in st.session_state:
         from core.data import DataLoader
+        # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
         st.session_state.data_loader = DataLoader(
             config_dir=str(project_root / "config"),
             data_dir=str(project_root / "data"),
-            use_mock=True
+            use_mock=None  # Auto-detect from environment (defaults to live data)
         )
     return st.session_state.data_loader
 

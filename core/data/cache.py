@@ -58,10 +58,14 @@ class DataCache:
         
         # Disk cache for persistent data
         if HAS_DISKCACHE:
-            self._disk_cache = diskcache.Cache(str(self.cache_dir / "diskcache"))
+            try:
+                self._disk_cache = diskcache.Cache(str(self.cache_dir / "diskcache"))
+            except Exception as e:
+                self._disk_cache = None
+                logger.debug(f"Could not initialize diskcache: {e}, using file-based caching")
         else:
             self._disk_cache = None
-            logger.warning("diskcache not available, using file-based caching")
+            logger.debug("diskcache not available, using file-based caching")
     
     def _get_cache_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate unique cache key."""
