@@ -149,7 +149,9 @@ class TestDataLoader:
         
         assert "WTI" in prices
         assert "Brent" in prices
-        assert prices["WTI"] > 0
+        # Prices are now dictionaries with current, change, etc.
+        assert prices["WTI"]["current"] > 0
+        assert "change" in prices["WTI"]
     
     def test_get_market_summary(self, tmp_path):
         """Test getting market summary."""
