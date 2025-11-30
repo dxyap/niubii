@@ -17,14 +17,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Add app directory for shared_state
+# Add app directory for shared state helpers
 app_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(app_dir))
 
-from shared_state import (
-    get_data_loader, get_positions, calculate_position_pnl,
-    get_portfolio_summary, format_pnl
-)
+from app import shared_state
 from core.risk import VaRCalculator, RiskLimits, RiskMonitor
 
 st.set_page_config(page_title="Risk Management | Oil Trading", page_icon="🛡️", layout="wide")
@@ -38,13 +35,14 @@ def get_risk_components():
     return var_calc, risk_limits, risk_monitor
 
 var_calc, risk_limits, risk_monitor = get_risk_components()
-data_loader = get_data_loader()
+context = shared_state.get_dashboard_context()
+data_loader = context.data_loader
 
 st.title("🛡️ Risk Management")
 st.caption("Portfolio risk monitoring and stress testing")
 
 # Get live portfolio data
-portfolio = get_portfolio_summary(data_loader)
+portfolio = context.portfolio.summary
 position_pnl = portfolio['positions']
 
 # Build positions dict for risk calculations

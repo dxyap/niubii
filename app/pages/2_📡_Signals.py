@@ -18,7 +18,7 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 load_dotenv()
 
-from core.data import DataLoader
+from app import shared_state
 from core.signals import TechnicalSignals, FundamentalSignals, SignalAggregator
 
 st.set_page_config(page_title="Signals | Oil Trading", page_icon="📡", layout="wide")
@@ -26,34 +26,33 @@ st.set_page_config(page_title="Signals | Oil Trading", page_icon="📡", layout=
 # Initialize components
 @st.cache_resource
 def get_components():
-    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
-    data_loader = DataLoader(
-        config_dir=str(project_root / "config"),
-        data_dir=str(project_root / "data"),
-        use_mock=None  # Auto-detect from environment (defaults to live data)
-    )
     tech_signals = TechnicalSignals()
     fund_signals = FundamentalSignals()
     aggregator = SignalAggregator()
-    return data_loader, tech_signals, fund_signals, aggregator
+    return tech_signals, fund_signals, aggregator
 
-data_loader, tech_signals, fund_signals, aggregator = get_components()
+tech_signals, fund_signals, aggregator = get_components()
+context = shared_state.get_dashboard_context(lookback_days=120)
+data_loader = context.data_loader
 
 st.title("📡 Trading Signals")
 st.caption("AI-powered signal generation for oil markets | ⚠️ Signals are advisory only")
 
 # Generate signals
-@st.cache_data(ttl=60)
 def generate_signals():
     # Get price data
-    hist_data = data_loader.get_historical("CL1 Comdty", 
-                                            start_date=datetime.now() - timedelta(days=100))
+    hist_data = context.data.wti_history
+    if hist_data is None or hist_data.empty:
+        hist_data = data_loader.get_historical(
+            "CL1 Comdty",
+            start_date=datetime.now() - timedelta(days=120)
+        )
     
-    if hist_data.empty:
+    if hist_data is None or hist_data.empty:
         return None, None, None
     
     prices = hist_data['PX_LAST']
-    current_price = prices.iloc[-1]
+    current_price = context.price_cache.get("CL1 Comdty")
     
     # Technical signal
     tech_signal = tech_signals.generate_composite_signal(prices)

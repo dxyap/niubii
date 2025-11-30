@@ -15,6 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from app import shared_state
 from core.trading import TradeBlotter, PositionManager
 from core.risk import RiskLimits
 
@@ -29,6 +30,11 @@ def get_components():
     return blotter, position_mgr, risk_limits
 
 blotter, position_mgr, risk_limits = get_components()
+context = shared_state.get_dashboard_context()
+data_loader = context.data_loader
+price_cache = context.price_cache
+portfolio_summary = context.portfolio.summary
+positions_df = context.portfolio.positions_dataframe
 
 st.title("💼 Trade Entry")
 st.caption("Enter trades manually after execution | Pre-trade risk checks included")
@@ -59,6 +65,7 @@ with col1:
                 ],
                 index=0
             )
+            st.session_state.selected_instrument = instrument
             
             side = st.radio("Side", options=["BUY", "SELL"], horizontal=True)
         
@@ -72,6 +79,7 @@ with col1:
             )
             
             quantity = st.number_input("Quantity (Contracts)", min_value=1, max_value=100, value=10)
+            st.session_state.trade_entry_quantity = quantity
         
         # Price and fees
         price_col1, price_col2 = st.columns(2)
@@ -121,19 +129,22 @@ with col1:
 with col2:
     st.subheader("🔍 Pre-Trade Risk Check")
     
-    # Current position
-    ticker = st.session_state.get('selected_ticker', 'CL1 Comdty')[:2]
-    
-    # Mock current position
-    current_position = 55 if ticker == "CL" else 15
-    proposed_quantity = 10
+    selected_instrument = st.session_state.get("selected_instrument", "CLF5 Comdty - WTI Jan 2025")
+    selected_ticker = selected_instrument.split(" - ")[0]
+    ticker_prefix = selected_ticker[:2]
+    current_position = 0
+    if not positions_df.empty:
+        mask = positions_df["ticker"].str.startswith(ticker_prefix)
+        current_position = int(positions_df.loc[mask, "qty"].sum())
+    proposed_quantity = int(st.session_state.get("trade_entry_quantity", 10))
+    current_price = price_cache.get(selected_ticker)
     
     # Position limit check
     position_check = risk_limits.check_position_limit(
-        ticker=f"{ticker}1 Comdty",
+        ticker=selected_ticker,
         current_quantity=current_position,
         proposed_quantity=proposed_quantity,
-        price=72.50
+        price=current_price
     )
     
     st.markdown("**Position Limits**")
@@ -161,11 +172,11 @@ with col2:
     
     st.markdown("**VaR Impact**")
     
-    # Mock VaR calculation
-    current_var = 245000
-    var_impact = proposed_quantity * 72.50 * 1000 * 0.02 * 1.65
+    multiplier = data_loader.get_multiplier(selected_ticker)
+    current_var = portfolio_summary['var_estimate']
+    var_limit = portfolio_summary['var_limit']
+    var_impact = proposed_quantity * current_price * multiplier * 0.02 * 1.65
     new_var = current_var + var_impact
-    var_limit = 375000
     var_util = new_var / var_limit * 100
     
     if var_util < 90:
@@ -181,7 +192,7 @@ with col2:
     
     st.markdown("**Concentration Check**")
     
-    concentration = 52  # Mock value
+    concentration = context.portfolio.concentration(ticker_prefix)
     
     if concentration <= 40:
         st.success(f"✅ WTI concentration: {concentration}% (limit: 40%)")
@@ -252,11 +263,12 @@ quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
 
 with quick_col1:
     if st.button("Buy 5 WTI", use_container_width=True):
+        price = round(price_cache.get("CL1 Comdty"), 2)
         trade_id = blotter.add_trade(
             instrument="CL1 Comdty",
             side="BUY",
             quantity=5,
-            price=72.50,
+            price=price,
             strategy="Quick Entry"
         )
         st.success(f"Trade {trade_id} saved!")
@@ -264,11 +276,12 @@ with quick_col1:
 
 with quick_col2:
     if st.button("Sell 5 WTI", use_container_width=True):
+        price = round(price_cache.get("CL1 Comdty"), 2)
         trade_id = blotter.add_trade(
             instrument="CL1 Comdty",
             side="SELL",
             quantity=5,
-            price=72.50,
+            price=price,
             strategy="Quick Entry"
         )
         st.success(f"Trade {trade_id} saved!")
@@ -276,11 +289,12 @@ with quick_col2:
 
 with quick_col3:
     if st.button("Buy 5 Brent", use_container_width=True):
+        price = round(price_cache.get("CO1 Comdty"), 2)
         trade_id = blotter.add_trade(
             instrument="CO1 Comdty",
             side="BUY",
             quantity=5,
-            price=77.50,
+            price=price,
             strategy="Quick Entry"
         )
         st.success(f"Trade {trade_id} saved!")
@@ -288,11 +302,12 @@ with quick_col3:
 
 with quick_col4:
     if st.button("Sell 5 Brent", use_container_width=True):
+        price = round(price_cache.get("CO1 Comdty"), 2)
         trade_id = blotter.add_trade(
             instrument="CO1 Comdty",
             side="SELL",
             quantity=5,
-            price=77.50,
+            price=price,
             strategy="Quick Entry"
         )
         st.success(f"Trade {trade_id} saved!")

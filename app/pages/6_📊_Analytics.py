@@ -20,23 +20,14 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 load_dotenv()
 
-from core.data import DataLoader
+from app import shared_state
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
 
 st.set_page_config(page_title="Analytics | Oil Trading", page_icon="📊", layout="wide")
 
 # Initialize
-@st.cache_resource
-def get_components():
-    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
-    data_loader = DataLoader(
-        config_dir=str(project_root / "config"),
-        data_dir=str(project_root / "data"),
-        use_mock=None  # Auto-detect from environment (defaults to live data)
-    )
-    return data_loader
-
-data_loader = get_components()
+context = shared_state.get_dashboard_context(lookback_days=365)
+data_loader = context.data_loader
 curve_analyzer = CurveAnalyzer()
 spread_analyzer = SpreadAnalyzer()
 fundamental_analyzer = FundamentalAnalyzer()
@@ -81,10 +72,17 @@ with tab1:
         # Price chart
         ticker = "CL1 Comdty" if "WTI" in instrument else "CO1 Comdty" if "Brent" in instrument else "XB1 Comdty" if "RBOB" in instrument else "HO1 Comdty"
         
-        hist_data = data_loader.get_historical(
-            ticker,
-            start_date=datetime.now() - timedelta(days=lookback)
-        )
+        hist_data = None
+        if ticker == "CL1 Comdty":
+            cached = context.data.wti_history
+            if cached is not None and not cached.empty:
+                start_cutoff = datetime.now() - timedelta(days=lookback)
+                hist_data = cached[cached.index >= start_cutoff]
+        if hist_data is None or hist_data.empty:
+            hist_data = data_loader.get_historical(
+                ticker,
+                start_date=datetime.now() - timedelta(days=lookback)
+            )
         
         if not hist_data.empty:
             fig = go.Figure()

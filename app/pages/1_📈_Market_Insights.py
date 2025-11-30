@@ -20,22 +20,15 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 load_dotenv()
 
-from core.data import DataLoader
+from app import shared_state
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
 
 st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈", layout="wide")
 
 # Initialize components
-@st.cache_resource
-def get_data_loader():
-    # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
-    return DataLoader(
-        config_dir=str(project_root / "config"),
-        data_dir=str(project_root / "data"),
-        use_mock=None  # Auto-detect from environment (defaults to live data)
-    )
-
-data_loader = get_data_loader()
+context = shared_state.get_dashboard_context(lookback_days=180)
+data_loader = context.data_loader
+price_cache = context.price_cache
 curve_analyzer = CurveAnalyzer()
 spread_analyzer = SpreadAnalyzer()
 fundamental_analyzer = FundamentalAnalyzer()
@@ -62,9 +55,13 @@ with tab1:
         # Price chart with Plotly
         st.markdown("**WTI Crude Oil - Daily Chart**")
         
-        # Get historical data
-        hist_data = data_loader.get_historical("CL1 Comdty", 
-                                                start_date=datetime.now() - timedelta(days=180))
+        # Get historical data (shared via dashboard context)
+        hist_data = context.data.wti_history
+        if hist_data is None or hist_data.empty:
+            hist_data = data_loader.get_historical(
+                "CL1 Comdty",
+                start_date=datetime.now() - timedelta(days=180)
+            )
         
         if not hist_data.empty:
             fig = go.Figure()
@@ -157,9 +154,9 @@ with tab2:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # WTI vs Brent curves
-        wti_curve = data_loader.get_futures_curve("wti", 12)
-        brent_curve = data_loader.get_futures_curve("brent", 12)
+        # WTI vs Brent curves via shared context cache
+        wti_curve = context.data.futures_curve
+        brent_curve = context.data.brent_curve
         
         fig = go.Figure()
         
@@ -232,10 +229,10 @@ with tab3:
     with col1:
         st.markdown("**3-2-1 Crack Spread (USGC)**")
         
-        # Get prices
-        wti = data_loader.get_price("CL1 Comdty")
-        rbob = data_loader.get_price("XB1 Comdty")
-        ho = data_loader.get_price("HO1 Comdty")
+        # Get prices using cached loader context
+        wti = price_cache.get("CL1 Comdty")
+        rbob = price_cache.get("XB1 Comdty")
+        ho = price_cache.get("HO1 Comdty")
         
         crack_321 = spread_analyzer.calculate_crack_spread(wti, rbob, ho, "3-2-1")
         

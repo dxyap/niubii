@@ -18,6 +18,8 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 load_dotenv()
 
+from .dashboard_core import DashboardContext
+
 
 def get_data_loader():
     """Get or create the shared data loader."""
@@ -132,3 +134,41 @@ def format_pnl_with_color(value: float) -> tuple:
     color = "#00D26A" if value >= 0 else "#FF4B4B"
     formatted = format_pnl(value)
     return formatted, color
+
+
+def _positions_signature(positions):
+    """Create a hashable signature for current positions."""
+    sorted_positions = sorted(
+        (
+            pos.get("symbol"),
+            pos.get("ticker"),
+            float(pos.get("qty", 0)),
+            float(pos.get("entry", 0)),
+            pos.get("strategy", ""),
+        )
+        for pos in positions
+    )
+    return tuple(sorted_positions)
+
+
+def get_dashboard_context(lookback_days: int = 90) -> DashboardContext:
+    """Return a cached DashboardContext shared across pages."""
+    positions = get_positions()
+    signature = _positions_signature(positions)
+    last_refresh = st.session_state.get("last_refresh")
+    store = st.session_state.setdefault("_dashboard_context_store", {})
+    entry = store.get(lookback_days)
+
+    if entry:
+        context, cached_refresh, cached_signature = entry
+        if cached_refresh == last_refresh and cached_signature == signature:
+            return context
+
+    context = DashboardContext(
+        get_data_loader(),
+        positions,
+        lookback_days=lookback_days,
+    )
+    store[lookback_days] = (context, last_refresh, signature)
+    st.session_state["_dashboard_context_store"] = store
+    return context

@@ -17,14 +17,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Add app directory for shared_state
+# Add app directory for shared helpers
 app_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(app_dir))
 
-from shared_state import (
-    get_data_loader, get_positions, calculate_position_pnl,
-    get_portfolio_summary, format_pnl, format_pnl_with_color
-)
+from app import shared_state
 from core.trading import TradeBlotter, PositionManager, PnLCalculator
 
 st.set_page_config(page_title="Trade Blotter | Oil Trading", page_icon="📋", layout="wide")
@@ -38,7 +35,8 @@ def get_trading_components():
     return blotter, position_mgr, pnl_calc
 
 blotter, position_mgr, pnl_calc = get_trading_components()
-data_loader = get_data_loader()
+context = shared_state.get_dashboard_context()
+data_loader = context.data_loader
 
 st.title("📋 Trade Blotter & Position Monitor")
 st.caption("Track trades, positions, and P&L in real-time")
@@ -51,14 +49,14 @@ with tab1:
     st.subheader("Open Positions")
     
     # Get calculated positions with live P&L
-    portfolio = get_portfolio_summary(data_loader)
+    portfolio = context.portfolio.summary
     position_pnl = portfolio['positions']
     
     # Build display dataframe
     positions_display = []
     for pos in position_pnl:
         direction = "🟢 Long" if pos['qty'] > 0 else "🔴 Short"
-        pnl_formatted, pnl_color = format_pnl_with_color(pos['pnl'])
+        pnl_formatted, pnl_color = shared_state.format_pnl_with_color(pos['pnl'])
         pnl_pct = f"{pos['pnl_pct']:+.2f}%"
         weight = pos['notional'] / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
         
@@ -105,18 +103,18 @@ with tab1:
         pnl_delta = f"{total_unrealized / 1000000 * 100:+.2f}%" if total_unrealized != 0 else "0%"
         st.metric(
             "Unrealized P&L", 
-            format_pnl(total_unrealized),
+            shared_state.format_pnl(total_unrealized),
             delta=pnl_delta,
             delta_color="normal" if total_unrealized >= 0 else "inverse"
         )
     with col2:
-        st.metric("Realized P&L", format_pnl(total_realized), delta="+0.8%")
+        st.metric("Realized P&L", shared_state.format_pnl(total_realized), delta="+0.8%")
     with col3:
         st.metric("Commissions", f"-${total_commission:,}")
     with col4:
         st.metric(
             "Net P&L", 
-            format_pnl(net_pnl),
+            shared_state.format_pnl(net_pnl),
             delta=f"{net_pnl / 1000000 * 100:+.2f}%",
             delta_color="normal" if net_pnl >= 0 else "inverse"
         )
