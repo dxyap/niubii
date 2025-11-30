@@ -11,8 +11,9 @@ from typing import List, Dict, Optional, Union
 from pathlib import Path
 import yaml
 import logging
+import os
 
-from .bloomberg import BloombergClient, MockBloombergData
+from .bloomberg import BloombergClient, MockBloombergData, TickerMapper
 from .cache import DataCache, ParquetStorage
 
 logger = logging.getLogger(__name__)
@@ -23,17 +24,17 @@ class DataLoader:
     Unified data loading interface.
     
     Handles:
-    - Bloomberg API integration
+    - Bloomberg API integration (real or mock)
     - Caching layer
     - Parquet storage for historical data
-    - Mock data for development
+    - Ticker validation and mapping
     """
     
     def __init__(
         self,
         config_dir: str = "config",
         data_dir: str = "data",
-        use_mock: bool = True
+        use_mock: bool = None
     ):
         """
         Initialize data loader.
@@ -41,10 +42,15 @@ class DataLoader:
         Args:
             config_dir: Configuration directory
             data_dir: Data storage directory
-            use_mock: Use mock data instead of Bloomberg
+            use_mock: Use mock data instead of Bloomberg.
+                      If None, auto-detects from environment.
         """
         self.config_dir = Path(config_dir)
         self.data_dir = Path(data_dir)
+        
+        # Auto-detect mock mode from environment
+        if use_mock is None:
+            use_mock = os.environ.get("BLOOMBERG_USE_MOCK", "true").lower() == "true"
         
         # Initialize components
         self.bloomberg = BloombergClient(use_mock=use_mock)
@@ -53,6 +59,8 @@ class DataLoader:
         
         # Load configurations
         self._load_config()
+        
+        logger.info(f"DataLoader initialized (mock={use_mock})")
     
     def _load_config(self):
         """Load configuration files."""
@@ -69,9 +77,37 @@ class DataLoader:
             with open(tickers_file) as f:
                 self.tickers = yaml.safe_load(f)
     
-    # Real-time Data Methods
-    def get_price(self, ticker: str) -> float:
+    # =========================================================================
+    # TICKER UTILITIES
+    # =========================================================================
+    
+    def validate_ticker(self, ticker: str) -> tuple:
+        """Validate a Bloomberg ticker."""
+        return TickerMapper.validate_ticker(ticker)
+    
+    def get_ticker(self, commodity: str, month: int = 1) -> str:
+        """Get Bloomberg ticker for a commodity."""
+        return TickerMapper.get_nth_month_ticker(commodity, month)
+    
+    def get_multiplier(self, ticker: str) -> int:
+        """Get contract multiplier for a ticker."""
+        return TickerMapper.get_multiplier(ticker)
+    
+    def parse_ticker(self, ticker: str) -> Dict:
+        """Parse ticker into components."""
+        return TickerMapper.parse_ticker(ticker)
+    
+    # =========================================================================
+    # REAL-TIME DATA METHODS
+    # =========================================================================
+    
+    def get_price(self, ticker: str, validate: bool = True) -> float:
         """Get current price for ticker."""
+        if validate:
+            valid, msg = self.validate_ticker(ticker)
+            if not valid:
+                logger.warning(f"Invalid ticker {ticker}: {msg}")
+        
         return self.bloomberg.get_price(ticker)
     
     def get_price_with_change(self, ticker: str) -> Dict[str, float]:
@@ -97,11 +133,36 @@ class DataLoader:
         
         return prices
     
+    def get_all_oil_prices(self) -> Dict[str, Dict[str, float]]:
+        """Get prices for all tracked oil products."""
+        tickers = {
+            "WTI Front": "CL1 Comdty",
+            "WTI 2nd": "CL2 Comdty",
+            "Brent Front": "CO1 Comdty",
+            "Brent 2nd": "CO2 Comdty",
+            "RBOB": "XB1 Comdty",
+            "Heating Oil": "HO1 Comdty",
+            "Gasoil": "QS1 Comdty",
+            "Natural Gas": "NG1 Comdty",
+        }
+        
+        prices = {}
+        for name, ticker in tickers.items():
+            try:
+                prices[name] = self.get_price_with_change(ticker)
+            except Exception as e:
+                logger.warning(f"Could not get price for {ticker}: {e}")
+        
+        return prices
+    
     def get_intraday_prices(self, ticker: str) -> pd.DataFrame:
         """Get intraday price history for charting."""
         return self.bloomberg.get_intraday_prices(ticker)
     
-    # Historical Data Methods
+    # =========================================================================
+    # HISTORICAL DATA METHODS
+    # =========================================================================
+    
     def get_historical(
         self,
         ticker: str,
@@ -144,7 +205,26 @@ class DataLoader:
         
         return df
     
-    # Curve Data Methods
+    def get_historical_multi(
+        self,
+        tickers: List[str],
+        start_date: Union[str, datetime] = None,
+        end_date: Union[str, datetime] = None,
+        frequency: str = "daily"
+    ) -> Dict[str, pd.DataFrame]:
+        """Get historical data for multiple tickers."""
+        results = {}
+        for ticker in tickers:
+            try:
+                results[ticker] = self.get_historical(ticker, start_date, end_date, frequency)
+            except Exception as e:
+                logger.warning(f"Could not get historical for {ticker}: {e}")
+        return results
+    
+    # =========================================================================
+    # CURVE DATA METHODS
+    # =========================================================================
+    
     def get_futures_curve(
         self,
         commodity: str = "wti",
@@ -154,7 +234,7 @@ class DataLoader:
         Get futures curve data.
         
         Args:
-            commodity: 'wti' or 'brent'
+            commodity: 'wti', 'brent', etc.
             num_months: Number of months on curve
             
         Returns:
@@ -180,7 +260,42 @@ class DataLoader:
         
         return pd.DataFrame(spreads)
     
-    # Fundamental Data Methods
+    def get_term_structure(self, commodity: str = "wti") -> Dict:
+        """Get term structure analysis."""
+        curve = self.get_futures_curve(commodity, num_months=12)
+        
+        if len(curve) < 2:
+            return {"structure": "Unknown", "slope": 0}
+        
+        # Calculate overall slope
+        slope = (curve.iloc[-1]["price"] - curve.iloc[0]["price"]) / (len(curve) - 1)
+        
+        # Determine structure
+        if slope > 0.05:
+            structure = "Contango"
+        elif slope < -0.05:
+            structure = "Backwardation"
+        else:
+            structure = "Flat"
+        
+        # Key spreads
+        m1_m2 = curve.iloc[0]["price"] - curve.iloc[1]["price"]
+        m1_m6 = curve.iloc[0]["price"] - curve.iloc[5]["price"] if len(curve) > 5 else 0
+        m1_m12 = curve.iloc[0]["price"] - curve.iloc[11]["price"] if len(curve) > 11 else 0
+        
+        return {
+            "structure": structure,
+            "slope": round(slope, 4),
+            "m1_m2_spread": round(m1_m2, 2),
+            "m1_m6_spread": round(m1_m6, 2),
+            "m1_m12_spread": round(m1_m12, 2),
+            "curve_data": curve,
+        }
+    
+    # =========================================================================
+    # FUNDAMENTAL DATA METHODS
+    # =========================================================================
+    
     def get_eia_inventory(self) -> pd.DataFrame:
         """Get EIA crude oil inventory data."""
         cache_key = "eia_inventory"
@@ -204,7 +319,10 @@ class DataLoader:
         """Get refinery turnaround schedule."""
         return MockBloombergData.generate_turnaround_data()
     
-    # Spread Calculations
+    # =========================================================================
+    # SPREAD CALCULATIONS
+    # =========================================================================
+    
     def get_wti_brent_spread(self) -> Dict[str, float]:
         """Calculate WTI-Brent spread with details."""
         wti_data = self.get_price_with_change("CL1 Comdty")
@@ -233,7 +351,7 @@ class DataLoader:
         
         crack = (2 * rbob + ho - 3 * wti) / 3
         
-        # Calculate a mock change (based on price movements)
+        # Calculate change
         wti_data = self.get_price_with_change("CL1 Comdty")
         rbob_data = self.get_price_with_change("XB1 Comdty")
         ho_data = self.get_price_with_change("HO1 Comdty")
@@ -248,7 +366,25 @@ class DataLoader:
             "ho_bbl": round(ho, 2),
         }
     
-    # Market Summary
+    def get_crack_spread_211(self) -> Dict[str, float]:
+        """Calculate 2-1-1 crack spread."""
+        wti = self.get_price("CL1 Comdty")
+        rbob = self.get_price("XB1 Comdty") * 42
+        ho = self.get_price("HO1 Comdty") * 42
+        
+        crack = (rbob + ho - 2 * wti) / 2
+        
+        return {
+            "crack": round(crack, 2),
+            "wti": wti,
+            "rbob_bbl": round(rbob, 2),
+            "ho_bbl": round(ho, 2),
+        }
+    
+    # =========================================================================
+    # MARKET SUMMARY
+    # =========================================================================
+    
     def get_market_summary(self) -> Dict:
         """Get comprehensive market summary."""
         oil_prices = self.get_oil_prices()
@@ -282,7 +418,32 @@ class DataLoader:
             "timestamp": datetime.now().isoformat(),
         }
     
-    # Data Refresh
+    def get_market_status(self) -> Dict:
+        """Get quick market status overview."""
+        wti = self.get_price_with_change("CL1 Comdty")
+        brent = self.get_price_with_change("CO1 Comdty")
+        
+        return {
+            "wti": wti,
+            "brent": brent,
+            "spread": round(wti["current"] - brent["current"], 2),
+            "market_hours": self._is_market_hours(),
+            "timestamp": datetime.now().isoformat(),
+        }
+    
+    def _is_market_hours(self) -> bool:
+        """Check if oil markets are open."""
+        now = datetime.now()
+        # Simplified check - oil trades nearly 24 hours
+        # Weekend closure
+        if now.weekday() >= 5:  # Saturday or Sunday
+            return False
+        return True
+    
+    # =========================================================================
+    # DATA REFRESH
+    # =========================================================================
+    
     def refresh_all(self) -> None:
         """Refresh all cached data."""
         logger.info("Refreshing all data...")
@@ -301,3 +462,12 @@ class DataLoader:
         self.get_eia_inventory()
         
         logger.info("Data refresh complete")
+    
+    def get_connection_status(self) -> Dict:
+        """Get Bloomberg connection status."""
+        return {
+            "mock_mode": self.bloomberg.use_mock,
+            "connected": self.bloomberg.connected if not self.bloomberg.use_mock else True,
+            "host": os.environ.get("BLOOMBERG_HOST", "localhost"),
+            "port": os.environ.get("BLOOMBERG_PORT", "8194"),
+        }

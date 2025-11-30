@@ -1,13 +1,26 @@
 # Bloomberg Ticker Reference
 # ==================================================
+# Comprehensive mapping of Bloomberg tickers for oil trading
+#
+# Ticker Format Reference:
+#   Generic: {base}{n} Comdty (e.g., CL1 Comdty for front month WTI)
+#   Specific: {base}{month_code}{year} Comdty (e.g., CLF5 Comdty for Jan 2025)
+#
+# Generic Month Numbers:
+#   1 = Front month, 2 = Second month, ..., 12 = 12th month
 
-# Price Fields
+# =============================================================================
+# PRICE FIELDS
+# =============================================================================
 price_fields:
-  last: "PX_LAST"
-  bid: "PX_BID"
-  ask: "PX_ASK"
-  volume: "PX_VOLUME"
-  open_interest: "OPEN_INT"
+  last: "PX_LAST"              # Last traded price
+  bid: "PX_BID"                # Current bid
+  ask: "PX_ASK"                # Current ask
+  mid: "PX_MID"                # Mid price (bid+ask)/2
+  volume: "PX_VOLUME"          # Daily volume
+  open_interest: "OPEN_INT"    # Open interest
+  vwap: "PX_VWAP"              # Volume weighted average price
+  settlement: "PX_SETTLE"      # Settlement price
 
 # OHLCV Fields for Historical Data
 ohlcv_fields:
@@ -26,31 +39,102 @@ reference_fields:
   last_tradeable_date: "LAST_TRADEABLE_DT"
   contract_size: "FUT_CONT_SIZE"
   tick_size: "FUT_TICK_SIZE"
+  tick_value: "FUT_TICK_VAL"
+  first_notice_date: "FUT_FIRST_NOTICE_DT"
+  expiration_date: "EXPIRATION_DATE"
 
-# Front Month Tickers
-front_month:
-  wti: "CL1 Comdty"
-  brent: "CO1 Comdty"
-  rbob: "XB1 Comdty"
-  heating_oil: "HO1 Comdty"
-  gasoil: "QS1 Comdty"
+# =============================================================================
+# CRUDE OIL FUTURES
+# =============================================================================
 
-# Second Month Tickers
-second_month:
-  wti: "CL2 Comdty"
-  brent: "CO2 Comdty"
-  rbob: "XB2 Comdty"
-  heating_oil: "HO2 Comdty"
-  gasoil: "QS2 Comdty"
+# WTI Crude Oil (NYMEX)
+wti:
+  name: "WTI Crude Oil"
+  exchange: "NYMEX"
+  base_ticker: "CL"
+  contract_size: 1000          # barrels
+  tick_size: 0.01              # $/bbl
+  tick_value: 10.00            # $
+  currency: "USD"
+  trading_hours: "18:00-17:00 ET"
+  front_month: "CL1 Comdty"
+  second_month: "CL2 Comdty"
+  
+# Brent Crude Oil (ICE)
+brent:
+  name: "Brent Crude Oil"
+  exchange: "ICE"
+  base_ticker: "CO"
+  contract_size: 1000
+  tick_size: 0.01
+  tick_value: 10.00
+  currency: "USD"
+  trading_hours: "20:00-18:00 ET"
+  front_month: "CO1 Comdty"
+  second_month: "CO2 Comdty"
 
-# Generic Month Patterns
-generic_patterns:
-  wti: "CL{month}{year} Comdty"
-  brent: "CO{month}{year} Comdty"
-  rbob: "XB{month}{year} Comdty"
-  heating_oil: "HO{month}{year} Comdty"
+# =============================================================================
+# REFINED PRODUCTS
+# =============================================================================
 
-# Month Codes
+# RBOB Gasoline (NYMEX)
+rbob_gasoline:
+  name: "RBOB Gasoline"
+  exchange: "NYMEX"
+  base_ticker: "XB"
+  contract_size: 42000         # gallons
+  tick_size: 0.0001            # $/gal
+  tick_value: 4.20             # $
+  currency: "USD"
+  trading_hours: "18:00-17:00 ET"
+  front_month: "XB1 Comdty"
+  second_month: "XB2 Comdty"
+
+# Heating Oil (NYMEX)
+heating_oil:
+  name: "Heating Oil"
+  exchange: "NYMEX"
+  base_ticker: "HO"
+  contract_size: 42000
+  tick_size: 0.0001
+  tick_value: 4.20
+  currency: "USD"
+  trading_hours: "18:00-17:00 ET"
+  front_month: "HO1 Comdty"
+  second_month: "HO2 Comdty"
+
+# ICE Gasoil
+gasoil:
+  name: "Gasoil (ICE)"
+  exchange: "ICE"
+  base_ticker: "QS"
+  contract_size: 100           # metric tonnes
+  tick_size: 0.25              # $/tonne
+  tick_value: 25.00
+  currency: "USD"
+  trading_hours: "01:00-23:00 GMT"
+  front_month: "QS1 Comdty"
+  second_month: "QS2 Comdty"
+
+# =============================================================================
+# NATURAL GAS
+# =============================================================================
+natural_gas:
+  name: "Natural Gas"
+  exchange: "NYMEX"
+  base_ticker: "NG"
+  contract_size: 10000         # MMBtu
+  tick_size: 0.001             # $/MMBtu
+  tick_value: 10.00
+  currency: "USD"
+  trading_hours: "18:00-17:00 ET"
+  front_month: "NG1 Comdty"
+  second_month: "NG2 Comdty"
+
+# =============================================================================
+# MONTH CODES
+# =============================================================================
+# Used for specific contract tickers (e.g., CLF5 = WTI Jan 2025)
 month_codes:
   F: 1   # January
   G: 2   # February
@@ -65,24 +149,113 @@ month_codes:
   X: 11  # November
   Z: 12  # December
 
-# EIA Fundamental Data
-eia_tickers:
-  crude_inventory: "DOE WCRSTUS Index"
-  crude_inventory_change: "DOE WCRSTCH Index"
-  cushing_stocks: "DOE WCSTOCUS Index"
-  gasoline_inventory: "DOE WGTSTUS Index"
-  distillate_inventory: "DOE WDISTUS Index"
-  refinery_utilization: "DOE WOCIRP Index"
-  crude_production: "DOE WCRFPUS Index"
-  crude_imports: "DOE WCRIMPT Index"
-  spr_stocks: "DOE WCSSTUS Index"
+# =============================================================================
+# FRONT MONTH TICKERS (QUICK REFERENCE)
+# =============================================================================
+front_month:
+  wti: "CL1 Comdty"
+  brent: "CO1 Comdty"
+  rbob: "XB1 Comdty"
+  heating_oil: "HO1 Comdty"
+  gasoil: "QS1 Comdty"
+  natgas: "NG1 Comdty"
 
-# OPEC Data
-opec_tickers:
-  reference_basket: "OPCRPUSD Index"
+second_month:
+  wti: "CL2 Comdty"
+  brent: "CO2 Comdty"
+  rbob: "XB2 Comdty"
+  heating_oil: "HO2 Comdty"
+  gasoil: "QS2 Comdty"
+  natgas: "NG2 Comdty"
+
+# =============================================================================
+# EIA FUNDAMENTAL DATA TICKERS
+# =============================================================================
+eia_tickers:
+  # Crude Oil Inventories
+  crude_inventory: "DOE WCRSTUS Index"           # Total US Crude Oil Stocks
+  crude_inventory_change: "DOE WCRSTCH Index"    # Weekly Change
+  cushing_stocks: "DOE WCSTOCUS Index"           # Cushing, OK Stocks
+  spr_stocks: "DOE WCSSTUS Index"                # Strategic Petroleum Reserve
   
-# Indices
+  # Product Inventories
+  gasoline_inventory: "DOE WGTSTUS Index"        # Total Gasoline Stocks
+  distillate_inventory: "DOE WDISTUS Index"      # Total Distillate Stocks
+  propane_inventory: "DOE WPPLP Index"           # Propane Stocks
+  jet_fuel_inventory: "DOE WKJSTUS Index"        # Jet Fuel Stocks
+  
+  # Supply & Demand
+  crude_production: "DOE WCRFPUS Index"          # US Crude Oil Production
+  crude_imports: "DOE WCRIMPT Index"             # Crude Oil Imports
+  crude_exports: "DOE WCRXPUS Index"             # Crude Oil Exports
+  gasoline_demand: "DOE WGFUPUS Index"           # Gasoline Demand (4-wk avg)
+  distillate_demand: "DOE WDFUPU Index"          # Distillate Demand
+  
+  # Refinery Operations
+  refinery_utilization: "DOE WOCIRP Index"       # Refinery Utilization Rate
+  refinery_inputs: "DOE WCRRIUS Index"           # Refinery Crude Oil Inputs
+
+# =============================================================================
+# OPEC DATA TICKERS
+# =============================================================================
+opec_tickers:
+  reference_basket: "OPCRPUSD Index"             # OPEC Reference Basket Price
+
+# =============================================================================
+# FINANCIAL INDICES
+# =============================================================================
 indices:
-  usd_index: "DXY Index"
-  sp500: "SPX Index"
-  vix: "VIX Index"
+  usd_index: "DXY Index"                         # US Dollar Index
+  sp500: "SPX Index"                             # S&P 500 Index
+  vix: "VIX Index"                               # VIX Volatility Index
+  bdi: "BDIY Index"                              # Baltic Dry Index
+
+# =============================================================================
+# SPREAD DEFINITIONS
+# =============================================================================
+spreads:
+  wti_brent:
+    name: "WTI-Brent Spread"
+    calculation: "CL1 Comdty - CO1 Comdty"
+    leg1: "CL1 Comdty"
+    leg2: "CO1 Comdty"
+    type: "inter_commodity"
+    
+  crack_321:
+    name: "3-2-1 Crack Spread"
+    calculation: "(2 * XB1 * 42 + HO1 * 42 - 3 * CL1) / 3"
+    type: "crack"
+    
+  crack_211:
+    name: "2-1-1 Crack Spread"
+    calculation: "(XB1 * 42 + HO1 * 42 - 2 * CL1) / 2"
+    type: "crack"
+    
+  wti_calendar_1_2:
+    name: "WTI M1-M2 Calendar Spread"
+    calculation: "CL1 Comdty - CL2 Comdty"
+    type: "calendar"
+    
+  brent_calendar_1_2:
+    name: "Brent M1-M2 Calendar Spread"
+    calculation: "CO1 Comdty - CO2 Comdty"
+    type: "calendar"
+
+# =============================================================================
+# CONTRACT SPECIFICATIONS
+# =============================================================================
+contract_multipliers:
+  CL: 1000     # WTI - 1,000 barrels
+  CO: 1000     # Brent - 1,000 barrels
+  XB: 42000    # RBOB - 42,000 gallons
+  HO: 42000    # Heating Oil - 42,000 gallons
+  QS: 100      # Gasoil - 100 metric tonnes
+  NG: 10000    # Natural Gas - 10,000 MMBtu
+
+exchanges:
+  CL: "NYMEX"
+  CO: "ICE"
+  XB: "NYMEX"
+  HO: "NYMEX"
+  QS: "ICE"
+  NG: "NYMEX"
