@@ -1,8 +1,25 @@
 # 🛢️ Quantitative Oil Trading Dashboard
 
-A comprehensive, local-first quantitative trading dashboard specifically designed for oil markets. Built with Python and Streamlit, featuring real-time market analysis, signal generation, risk management, and trade tracking.
+A comprehensive, **lightweight, local-first** quantitative trading dashboard specifically designed for oil markets. Built with Python and Streamlit, featuring real-time market analysis, signal generation, risk management, and trade tracking.
+
+> **Current Status:** Phase 1 Complete ✅ | See [PROGRESS.md](PROGRESS.md) for detailed roadmap
 
 ![Dashboard Preview](docs/preview.png)
+
+## 📊 Project Status
+
+| Component | Status | Coverage |
+|-----------|--------|----------|
+| Data Infrastructure | ✅ Complete | Bloomberg wrapper, caching, Parquet |
+| Market Analytics | ✅ Complete | Curves, spreads, fundamentals |
+| Signal Engine | ✅ Complete | Technical + fundamental signals |
+| Risk Management | ✅ Complete | VaR, limits, stress testing |
+| Trading Module | ✅ Complete | Blotter, positions, P&L |
+| Dashboard UI | ✅ Complete | 7 pages, dark theme |
+| Test Suite | ✅ Complete | 43 tests passing |
+| ML Integration | 🔲 Planned | XGBoost, LightGBM |
+| LLM News Summary | 🔲 Planned | GPT-4/Claude |
+| Backtesting | 🔲 Planned | vectorbt |
 
 ## 🎯 Features
 
@@ -237,13 +254,51 @@ loader = DataLoader(use_mock=False)  # Enable real Bloomberg
 2. Add visualization in `app/pages/`
 3. Write tests in `tests/`
 
-## 📈 Future Enhancements
+## 🚀 What's Next (Roadmap)
 
-- [ ] LLM integration for news summarization
-- [ ] Satellite data for storage monitoring
-- [ ] Mobile alerts via push notifications
-- [ ] Snowflake integration for scaling
-- [ ] Options analytics support
+See [PROGRESS.md](PROGRESS.md) for the complete development roadmap.
+
+### Immediate Priorities (Phase 2)
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| **Real Bloomberg Streaming** | 🔴 High | WebSocket price updates <1s latency |
+| **Advanced Charting** | 🔴 High | TradingView-style interactive charts |
+| **Keyboard Shortcuts** | 🟡 Medium | Power user hotkeys (Ctrl+1-7, F5, etc.) |
+| **Custom Alerts** | 🟡 Medium | Email/SMS/Telegram notifications |
+
+### Short-Term (Phase 3)
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| **ML Signal Models** | 🔴 High | XGBoost/LightGBM price direction |
+| **Backtesting Engine** | 🔴 High | vectorbt integration with oil-specific features |
+| **LLM News Summary** | 🔴 High | GPT-4/Claude daily market digest |
+| **Portfolio Optimization** | 🟡 Medium | Mean-variance, risk parity |
+
+### Future Enhancements
+- [ ] Satellite data for storage monitoring (Orbital Insight)
+- [ ] AIS ship tracking for tanker movements
+- [ ] Voice interface for quick queries
+- [ ] Multi-user with role-based permissions
+- [ ] Snowflake scaling when data grows
+
+## 💡 Design Philosophy
+
+**Lightweight & Local-First:**
+- Everything runs on a single machine (no cloud required)
+- SQLite for transactions, Parquet for analytics
+- In-memory caching for real-time data
+- Scale to Snowflake only when needed
+
+**Industry Standards:**
+- Professional trading terminal aesthetic
+- Sub-second data refresh capability
+- Pre-trade risk validation
+- Complete audit trail
+
+**Extensibility:**
+- Modular architecture for easy customization
+- Bloomberg-ready interface (mock data for development)
+- Plugin system for custom signals
 
 ## ⚠️ Disclaimer
 
