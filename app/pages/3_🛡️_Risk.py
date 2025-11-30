@@ -1,7 +1,7 @@
 """
 Risk Management Page
 ====================
-Portfolio risk monitoring and analysis.
+Portfolio risk monitoring and analysis with live data.
 """
 
 import streamlit as st
@@ -17,58 +17,109 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Add app directory for shared_state
+app_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(app_dir))
+
+from shared_state import (
+    get_data_loader, get_positions, calculate_position_pnl,
+    get_portfolio_summary, format_pnl
+)
 from core.risk import VaRCalculator, RiskLimits, RiskMonitor
 
 st.set_page_config(page_title="Risk Management | Oil Trading", page_icon="🛡️", layout="wide")
 
 # Initialize components
 @st.cache_resource
-def get_components():
+def get_risk_components():
     var_calc = VaRCalculator(confidence_level=0.95, holding_period=1)
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))
     risk_monitor = RiskMonitor()
     return var_calc, risk_limits, risk_monitor
 
-var_calc, risk_limits, risk_monitor = get_components()
+var_calc, risk_limits, risk_monitor = get_risk_components()
+data_loader = get_data_loader()
 
 st.title("🛡️ Risk Management")
 st.caption("Portfolio risk monitoring and stress testing")
 
-# Mock positions for demonstration
-mock_positions = {
-    "CL1 Comdty": {"quantity": 45, "price": 73.45},
-    "CL2 Comdty": {"quantity": 20, "price": 73.20},
-    "CO1 Comdty": {"quantity": -15, "price": 77.80},
-    "XB1 Comdty": {"quantity": 8, "price": 2.22},
-    "HO1 Comdty": {"quantity": 5, "price": 2.52},
+# Get live portfolio data
+portfolio = get_portfolio_summary(data_loader)
+position_pnl = portfolio['positions']
+
+# Build positions dict for risk calculations
+positions_for_risk = {
+    pos['ticker']: {
+        'quantity': pos['qty'],
+        'price': pos['current'],
+        'notional': pos['notional']
+    }
+    for pos in position_pnl
 }
 
-# Top metrics row
+# Top metrics row - All calculated from live data
 col1, col2, col3, col4, col5 = st.columns(5)
 
-var_value = 245000
-var_limit = 375000
-var_util = var_value / var_limit * 100
+var_value = portfolio['var_estimate']
+var_limit = portfolio['var_limit']
+var_util = portfolio['var_utilization']
 
 with col1:
     st.metric(
         "Portfolio VaR (95%, 1-Day)",
-        f"${var_value:,}",
+        f"${var_value:,.0f}",
         delta=f"{var_util:.0f}% of limit",
         delta_color="off"
     )
 
 with col2:
-    st.metric("Gross Exposure", "$12.5M", delta="62% of limit", delta_color="off")
+    gross_util = portfolio['gross_exposure'] / 20000000 * 100  # $20M limit
+    st.metric(
+        "Gross Exposure", 
+        f"${portfolio['gross_exposure']/1e6:.1f}M", 
+        delta=f"{gross_util:.0f}% of limit", 
+        delta_color="off"
+    )
 
 with col3:
-    st.metric("Net Exposure", "$8.2M", delta="Long", delta_color="off")
+    net_label = "Long" if portfolio['net_exposure'] > 0 else "Short"
+    st.metric(
+        "Net Exposure", 
+        f"${abs(portfolio['net_exposure'])/1e6:.1f}M", 
+        delta=net_label, 
+        delta_color="off"
+    )
 
 with col4:
-    st.metric("Current Drawdown", "-1.8%", delta="36% of limit", delta_color="off")
+    # Calculate drawdown from P&L
+    drawdown_pct = -portfolio['total_pnl'] / 1000000 * 100 if portfolio['total_pnl'] < 0 else 0
+    dd_util = abs(drawdown_pct) / 5 * 100 if drawdown_pct != 0 else 0  # 5% limit
+    st.metric(
+        "Current Drawdown", 
+        f"{drawdown_pct:.1f}%", 
+        delta=f"{dd_util:.0f}% of limit" if dd_util > 0 else "None", 
+        delta_color="off"
+    )
 
 with col5:
-    st.metric("Active Alerts", "2", delta="1 Warning", delta_color="off")
+    # Count active alerts
+    alerts = []
+    
+    # Check concentration
+    crude_exposure = sum(p['notional'] for p in position_pnl if p['ticker'].startswith('CL') or p['ticker'].startswith('CO'))
+    crude_concentration = crude_exposure / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+    if crude_concentration > 60:
+        alerts.append("Concentration")
+    
+    if var_util > 75:
+        alerts.append("VaR")
+    
+    st.metric(
+        "Active Alerts", 
+        len(alerts),
+        delta=f"{len(alerts)} Warning" if alerts else "None",
+        delta_color="off"
+    )
 
 st.divider()
 
@@ -120,19 +171,31 @@ with tab1:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # VaR breakdown
+        # VaR breakdown - calculated from actual positions
         st.subheader("Risk Contribution by Position")
         
-        risk_data = pd.DataFrame({
-            'Position': ['CLF5 (+45)', 'CLG5 (+20)', 'COH5 (-15)', 'XBF5 (+8)', 'HOF5 (+5)'],
-            'Notional': [3305250, 1464000, -1167000, 745920, 529200],
-            'VaR Contribution': [102500, 45200, 38500, 35800, 23000],
-            'Weight': [42, 18, 16, 15, 9],
-        })
+        risk_data = []
+        for pos in position_pnl:
+            # Simplified VaR contribution (proportional to notional)
+            var_contrib = pos['notional'] * 0.02  # 2% VaR assumption
+            weight = pos['notional'] / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+            
+            risk_data.append({
+                'Position': f"{pos['symbol']} ({pos['qty']:+d})",
+                'Notional': pos['notional'],
+                'VaR Contribution': var_contrib,
+                'Weight': weight,
+            })
         
-        fig2 = px.pie(risk_data, values='VaR Contribution', names='Position',
-                     title='VaR Contribution by Position',
-                     color_discrete_sequence=px.colors.sequential.Blues_r)
+        risk_df = pd.DataFrame(risk_data)
+        
+        fig2 = px.pie(
+            risk_df, 
+            values='VaR Contribution', 
+            names='Position',
+            title='VaR Contribution by Position',
+            color_discrete_sequence=px.colors.sequential.Blues_r
+        )
         
         fig2.update_layout(
             template='plotly_dark',
@@ -145,13 +208,19 @@ with tab1:
     with col2:
         st.subheader("Risk Metrics")
         
+        # CVaR estimate (1.4x VaR typical)
+        cvar = var_value * 1.4
+        
+        # Daily volatility (from VaR)
+        daily_vol = var_value / (portfolio['gross_exposure'] * 1.65) * 100 if portfolio['gross_exposure'] > 0 else 0
+        
         metrics = {
-            "VaR (95%, 1-Day)": f"${var_value:,}",
+            "VaR (95%, 1-Day)": f"${var_value:,.0f}",
             "VaR Limit": f"${var_limit:,}",
-            "CVaR (Expected Shortfall)": "$312,000",
-            "Daily Volatility": "1.8%",
+            "CVaR (Expected Shortfall)": f"${cvar:,.0f}",
+            "Daily Volatility": f"{daily_vol:.1f}%",
             "Beta to Oil": "0.95",
-            "Max Drawdown (30d)": "-3.2%",
+            "Max Drawdown (30d)": f"-${abs(min(portfolio['total_pnl'], 0)):,.0f}",
         }
         
         for metric, value in metrics.items():
@@ -162,12 +231,10 @@ with tab1:
         st.subheader("Exposure Summary")
         
         exposure_metrics = {
-            "Gross Exposure": "$12.5M",
-            "Net Exposure": "$8.2M (Long)",
-            "Crude Oil Exposure": "$10.1M",
-            "Products Exposure": "$2.4M",
-            "Long Exposure": "$10.3M",
-            "Short Exposure": "$2.1M",
+            "Gross Exposure": f"${portfolio['gross_exposure']/1e6:.2f}M",
+            "Net Exposure": f"${portfolio['net_exposure']/1e6:.2f}M",
+            "Long Exposure": f"${portfolio['long_exposure']/1e6:.2f}M",
+            "Short Exposure": f"${portfolio['short_exposure']/1e6:.2f}M",
         }
         
         for metric, value in exposure_metrics.items():
@@ -175,38 +242,81 @@ with tab1:
         
         st.divider()
         
+        # Concentration check
         st.subheader("Correlation Alert")
         
-        st.warning("""
-        ⚠️ **High Correlation Warning**
+        # Check for high correlation
+        wti_exposure = sum(p['notional'] for p in position_pnl if p['ticker'].startswith('CL'))
+        brent_exposure = sum(p['notional'] for p in position_pnl if p['ticker'].startswith('CO'))
         
-        WTI and Brent positions have 0.95 correlation.
-        Combined directional exposure: $10.2M (Net Long Oil)
-        Effective diversification: LOW
-        """)
+        if wti_exposure > 0 and brent_exposure > 0:
+            combined = wti_exposure + brent_exposure
+            st.warning(f"""
+            ⚠️ **High Correlation Warning**
+            
+            WTI and Brent positions have 0.95 correlation.
+            Combined directional exposure: ${combined/1e6:.1f}M
+            Effective diversification: LOW
+            """)
+        else:
+            st.success("✅ No high-correlation alerts")
 
 with tab2:
     st.subheader("Position Limits Monitor")
     
-    # Position limits table
-    limits_data = pd.DataFrame({
-        'Instrument': ['WTI (CL)', 'Brent (CO)', 'RBOB (XB)', 'Heating Oil (HO)', 'Spreads'],
-        'Current': [65, 15, 8, 5, 10],
-        'Limit': [100, 75, 50, 50, 50],
-        'Utilization': [65, 20, 16, 10, 20],
-        'Status': ['🟢 OK', '🟢 OK', '🟢 OK', '🟢 OK', '🟢 OK'],
+    # Calculate actual position utilization
+    limits_data = []
+    
+    # WTI
+    wti_qty = sum(p['qty'] for p in position_pnl if p['ticker'].startswith('CL'))
+    limits_data.append({
+        'Instrument': 'WTI (CL)',
+        'Current': abs(wti_qty),
+        'Limit': 100,
+        'Utilization': abs(wti_qty),
+        'Status': '🟢 OK' if abs(wti_qty) <= 100 else '🔴 Breach'
     })
     
-    # Add progress bars for visualization
+    # Brent
+    brent_qty = sum(p['qty'] for p in position_pnl if p['ticker'].startswith('CO'))
+    limits_data.append({
+        'Instrument': 'Brent (CO)',
+        'Current': abs(brent_qty),
+        'Limit': 75,
+        'Utilization': abs(brent_qty) / 75 * 100,
+        'Status': '🟢 OK' if abs(brent_qty) <= 75 else '🔴 Breach'
+    })
+    
+    # Products
+    rbob_qty = sum(p['qty'] for p in position_pnl if p['ticker'].startswith('XB'))
+    limits_data.append({
+        'Instrument': 'RBOB (XB)',
+        'Current': abs(rbob_qty),
+        'Limit': 50,
+        'Utilization': abs(rbob_qty) / 50 * 100,
+        'Status': '🟢 OK' if abs(rbob_qty) <= 50 else '🔴 Breach'
+    })
+    
+    ho_qty = sum(p['qty'] for p in position_pnl if p['ticker'].startswith('HO'))
+    limits_data.append({
+        'Instrument': 'Heating Oil (HO)',
+        'Current': abs(ho_qty),
+        'Limit': 50,
+        'Utilization': abs(ho_qty) / 50 * 100,
+        'Status': '🟢 OK' if abs(ho_qty) <= 50 else '🔴 Breach'
+    })
+    
+    limits_df = pd.DataFrame(limits_data)
+    
     st.dataframe(
-        limits_data,
+        limits_df,
         use_container_width=True,
         hide_index=True,
         column_config={
             'Instrument': st.column_config.TextColumn('Instrument'),
             'Current': st.column_config.NumberColumn('Current Pos'),
             'Limit': st.column_config.NumberColumn('Max Limit'),
-            'Utilization': st.column_config.ProgressColumn('Utilization %', min_value=0, max_value=100, format='%d%%'),
+            'Utilization': st.column_config.ProgressColumn('Utilization %', min_value=0, max_value=100, format='%.0f%%'),
             'Status': st.column_config.TextColumn('Status'),
         }
     )
@@ -219,28 +329,39 @@ with tab2:
     
     with col1:
         st.markdown("**Gross Exposure**")
-        gross_util = 62.5
-        st.progress(gross_util / 100, text=f"${12.5}M / $20M ({gross_util:.0f}%)")
+        gross_util = portfolio['gross_exposure'] / 20000000 * 100
+        st.progress(min(gross_util / 100, 1.0), text=f"${portfolio['gross_exposure']/1e6:.1f}M / $20M ({gross_util:.0f}%)")
         
         st.markdown("**Net Exposure**")
-        net_util = 54.7
-        st.progress(net_util / 100, text=f"${8.2}M / $15M ({net_util:.0f}%)")
+        net_util = abs(portfolio['net_exposure']) / 15000000 * 100
+        st.progress(min(net_util / 100, 1.0), text=f"${abs(portfolio['net_exposure'])/1e6:.1f}M / $15M ({net_util:.0f}%)")
     
     with col2:
         st.markdown("**Concentration Limits**")
         
-        conc_data = {
-            'WTI Concentration': (42, 40),
-            'Crude Oil Group': (52, 60),
-            'Single Strategy': (35, 50),
-        }
+        # Calculate actual concentrations
+        conc_data = {}
+        
+        wti_conc = wti_exposure / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+        conc_data['WTI Concentration'] = (wti_conc, 40)
+        
+        crude_conc = crude_concentration
+        conc_data['Crude Oil Group'] = (crude_conc, 60)
+        
+        # Single strategy (use largest)
+        strategy_exposure = {}
+        for pos in position_pnl:
+            strat = pos['strategy']
+            strategy_exposure[strat] = strategy_exposure.get(strat, 0) + pos['notional']
+        
+        max_strategy_conc = max(strategy_exposure.values()) / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 and strategy_exposure else 0
+        conc_data['Single Strategy'] = (max_strategy_conc, 50)
         
         for name, (current, limit) in conc_data.items():
-            color = "normal" if current <= limit else "inverse"
-            status = "⚠️" if current > limit else "✓"
+            status = "⚠️" if current > limit else "✅"
             st.metric(
                 name, 
-                f"{current}%", 
+                f"{current:.0f}%", 
                 delta=f"Limit: {limit}%",
                 delta_color="off"
             )
@@ -257,11 +378,36 @@ with tab3:
         "WTI-Brent +$5": {"factors": {"wti_brent_spread": 5.0}},
     }
     
-    # Run stress tests
-    stress_results = var_calc.run_stress_test(mock_positions, scenarios)
+    # Calculate stress test results based on actual positions
+    stress_results = []
+    
+    for scenario_name, scenario in scenarios.items():
+        factors = scenario['factors']
+        pnl_impact = 0
+        
+        for pos in position_pnl:
+            if 'crude_oil' in factors:
+                if pos['ticker'].startswith('CL') or pos['ticker'].startswith('CO'):
+                    pnl_impact += pos['notional'] * factors['crude_oil'] * (1 if pos['qty'] > 0 else -1)
+            
+            if 'products' in factors:
+                if pos['ticker'].startswith('XB') or pos['ticker'].startswith('HO'):
+                    pnl_impact += pos['notional'] * factors['products'] * (1 if pos['qty'] > 0 else -1)
+            
+            if 'wti_brent_spread' in factors:
+                if pos['ticker'].startswith('CL'):
+                    pnl_impact += pos['qty'] * factors['wti_brent_spread'] * 1000
+        
+        stress_results.append({
+            'scenario': scenario_name,
+            'pnl': pnl_impact,
+            'pnl_pct': pnl_impact / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+        })
+    
+    stress_df = pd.DataFrame(stress_results)
     
     # Display results
-    for _, row in stress_results.iterrows():
+    for _, row in stress_df.iterrows():
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
@@ -287,13 +433,13 @@ with tab3:
     
     fig = go.Figure()
     
-    colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in stress_results['pnl']]
+    colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in stress_df['pnl']]
     
     fig.add_trace(go.Bar(
-        x=stress_results['scenario'],
-        y=stress_results['pnl'],
+        x=stress_df['scenario'],
+        y=stress_df['pnl'],
         marker_color=colors,
-        text=[f"${x:,.0f}" for x in stress_results['pnl']],
+        text=[f"${x:,.0f}" for x in stress_df['pnl']],
         textposition='outside',
     ))
     
@@ -321,39 +467,66 @@ with tab3:
         spread_shock = st.slider("WTI-Brent Spread ($)", -10, 10, 0, 1)
     with col3:
         if st.button("Run Custom Scenario", use_container_width=True):
-            custom_pnl = sum(
-                pos["quantity"] * pos["price"] * 1000 * (oil_shock / 100)
-                for pos in mock_positions.values()
-            )
+            custom_pnl = 0
+            for pos in position_pnl:
+                if pos['ticker'].startswith('CL') or pos['ticker'].startswith('CO'):
+                    custom_pnl += pos['notional'] * (oil_shock / 100) * (1 if pos['qty'] > 0 else -1)
+                if pos['ticker'].startswith('CL'):
+                    custom_pnl += pos['qty'] * spread_shock * 1000
             
-            st.metric("Custom Scenario P&L", f"${custom_pnl:,.0f}")
+            color = "#00D26A" if custom_pnl > 0 else "#FF4B4B"
+            st.markdown(f"**Custom Scenario P&L:** <span style='color: {color}; font-size: 24px;'>${custom_pnl:,.0f}</span>", unsafe_allow_html=True)
 
 with tab4:
     st.subheader("Risk Alerts")
     
-    # Active alerts
-    alerts = [
-        {
+    # Generate alerts based on actual conditions
+    alerts = []
+    
+    # Check VaR
+    if var_util > 90:
+        alerts.append({
+            "severity": "CRITICAL",
+            "type": "VaR",
+            "message": f"VaR at {var_util:.0f}% of limit",
+            "time": datetime.now().strftime("%H:%M:%S"),
+        })
+    elif var_util > 75:
+        alerts.append({
+            "severity": "WARNING",
+            "type": "VaR",
+            "message": f"VaR at {var_util:.0f}% of limit",
+            "time": datetime.now().strftime("%H:%M:%S"),
+        })
+    
+    # Check concentration
+    if wti_conc > 40:
+        alerts.append({
             "severity": "WARNING",
             "type": "Concentration",
-            "message": "WTI concentration at 42% (limit: 40%)",
-            "time": "14:32:15",
-        },
-        {
+            "message": f"WTI concentration at {wti_conc:.0f}% (limit: 40%)",
+            "time": datetime.now().strftime("%H:%M:%S"),
+        })
+    
+    # Check correlation
+    if wti_exposure > 0 and brent_exposure > 0:
+        alerts.append({
             "severity": "INFO",
             "type": "Correlation",
             "message": "High correlation between WTI and Brent positions",
-            "time": "09:15:00",
-        },
-    ]
+            "time": datetime.now().strftime("%H:%M:%S"),
+        })
     
-    for alert in alerts:
-        if alert["severity"] == "CRITICAL":
-            st.error(f"🚨 **{alert['type']}** - {alert['message']} ({alert['time']})")
-        elif alert["severity"] == "WARNING":
-            st.warning(f"⚠️ **{alert['type']}** - {alert['message']} ({alert['time']})")
-        else:
-            st.info(f"ℹ️ **{alert['type']}** - {alert['message']} ({alert['time']})")
+    if not alerts:
+        st.success("✅ No active risk alerts")
+    else:
+        for alert in alerts:
+            if alert["severity"] == "CRITICAL":
+                st.error(f"🚨 **{alert['type']}** - {alert['message']} ({alert['time']})")
+            elif alert["severity"] == "WARNING":
+                st.warning(f"⚠️ **{alert['type']}** - {alert['message']} ({alert['time']})")
+            else:
+                st.info(f"ℹ️ **{alert['type']}** - {alert['message']} ({alert['time']})")
     
     st.divider()
     
@@ -380,12 +553,12 @@ with tab4:
     
     history = pd.DataFrame({
         'Time': ['Today 14:32', 'Today 09:15', 'Yesterday 16:45', 'Yesterday 11:30'],
-        'Type': ['Concentration', 'Correlation', 'VaR Breach', 'Position Limit'],
-        'Severity': ['⚠️ Warning', 'ℹ️ Info', '🚨 Critical', '⚠️ Warning'],
+        'Type': ['Concentration', 'Correlation', 'VaR Warning', 'Position Limit'],
+        'Severity': ['⚠️ Warning', 'ℹ️ Info', '⚠️ Warning', '⚠️ Warning'],
         'Message': [
-            'WTI concentration at 42%',
+            f'WTI concentration at {wti_conc:.0f}%',
             'High correlation detected',
-            'VaR exceeded 90% of limit',
+            'VaR at 78% of limit',
             'Brent position at 80% of limit'
         ],
         'Status': ['Active', 'Acknowledged', 'Resolved', 'Resolved'],

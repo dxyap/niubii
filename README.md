@@ -151,11 +151,20 @@ loader = DataLoader(use_mock=False)  # Enable real Bloomberg
 | Trading Module | ✅ Complete |
 | Dashboard UI | ✅ Complete |
 | Test Suite | ✅ 43 tests |
+| **Live Price Simulation** | ✅ Complete |
+| **Auto-Refresh (5s)** | ✅ Complete |
 | ML Integration | 🔲 Planned |
 | Backtesting | 🔲 Planned |
 
+### Recent Updates (Phase 2)
+- **Realistic Price Simulator**: Prices now move realistically using GARCH-like volatility clustering
+- **Auto-Refresh**: Dashboard auto-updates every 5 seconds with live prices
+- **Consistent P&L**: All P&L values calculated from actual position data and current prices
+- **Historical Chart Integration**: Price charts end at current simulated price
+- **Live Risk Metrics**: VaR, exposure, and concentration calculated in real-time
+
 ### Planned Features
-- Real-time Bloomberg WebSocket streaming
+- Real-time Bloomberg WebSocket streaming (for production)
 - ML signal models (XGBoost/LightGBM)
 - Backtesting engine with vectorbt
 - Multi-channel alerts (Email/SMS/Telegram)

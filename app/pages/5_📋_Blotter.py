@@ -1,7 +1,7 @@
 """
 Trade Blotter Page
 ==================
-Trade history and position monitor.
+Trade history and position monitor with live P&L.
 """
 
 import streamlit as st
@@ -17,59 +17,66 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Add app directory for shared_state
+app_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(app_dir))
+
+from shared_state import (
+    get_data_loader, get_positions, calculate_position_pnl,
+    get_portfolio_summary, format_pnl, format_pnl_with_color
+)
 from core.trading import TradeBlotter, PositionManager, PnLCalculator
-from core.data import DataLoader
 
 st.set_page_config(page_title="Trade Blotter | Oil Trading", page_icon="📋", layout="wide")
 
 # Initialize components
 @st.cache_resource
-def get_components():
+def get_trading_components():
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     pnl_calc = PnLCalculator()
-    data_loader = DataLoader(
-        config_dir=str(project_root / "config"),
-        data_dir=str(project_root / "data"),
-        use_mock=True
-    )
-    return blotter, position_mgr, pnl_calc, data_loader
+    return blotter, position_mgr, pnl_calc
 
-blotter, position_mgr, pnl_calc, data_loader = get_components()
+blotter, position_mgr, pnl_calc = get_trading_components()
+data_loader = get_data_loader()
 
 st.title("📋 Trade Blotter & Position Monitor")
-st.caption("Track trades, positions, and P&L")
+st.caption("Track trades, positions, and P&L in real-time")
 
 # Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Positions", "📋 Trade History", "📈 P&L Analysis"])
 
 with tab1:
-    # Position Monitor
+    # Position Monitor - Using Live Data
     st.subheader("Open Positions")
     
-    # Get current prices
-    current_prices = {
-        "CL1 Comdty": data_loader.get_price("CL1 Comdty"),
-        "CL2 Comdty": data_loader.get_price("CL1 Comdty") - 0.25,
-        "CO1 Comdty": data_loader.get_price("CO1 Comdty"),
-        "XB1 Comdty": data_loader.get_price("XB1 Comdty"),
-        "HO1 Comdty": data_loader.get_price("HO1 Comdty"),
-    }
+    # Get calculated positions with live P&L
+    portfolio = get_portfolio_summary(data_loader)
+    position_pnl = portfolio['positions']
     
-    # Mock positions for display
-    positions_display = pd.DataFrame({
-        'Symbol': ['CLF5', 'CLG5', 'COH5', 'XBF5', 'HOF5'],
-        'Direction': ['🟢 Long', '🟢 Long', '🔴 Short', '🟢 Long', '🟢 Long'],
-        'Qty': [45, 20, -15, 8, 5],
-        'Avg Entry': [72.15, 72.50, 78.20, 2.15, 2.45],
-        'Current': [73.45, 73.20, 77.80, 2.22, 2.52],
-        'Unrealized P&L': ['+$58,500', '+$14,000', '+$6,000', '+$2,352', '+$1,470'],
-        'P&L %': ['+1.80%', '+0.97%', '+0.51%', '+3.26%', '+2.86%'],
-        'Weight': ['42%', '18%', '14%', '8%', '5%'],
-    })
+    # Build display dataframe
+    positions_display = []
+    for pos in position_pnl:
+        direction = "🟢 Long" if pos['qty'] > 0 else "🔴 Short"
+        pnl_formatted, pnl_color = format_pnl_with_color(pos['pnl'])
+        pnl_pct = f"{pos['pnl_pct']:+.2f}%"
+        weight = pos['notional'] / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+        
+        positions_display.append({
+            'Symbol': pos['symbol'],
+            'Direction': direction,
+            'Qty': pos['qty'],
+            'Avg Entry': pos['entry'],
+            'Current': pos['current'],
+            'Unrealized P&L': pnl_formatted,
+            'P&L %': pnl_pct,
+            'Weight': f"{weight:.0f}%",
+        })
+    
+    positions_df = pd.DataFrame(positions_display)
     
     st.dataframe(
-        positions_display,
+        positions_df,
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -77,64 +84,101 @@ with tab1:
             'Direction': st.column_config.TextColumn('Direction'),
             'Qty': st.column_config.NumberColumn('Qty'),
             'Avg Entry': st.column_config.NumberColumn('Avg Entry', format='$%.2f'),
-            'Current': st.column_config.NumberColumn('Current', format='$%.2f'),
+            'Current': st.column_config.NumberColumn('Current', format='$%.4f'),
             'Unrealized P&L': st.column_config.TextColumn('Unrealized P&L'),
             'P&L %': st.column_config.TextColumn('P&L %'),
             'Weight': st.column_config.TextColumn('Weight'),
         }
     )
     
-    # P&L Summary
+    # P&L Summary - Calculated from live data
     st.divider()
     
     col1, col2, col3, col4 = st.columns(4)
     
-    total_unrealized = 82322
-    total_realized = 39128
+    total_unrealized = portfolio['total_pnl']
+    total_realized = 39128  # Mock - would come from closed trades
     total_commission = 485
     net_pnl = total_unrealized + total_realized - total_commission
     
     with col1:
-        st.metric("Unrealized P&L", f"${total_unrealized:,}", delta="+2.1%")
+        pnl_delta = f"{total_unrealized / 1000000 * 100:+.2f}%" if total_unrealized != 0 else "0%"
+        st.metric(
+            "Unrealized P&L", 
+            format_pnl(total_unrealized),
+            delta=pnl_delta,
+            delta_color="normal" if total_unrealized >= 0 else "inverse"
+        )
     with col2:
-        st.metric("Realized P&L", f"${total_realized:,}", delta="+0.8%")
+        st.metric("Realized P&L", format_pnl(total_realized), delta="+0.8%")
     with col3:
         st.metric("Commissions", f"-${total_commission:,}")
     with col4:
-        st.metric("Net P&L", f"${net_pnl:,}", delta="+2.5%")
+        st.metric(
+            "Net P&L", 
+            format_pnl(net_pnl),
+            delta=f"{net_pnl / 1000000 * 100:+.2f}%",
+            delta_color="normal" if net_pnl >= 0 else "inverse"
+        )
     
-    # Intraday P&L chart
+    # Exposure Summary
+    st.divider()
+    exp_col1, exp_col2, exp_col3, exp_col4 = st.columns(4)
+    
+    with exp_col1:
+        st.metric("Gross Exposure", f"${portfolio['gross_exposure']/1e6:.2f}M")
+    with exp_col2:
+        net_label = "Long" if portfolio['net_exposure'] > 0 else "Short"
+        st.metric("Net Exposure", f"${abs(portfolio['net_exposure'])/1e6:.2f}M ({net_label})")
+    with exp_col3:
+        st.metric("VaR (95%, 1-Day)", f"${portfolio['var_estimate']:,.0f}")
+    with exp_col4:
+        var_util = portfolio['var_utilization']
+        st.metric("VaR Utilization", f"{var_util:.0f}%")
+    
+    # Intraday P&L chart using actual price history
     st.subheader("Intraday P&L")
     
-    # Generate mock intraday P&L
-    times = pd.date_range(start=datetime.now().replace(hour=9, minute=0), 
-                         end=datetime.now(), freq='15min')
+    # Get intraday prices for main position (WTI)
+    intraday = data_loader.get_intraday_prices("CL1 Comdty")
     
-    pnl_values = np.cumsum(np.random.normal(5000, 10000, len(times)))
-    pnl_values = pnl_values + abs(pnl_values.min()) + 20000  # Ensure mostly positive
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=times,
-        y=pnl_values,
-        fill='tozeroy',
-        fillcolor='rgba(0, 210, 106, 0.3)',
-        line=dict(color='#00D26A', width=2),
-        name='P&L'
-    ))
-    
-    fig.add_hline(y=0, line_dash='solid', line_color='white', line_width=1)
-    
-    fig.update_layout(
-        template='plotly_dark',
-        height=300,
-        yaxis_title='P&L ($)',
-        xaxis_title='Time',
-        margin=dict(l=0, r=0, t=10, b=0),
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    if not intraday.empty and len(intraday) > 1:
+        # Calculate P&L at each point based on WTI position
+        wti_positions = [p for p in position_pnl if p['ticker'].startswith('CL')]
+        total_wti_qty = sum(p['qty'] for p in wti_positions)
+        avg_entry = sum(p['qty'] * p['entry'] for p in wti_positions) / total_wti_qty if total_wti_qty != 0 else 0
+        
+        intraday['pnl'] = (intraday['price'] - avg_entry) * total_wti_qty * 1000
+        
+        fig = go.Figure()
+        
+        # Determine fill color based on current P&L
+        current_pnl = intraday['pnl'].iloc[-1]
+        fill_color = 'rgba(0, 210, 106, 0.3)' if current_pnl >= 0 else 'rgba(255, 75, 75, 0.3)'
+        line_color = '#00D26A' if current_pnl >= 0 else '#FF4B4B'
+        
+        fig.add_trace(go.Scatter(
+            x=intraday['timestamp'],
+            y=intraday['pnl'],
+            fill='tozeroy',
+            fillcolor=fill_color,
+            line=dict(color=line_color, width=2),
+            name='WTI P&L'
+        ))
+        
+        fig.add_hline(y=0, line_dash='solid', line_color='white', line_width=1)
+        
+        fig.update_layout(
+            template='plotly_dark',
+            height=300,
+            yaxis_title='P&L ($)',
+            xaxis_title='Time',
+            margin=dict(l=0, r=0, t=10, b=0),
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Collecting intraday price data...")
 
 with tab2:
     # Trade History
@@ -205,26 +249,24 @@ with tab2:
         export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
         
         with export_col1:
-            if st.button("📥 Export CSV", use_container_width=True):
-                csv = trades.to_csv(index=False)
-                st.download_button(
-                    "Download CSV",
-                    csv,
-                    "trades.csv",
-                    "text/csv",
-                    use_container_width=True
-                )
+            csv = trades.to_csv(index=False)
+            st.download_button(
+                "📥 Export CSV",
+                csv,
+                "trades.csv",
+                "text/csv",
+                use_container_width=True
+            )
         
         with export_col2:
-            if st.button("📥 Export JSON", use_container_width=True):
-                json_str = trades.to_json(orient='records', date_format='iso')
-                st.download_button(
-                    "Download JSON",
-                    json_str,
-                    "trades.json",
-                    "application/json",
-                    use_container_width=True
-                )
+            json_str = trades.to_json(orient='records', date_format='iso')
+            st.download_button(
+                "📥 Export JSON",
+                json_str,
+                "trades.json",
+                "application/json",
+                use_container_width=True
+            )
     else:
         st.info("No trades found for the selected period")
 
@@ -244,37 +286,45 @@ with tab3:
     
     st.dataframe(monthly_pnl, use_container_width=True, hide_index=True)
     
-    # P&L by Strategy
+    # P&L by Strategy - calculated from actual positions
     st.subheader("P&L by Strategy")
     
-    strategy_pnl = pd.DataFrame({
-        'Strategy': ['Momentum', 'Spread', 'Signal-Based', 'Mean Reversion', 'Discretionary'],
-        'Trades': [22, 12, 8, 3, 2],
-        'Win Rate': [64, 58, 63, 67, 50],
-        'P&L': [92300, 45200, 38100, 8200, 1800],
-    })
+    # Aggregate P&L by strategy from current positions
+    strategy_data = {}
+    for pos in position_pnl:
+        strategy = pos['strategy']
+        if strategy not in strategy_data:
+            strategy_data[strategy] = {'pnl': 0, 'count': 0}
+        strategy_data[strategy]['pnl'] += pos['pnl']
+        strategy_data[strategy]['count'] += 1
     
-    # Bar chart
-    fig = go.Figure()
+    strategy_pnl = pd.DataFrame([
+        {'Strategy': k, 'Positions': v['count'], 'P&L': v['pnl']}
+        for k, v in strategy_data.items()
+    ])
     
-    colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in strategy_pnl['P&L']]
-    
-    fig.add_trace(go.Bar(
-        x=strategy_pnl['Strategy'],
-        y=strategy_pnl['P&L'],
-        marker_color=colors,
-        text=[f"${x:,.0f}" for x in strategy_pnl['P&L']],
-        textposition='outside',
-    ))
-    
-    fig.update_layout(
-        template='plotly_dark',
-        height=350,
-        yaxis_title='P&L ($)',
-        margin=dict(l=0, r=0, t=10, b=0),
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    if not strategy_pnl.empty:
+        # Bar chart
+        fig = go.Figure()
+        
+        colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in strategy_pnl['P&L']]
+        
+        fig.add_trace(go.Bar(
+            x=strategy_pnl['Strategy'],
+            y=strategy_pnl['P&L'],
+            marker_color=colors,
+            text=[f"${x:,.0f}" for x in strategy_pnl['P&L']],
+            textposition='outside',
+        ))
+        
+        fig.update_layout(
+            template='plotly_dark',
+            height=350,
+            yaxis_title='P&L ($)',
+            margin=dict(l=0, r=0, t=10, b=0),
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
     
     # Performance metrics
     st.subheader("Performance Metrics (MTD)")
@@ -297,31 +347,45 @@ with tab3:
         st.metric("Best Trade", "+$32,500")
         st.metric("Worst Trade", "-$12,800")
     
-    # Cumulative P&L chart
+    # Cumulative P&L chart using historical data
     st.subheader("Cumulative P&L (30 Days)")
     
-    days = pd.date_range(end=datetime.now(), periods=30, freq='D')
-    daily_pnl = np.random.normal(5000, 8000, 30)
-    cumulative = np.cumsum(daily_pnl)
-    
-    fig2 = go.Figure()
-    
-    fig2.add_trace(go.Scatter(
-        x=days,
-        y=cumulative,
-        fill='tozeroy',
-        fillcolor='rgba(0, 163, 224, 0.3)',
-        line=dict(color='#00A3E0', width=2),
-        name='Cumulative P&L'
-    ))
-    
-    fig2.add_hline(y=0, line_dash='solid', line_color='white')
-    
-    fig2.update_layout(
-        template='plotly_dark',
-        height=350,
-        yaxis_title='Cumulative P&L ($)',
-        margin=dict(l=0, r=0, t=10, b=0),
+    # Get historical data to show price evolution
+    hist_data = data_loader.get_historical(
+        "CL1 Comdty",
+        start_date=datetime.now() - timedelta(days=30),
+        end_date=datetime.now()
     )
     
-    st.plotly_chart(fig2, use_container_width=True)
+    if hist_data is not None and len(hist_data) > 0:
+        # Calculate P&L based on WTI position
+        wti_qty = sum(p['qty'] for p in position_pnl if p['ticker'].startswith('CL'))
+        wti_entry = 72.15  # Average entry
+        
+        cumulative_pnl = (hist_data['PX_LAST'] - wti_entry) * wti_qty * 1000
+        
+        fig2 = go.Figure()
+        
+        current_pnl = cumulative_pnl.iloc[-1]
+        fill_color = 'rgba(0, 163, 224, 0.3)' if current_pnl >= 0 else 'rgba(255, 75, 75, 0.3)'
+        line_color = '#00A3E0' if current_pnl >= 0 else '#FF4B4B'
+        
+        fig2.add_trace(go.Scatter(
+            x=hist_data.index,
+            y=cumulative_pnl,
+            fill='tozeroy',
+            fillcolor=fill_color,
+            line=dict(color=line_color, width=2),
+            name='Cumulative P&L'
+        ))
+        
+        fig2.add_hline(y=0, line_dash='solid', line_color='white')
+        
+        fig2.update_layout(
+            template='plotly_dark',
+            height=350,
+            yaxis_title='Cumulative P&L ($)',
+            margin=dict(l=0, r=0, t=10, b=0),
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True)

@@ -72,22 +72,18 @@ class DataLoader:
     # Real-time Data Methods
     def get_price(self, ticker: str) -> float:
         """Get current price for ticker."""
-        cache_key = f"price_{ticker}"
-        cached = self.cache.get(cache_key, cache_type="real_time")
-        
-        if cached is not None:
-            return cached
-        
-        price = self.bloomberg.get_price(ticker)
-        self.cache.set(cache_key, price, cache_type="real_time")
-        return price
+        return self.bloomberg.get_price(ticker)
+    
+    def get_price_with_change(self, ticker: str) -> Dict[str, float]:
+        """Get current price with change from open."""
+        return self.bloomberg.get_price_with_change(ticker)
     
     def get_prices(self, tickers: List[str]) -> pd.DataFrame:
         """Get current prices for multiple tickers."""
         return self.bloomberg.get_prices(tickers)
     
-    def get_oil_prices(self) -> Dict[str, float]:
-        """Get current oil prices for key benchmarks."""
+    def get_oil_prices(self) -> Dict[str, Dict[str, float]]:
+        """Get current oil prices for key benchmarks with changes."""
         tickers = {
             "WTI": "CL1 Comdty",
             "Brent": "CO1 Comdty",
@@ -97,9 +93,13 @@ class DataLoader:
         
         prices = {}
         for name, ticker in tickers.items():
-            prices[name] = self.get_price(ticker)
+            prices[name] = self.get_price_with_change(ticker)
         
         return prices
+    
+    def get_intraday_prices(self, ticker: str) -> pd.DataFrame:
+        """Get intraday price history for charting."""
+        return self.bloomberg.get_intraday_prices(ticker)
     
     # Historical Data Methods
     def get_historical(
@@ -158,18 +158,9 @@ class DataLoader:
             num_months: Number of months on curve
             
         Returns:
-            DataFrame with curve data
+            DataFrame with curve data including changes
         """
-        cache_key = f"curve_{commodity}_{num_months}"
-        cached = self.cache.get(cache_key, cache_type="intraday")
-        
-        if cached is not None:
-            return cached
-        
-        curve = self.bloomberg.get_curve(commodity, num_months)
-        self.cache.set(cache_key, curve, cache_type="intraday")
-        
-        return curve
+        return self.bloomberg.get_curve(commodity, num_months)
     
     def get_calendar_spreads(self, commodity: str = "wti") -> pd.DataFrame:
         """Calculate calendar spreads from curve."""
@@ -214,13 +205,22 @@ class DataLoader:
         return MockBloombergData.generate_turnaround_data()
     
     # Spread Calculations
-    def get_wti_brent_spread(self) -> float:
-        """Calculate WTI-Brent spread."""
-        wti = self.get_price("CL1 Comdty")
-        brent = self.get_price("CO1 Comdty")
-        return wti - brent
+    def get_wti_brent_spread(self) -> Dict[str, float]:
+        """Calculate WTI-Brent spread with details."""
+        wti_data = self.get_price_with_change("CL1 Comdty")
+        brent_data = self.get_price_with_change("CO1 Comdty")
+        
+        spread = wti_data["current"] - brent_data["current"]
+        spread_open = wti_data["open"] - brent_data["open"]
+        
+        return {
+            "spread": round(spread, 2),
+            "change": round(spread - spread_open, 2),
+            "wti": wti_data["current"],
+            "brent": brent_data["current"],
+        }
     
-    def get_crack_spread_321(self) -> float:
+    def get_crack_spread_321(self) -> Dict[str, float]:
         """
         Calculate 3-2-1 crack spread.
         
@@ -232,7 +232,21 @@ class DataLoader:
         ho = self.get_price("HO1 Comdty") * 42
         
         crack = (2 * rbob + ho - 3 * wti) / 3
-        return round(crack, 2)
+        
+        # Calculate a mock change (based on price movements)
+        wti_data = self.get_price_with_change("CL1 Comdty")
+        rbob_data = self.get_price_with_change("XB1 Comdty")
+        ho_data = self.get_price_with_change("HO1 Comdty")
+        
+        crack_open = (2 * rbob_data["open"] * 42 + ho_data["open"] * 42 - 3 * wti_data["open"]) / 3
+        
+        return {
+            "crack": round(crack, 2),
+            "change": round(crack - crack_open, 2),
+            "wti": wti,
+            "rbob_bbl": round(rbob, 2),
+            "ho_bbl": round(ho, 2),
+        }
     
     # Market Summary
     def get_market_summary(self) -> Dict:
@@ -256,7 +270,7 @@ class DataLoader:
         return {
             "prices": oil_prices,
             "spreads": {
-                "wti_brent": round(wti_brent, 2),
+                "wti_brent": wti_brent,
                 "crack_321": crack_321,
                 "wti_m1_m2": round(wti_m1_m2, 2),
                 "wti_m1_m12": round(wti_m1_m12, 2),
@@ -275,6 +289,10 @@ class DataLoader:
         
         # Clear cache
         self.cache.clear()
+        
+        # Reset price simulator session
+        if hasattr(self.bloomberg, 'simulator'):
+            self.bloomberg.simulator.reset_session()
         
         # Refresh key data
         self.get_oil_prices()
