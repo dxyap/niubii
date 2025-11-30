@@ -1,0 +1,85 @@
+# Risk Limits Configuration
+# ==================================================
+
+portfolio_limits:
+  # Value at Risk (95% confidence, 1-day)
+  max_var_95_1d: 375000  # $375K
+  
+  # Drawdown Limits
+  max_drawdown_daily: 0.05    # 5%
+  max_drawdown_weekly: 0.08   # 8%
+  max_drawdown_monthly: 0.15  # 15%
+  
+  # Exposure Limits
+  max_gross_exposure: 20000000  # $20M
+  max_net_exposure: 15000000    # $15M
+  
+  # Leverage
+  max_leverage: 5.0
+
+position_limits:
+  WTI_CL:
+    max_contracts: 100
+    max_notional: 8000000
+    
+  Brent_CO:
+    max_contracts: 75
+    max_notional: 6000000
+    
+  RBOB_XB:
+    max_contracts: 50
+    max_notional: 4000000
+    
+  HeatOil_HO:
+    max_contracts: 50
+    max_notional: 4000000
+    
+  Spreads:
+    max_spread_contracts: 50
+    max_notional: 3000000
+
+concentration_limits:
+  max_single_instrument: 0.40  # 40% of portfolio
+  max_correlated_exposure: 0.60  # 60% in correlated positions
+  max_single_strategy: 0.50  # 50% in single strategy
+
+alerts:
+  var_warning: 0.75      # Alert at 75% of VaR limit
+  var_critical: 0.90     # Critical at 90%
+  drawdown_warning: 0.60  # Alert at 60% of drawdown limit
+  position_warning: 0.80  # Alert at 80% of position limit
+
+stress_scenarios:
+  oil_shock_up_10:
+    name: "Oil +10% Shock"
+    description: "Oil prices rise 10% across the board"
+    factors:
+      crude_oil: 0.10
+      products: 0.10
+      
+  oil_shock_down_10:
+    name: "Oil -10% Shock"
+    description: "Oil prices fall 10% across the board"
+    factors:
+      crude_oil: -0.10
+      products: -0.10
+      
+  oil_crash_20:
+    name: "Oil -20% Crash"
+    description: "Severe oil price crash"
+    factors:
+      crude_oil: -0.20
+      products: -0.18
+      
+  covid_replay:
+    name: "2020 COVID Replay"
+    description: "Replay of March-April 2020 oil crash"
+    factors:
+      crude_oil: -0.65
+      products: -0.50
+      
+  spread_blowout:
+    name: "WTI-Brent +$5"
+    description: "WTI-Brent spread widens by $5"
+    factors:
+      wti_brent_spread: 5.0
