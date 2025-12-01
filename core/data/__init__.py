@@ -12,6 +12,8 @@ from .bloomberg import (
     MockBloombergData,
     BloombergSubscriptionService,
     PriceSimulator,
+    DataUnavailableError,
+    BloombergConnectionError,
 )
 
 __all__ = [
@@ -22,4 +24,6 @@ __all__ = [
     "MockBloombergData",
     "BloombergSubscriptionService",
     "PriceSimulator",
+    "DataUnavailableError",
+    "BloombergConnectionError",
 ]

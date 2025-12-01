@@ -117,44 +117,52 @@ Open in browser at `http://localhost:8501`
 
 ## Bloomberg Integration
 
-### Data Modes
+### Data Requirements
 
-The dashboard supports two data modes:
+**This dashboard requires a Bloomberg Terminal connection for live data.** Without Bloomberg, the dashboard will display "Disconnected" status and show "Data Unavailable" for all market data.
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | **Live** | Connects to Bloomberg Terminal via BLPAPI | Production trading |
-| **Simulated** | Realistic price simulation with GARCH volatility | Development/Demo |
+| **Disconnected** | No data source available | Shows error messages |
+| **Mock** | Simulated prices (development only) | Development/Testing |
 
 ### Live Mode (Default)
 
-The dashboard is configured to use live Bloomberg data by default. When a Bloomberg Terminal is not available, it automatically falls back to the sophisticated price simulator.
+The dashboard defaults to live Bloomberg data. If Bloomberg is not connected, you will see:
+- Red "Disconnected" indicator in the sidebar
+- Error message explaining the connection failure
+- "N/A" or "Data Unavailable" for all price data
 
 ```python
 from core.data import DataLoader
 
-# Auto-detect mode from environment (default: live)
+# Default: requires Bloomberg Terminal
 loader = DataLoader()
 
 # Check connection status
 status = loader.get_connection_status()
-print(f"Data mode: {status['data_mode']}")  # 'live' or 'simulated'
-print(f"Is live: {loader.is_live_data()}")
+print(f"Data mode: {status['data_mode']}")  # 'live', 'mock', or 'disconnected'
+print(f"Connected: {status['connected']}")
+print(f"Error: {status['connection_error']}")
 ```
 
-### Simulated Mode (Development)
+### Mock Mode (Development Only)
 
-The price simulator provides realistic market data:
-- **Tick-by-tick updates** with GARCH-like volatility clustering
-- **Proper term structure** (contango/backwardation)
-- **Realistic bid/ask spreads** varying by instrument liquidity
-- **Session-consistent prices** with change tracking
-- **Intraday history** for charting
+⚠️ **Warning**: Mock mode displays **simulated data, NOT real market data**. Only use for development/testing.
 
 ```python
-# Force simulation mode
+# Force mock mode for development
 loader = DataLoader(use_mock=True)
+
+# Or set environment variable
+# BLOOMBERG_USE_MOCK=true
 ```
+
+Mock mode features (for development testing only):
+- Simulated tick-by-tick updates
+- Simulated term structure
+- Simulated bid/ask spreads
 
 ### Real-time Subscriptions
 
@@ -212,11 +220,15 @@ else:
 # =============================================================================
 # BLOOMBERG CONFIGURATION
 # =============================================================================
-BLOOMBERG_USE_MOCK=false          # false = live data, true = simulation
+# IMPORTANT: Dashboard requires Bloomberg Terminal by default
+BLOOMBERG_USE_MOCK=false          # false = live data (default), true = mock (dev only)
 BLOOMBERG_HOST=localhost          # Bloomberg API host
 BLOOMBERG_PORT=8194               # Bloomberg API port
 BLOOMBERG_TIMEOUT=30              # Request timeout (seconds)
 BLOOMBERG_ENABLE_SUBSCRIPTIONS=true  # Enable real-time subscriptions
+
+# If Bloomberg is unavailable, set BLOOMBERG_USE_MOCK=true for development
+# WARNING: Mock mode displays simulated data, NOT real market prices
 
 # =============================================================================
 # RISK LIMITS
@@ -860,22 +872,32 @@ streamlit run app/main.py
 
 ### Common Issues
 
-**1. "diskcache not available" warning**
+**1. Dashboard shows "Disconnected" status**
+
+The dashboard requires a Bloomberg Terminal connection by default. If disconnected:
+- Verify Bloomberg Terminal is running on localhost:8194
+- Check `BLOOMBERG_HOST` and `BLOOMBERG_PORT` in `.env`
+- Install the Bloomberg API: `pip install blpapi`
+- For development without Bloomberg, set `BLOOMBERG_USE_MOCK=true` in `.env`
+
+**2. "Data Unavailable" messages**
+
+This means the required data cannot be retrieved from Bloomberg:
+- Check your Bloomberg Terminal connection
+- Verify you have the required Bloomberg data subscriptions
+- Check the connection error message in the sidebar
+
+**3. "diskcache not available" warning**
 ```bash
 pip install diskcache
 ```
 
-**2. Bloomberg connection fails**
-- Verify Bloomberg Terminal is running
-- Check `BLOOMBERG_HOST` and `BLOOMBERG_PORT` in `.env`
-- The dashboard will automatically fall back to simulation
-
-**3. Missing dependencies**
+**4. Missing dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-**4. Test failures**
+**5. Test failures**
 ```bash
 # Ensure all dependencies are installed
 pip install -r requirements.txt
@@ -884,6 +906,20 @@ pip install pytest pytest-cov
 # Run tests
 pytest tests/ -v
 ```
+
+**6. How to run in development mode (without Bloomberg)**
+```bash
+# Set environment variable
+export BLOOMBERG_USE_MOCK=true
+
+# Or add to .env file
+echo "BLOOMBERG_USE_MOCK=true" >> .env
+
+# Run the dashboard
+streamlit run app/main.py
+```
+
+⚠️ Note: Development mode shows simulated data, NOT real market prices.
 
 ## Disclaimer
 

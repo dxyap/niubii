@@ -146,8 +146,19 @@ class DashboardApp:
     def _render_sidebar(self) -> None:
         data_bundle = self.context.data
         connection_status = data_bundle.connection_status
-        data_mode = connection_status.get("data_mode", "simulated").title()
-        indicator_color = "#00D26A" if data_mode.lower() == "live" else "#00A3E0"
+        data_mode = connection_status.get("data_mode", "disconnected")
+        connection_error = connection_status.get("connection_error")
+        
+        # Color based on connection status
+        if data_mode == "live":
+            indicator_color = "#00D26A"  # Green
+            status_text = "Live Data"
+        elif data_mode == "mock":
+            indicator_color = "#FFA500"  # Orange
+            status_text = "Mock Data (Dev)"
+        else:
+            indicator_color = "#FF4B4B"  # Red
+            status_text = "Disconnected"
 
         with st.sidebar:
             st.image("https://img.icons8.com/fluency/96/000000/oil-barrel.png", width=60)
@@ -157,9 +168,14 @@ class DashboardApp:
 
             st.markdown(
                 f'<span class="live-indicator" style="background:{indicator_color};"></span>'
-                f"<span style='color:{indicator_color};'>{data_mode} Data</span>",
+                f"<span style='color:{indicator_color};'>{status_text}</span>",
                 unsafe_allow_html=True,
             )
+            
+            # Show connection error if disconnected
+            if data_mode == "disconnected" and connection_error:
+                st.error(f"⚠️ {connection_error[:100]}")
+            
             st.caption(f"Last Update: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
 
             toggle_label = f"Auto Refresh ({self.refresh_interval}s)"
@@ -180,13 +196,22 @@ class DashboardApp:
     def _render_quick_prices(self) -> None:
         prices = self.context.data.oil_prices
         st.subheader("Quick View")
+        
+        if prices is None:
+            st.warning("Price data unavailable")
+            return
+        
         col1, col2 = st.columns(2)
         with col1:
             self._render_metric("WTI", prices.get("WTI", {}))
         with col2:
             self._render_metric("Brent", prices.get("Brent", {}))
+        
         spread = self.context.data.wti_brent_spread
-        st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+0.2f}")
+        if spread is not None:
+            st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+0.2f}")
+        else:
+            st.metric("WTI-Brent", "N/A", "Data unavailable")
 
     @staticmethod
     def _render_metric(label: str, values: dict) -> None:
@@ -212,14 +237,27 @@ class DashboardApp:
         summary = self.context.portfolio.summary
 
         col1, col2, col3, col4, col5 = st.columns(5)
+        
         with col1:
-            self._render_metric("WTI Crude", prices.get("WTI", {}))
+            if prices is not None:
+                self._render_metric("WTI Crude", prices.get("WTI", {}))
+            else:
+                st.metric("WTI Crude", "N/A", "No data")
         with col2:
-            self._render_metric("Brent Crude", prices.get("Brent", {}))
+            if prices is not None:
+                self._render_metric("Brent Crude", prices.get("Brent", {}))
+            else:
+                st.metric("Brent Crude", "N/A", "No data")
         with col3:
-            st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+0.2f}")
+            if spread is not None:
+                st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+0.2f}")
+            else:
+                st.metric("WTI-Brent", "N/A", "No data")
         with col4:
-            st.metric("3-2-1 Crack", f"${crack.get('crack', 0):.2f}", f"{crack.get('change', 0):+0.2f}")
+            if crack is not None:
+                st.metric("3-2-1 Crack", f"${crack.get('crack', 0):.2f}", f"{crack.get('change', 0):+0.2f}")
+            else:
+                st.metric("3-2-1 Crack", "N/A", "No data")
         with col5:
             st.metric(
                 "Day P&L",

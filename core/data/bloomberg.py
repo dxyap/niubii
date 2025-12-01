@@ -1,10 +1,10 @@
 """
 Bloomberg API Client
 ====================
-Wrapper for Bloomberg Desktop API (BLPAPI) with mock data fallback.
+Wrapper for Bloomberg Desktop API (BLPAPI).
 
-Supports both real Bloomberg Terminal connection and realistic mock data
-for development/demo environments.
+Requires a Bloomberg Terminal connection for live data.
+Raises DataUnavailableError when data cannot be retrieved.
 """
 
 import pandas as pd
@@ -16,6 +16,16 @@ import hashlib
 import os
 
 logger = logging.getLogger(__name__)
+
+
+class DataUnavailableError(Exception):
+    """Raised when data cannot be retrieved from the data source."""
+    pass
+
+
+class BloombergConnectionError(Exception):
+    """Raised when Bloomberg Terminal connection fails."""
+    pass
 
 
 # =============================================================================
@@ -436,39 +446,33 @@ class PriceSimulator:
 
 class BloombergClient:
     """
-    Bloomberg API Client with mock data fallback.
+    Bloomberg API Client.
     
-    Attempts to connect to real Bloomberg Terminal via BLPAPI.
-    Falls back to PriceSimulator for development/demo environments.
+    Connects to real Bloomberg Terminal via BLPAPI.
+    Raises BloombergConnectionError if connection fails and mock mode is disabled.
     """
     
-    # Singleton price simulator for consistency across instances
-    _simulator: PriceSimulator = None
-    
-    def __init__(self, use_mock: bool = None):
+    def __init__(self, use_mock: bool = False):
         """
         Initialize Bloomberg client.
         
         Args:
-            use_mock: If True, use mock data. If None, auto-detect based on
-                      environment and Bloomberg availability.
+            use_mock: If True, use simulated data for development only.
+                      Default is False - requires Bloomberg Terminal.
         """
-        # Auto-detect mode from environment if not specified
-        if use_mock is None:
-            use_mock = os.environ.get("BLOOMBERG_USE_MOCK", "true").lower() == "true"
-        
         self.use_mock = use_mock
         self.connected = False
         self._session = None
         self._ref_data_service = None
+        self._simulator = None
+        self._connection_error = None
         
-        # Initialize shared simulator
-        if BloombergClient._simulator is None:
-            BloombergClient._simulator = PriceSimulator()
-        
-        self.simulator = BloombergClient._simulator
-        
-        if not use_mock:
+        if use_mock:
+            # Only initialize simulator in explicit mock mode
+            self._simulator = PriceSimulator()
+            logger.info("BloombergClient initialized in MOCK mode (development only)")
+        else:
+            # Attempt to connect to Bloomberg
             self._connect()
     
     def _connect(self) -> bool:
@@ -487,49 +491,67 @@ class BloombergClient:
             self._session = blpapi.Session(session_options)
             
             if not self._session.start():
-                logger.warning("Failed to start Bloomberg session")
-                self.use_mock = True
+                self._connection_error = "Failed to start Bloomberg session. Is Bloomberg Terminal running?"
+                logger.error(self._connection_error)
                 return False
             
             if not self._session.openService("//blp/refdata"):
-                logger.warning("Failed to open Bloomberg reference data service")
-                self.use_mock = True
+                self._connection_error = "Failed to open Bloomberg reference data service"
+                logger.error(self._connection_error)
                 return False
             
             self._ref_data_service = self._session.getService("//blp/refdata")
             self.connected = True
+            self._connection_error = None
             logger.info("Successfully connected to Bloomberg API")
             return True
             
         except ImportError:
-            logger.info("blpapi not installed, using mock data")
-            self.use_mock = True
+            self._connection_error = "Bloomberg API (blpapi) not installed. Install with: pip install blpapi"
+            logger.error(self._connection_error)
             return False
         except Exception as e:
-            logger.warning(f"Could not connect to Bloomberg: {e}")
-            self.use_mock = True
+            self._connection_error = f"Could not connect to Bloomberg: {e}"
+            logger.error(self._connection_error)
             return False
     
     def _ensure_connection(self) -> bool:
-        """Ensure we have a valid connection."""
+        """Ensure we have a valid connection. Raises if not connected."""
         if self.use_mock:
             return True
         
         if not self.connected:
-            return self._connect()
+            # Try to reconnect
+            if not self._connect():
+                raise BloombergConnectionError(
+                    self._connection_error or "Bloomberg Terminal not connected"
+                )
         
         return True
     
+    def get_connection_error(self) -> Optional[str]:
+        """Get the connection error message if any."""
+        return self._connection_error
+    
     def get_price(self, ticker: str, field: str = "PX_LAST") -> float:
-        """Get current price for a ticker."""
+        """
+        Get current price for a ticker.
+        
+        Raises:
+            DataUnavailableError: If price data cannot be retrieved
+            BloombergConnectionError: If not connected to Bloomberg
+        """
         # Validate ticker
         valid, msg = TickerMapper.validate_ticker(ticker)
         if not valid:
-            logger.warning(f"Invalid ticker {ticker}: {msg}")
+            raise DataUnavailableError(f"Invalid ticker {ticker}: {msg}")
         
         if self.use_mock:
-            return self.simulator.get_price(ticker, field)
+            if self._simulator is None:
+                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
+            return self._simulator.get_price(ticker, field)
         
+        self._ensure_connection()
         return self._get_bloomberg_price(ticker, field)
     
     def _get_bloomberg_price(self, ticker: str, field: str) -> float:
@@ -557,18 +579,26 @@ class BloombergClient:
                 if event.eventType() == blpapi.Event.RESPONSE:
                     break
             
-            # Fallback to mock if no data
-            logger.warning(f"No data from Bloomberg for {ticker}, using mock")
-            return self.simulator.get_price(ticker, field)
+            raise DataUnavailableError(f"No data available from Bloomberg for {ticker}")
             
+        except DataUnavailableError:
+            raise
         except Exception as e:
-            logger.error(f"Bloomberg API error: {e}")
-            return self.simulator.get_price(ticker, field)
+            raise DataUnavailableError(f"Bloomberg API error for {ticker}: {e}")
     
     def get_price_with_change(self, ticker: str) -> Dict[str, float]:
-        """Get current price with change from open."""
+        """
+        Get current price with change from open.
+        
+        Raises:
+            DataUnavailableError: If price data cannot be retrieved
+        """
         if self.use_mock:
-            return self.simulator.get_price_change(ticker)
+            if self._simulator is None:
+                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
+            return self._simulator.get_price_change(ticker)
+        
+        self._ensure_connection()
         
         # Get multiple fields from Bloomberg
         fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
@@ -576,7 +606,11 @@ class BloombergClient:
         
         if data is not None and not data.empty:
             row = data.iloc[0]
-            current = row.get("PX_LAST", 0)
+            current = row.get("PX_LAST")
+            
+            if current is None or pd.isna(current):
+                raise DataUnavailableError(f"No price data available for {ticker}")
+            
             open_price = row.get("PX_OPEN", current)
             
             change = current - open_price
@@ -591,14 +625,21 @@ class BloombergClient:
                 "low": row.get("PX_LOW", current),
             }
         
-        return self.simulator.get_price_change(ticker)
+        raise DataUnavailableError(f"No price data available for {ticker}")
     
     def get_prices(self, tickers: List[str], fields: List[str] = None) -> pd.DataFrame:
-        """Get current prices for multiple tickers."""
+        """
+        Get current prices for multiple tickers.
+        
+        Raises:
+            DataUnavailableError: If price data cannot be retrieved
+        """
         if fields is None:
             fields = ["PX_LAST", "PX_BID", "PX_ASK", "PX_VOLUME"]
         
         if self.use_mock:
+            if self._simulator is None:
+                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
             data = {}
             for ticker in tickers:
                 row = {}
@@ -606,10 +647,11 @@ class BloombergClient:
                     if field == "PX_VOLUME":
                         row[field] = np.random.randint(10000, 100000)
                     else:
-                        row[field] = self.simulator.get_price(ticker, field)
+                        row[field] = self._simulator.get_price(ticker, field)
                 data[ticker] = row
             return pd.DataFrame(data).T
         
+        self._ensure_connection()
         return self._get_bloomberg_prices(tickers, fields)
     
     def _get_bloomberg_prices(self, tickers: List[str], fields: List[str]) -> pd.DataFrame:
@@ -650,21 +692,15 @@ class BloombergClient:
                 if event.eventType() == blpapi.Event.RESPONSE:
                     break
             
+            if not data:
+                raise DataUnavailableError(f"No data returned from Bloomberg for tickers: {tickers}")
+            
             return pd.DataFrame(data).T
             
+        except DataUnavailableError:
+            raise
         except Exception as e:
-            logger.error(f"Bloomberg API error: {e}")
-            # Fallback to mock
-            data = {}
-            for ticker in tickers:
-                row = {}
-                for field in fields:
-                    if field == "PX_VOLUME":
-                        row[field] = np.random.randint(10000, 100000)
-                    else:
-                        row[field] = self.simulator.get_price(ticker, field)
-                data[ticker] = row
-            return pd.DataFrame(data).T
+            raise DataUnavailableError(f"Bloomberg API error: {e}")
     
     def get_historical(
         self,
@@ -674,7 +710,12 @@ class BloombergClient:
         fields: List[str] = None,
         frequency: str = "DAILY"
     ) -> pd.DataFrame:
-        """Get historical OHLCV data."""
+        """
+        Get historical OHLCV data.
+        
+        Raises:
+            DataUnavailableError: If historical data cannot be retrieved
+        """
         if fields is None:
             fields = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "PX_VOLUME"]
         
@@ -686,8 +727,11 @@ class BloombergClient:
             end_date = pd.to_datetime(end_date)
         
         if self.use_mock:
+            if self._simulator is None:
+                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
             return self._generate_historical(ticker, start_date, end_date, fields, frequency)
         
+        self._ensure_connection()
         return self._get_bloomberg_historical(ticker, start_date, end_date, fields, frequency)
     
     def _get_bloomberg_historical(
@@ -744,12 +788,12 @@ class BloombergClient:
                 df.set_index("date", inplace=True)
                 return df
             
-            # Fallback to mock
-            return self._generate_historical(ticker, start_date, end_date, fields, frequency)
+            raise DataUnavailableError(f"No historical data available for {ticker}")
             
+        except DataUnavailableError:
+            raise
         except Exception as e:
-            logger.error(f"Bloomberg historical API error: {e}")
-            return self._generate_historical(ticker, start_date, end_date, fields, frequency)
+            raise DataUnavailableError(f"Bloomberg historical API error: {e}")
     
     def _generate_historical(
         self,
@@ -818,26 +862,38 @@ class BloombergClient:
         return df[available_fields]
     
     def get_curve(self, commodity: str = "wti", num_months: int = 12) -> pd.DataFrame:
-        """Get futures curve data."""
+        """
+        Get futures curve data.
+        
+        Raises:
+            DataUnavailableError: If curve data cannot be retrieved
+        """
         ticker_prefix = "CL" if commodity.lower() == "wti" else "CO" if commodity.lower() == "brent" else commodity.upper()[:2]
         
         data = []
+        errors = []
         today = datetime.now()
         
         for i in range(1, num_months + 1):
             ticker = f"{ticker_prefix}{i} Comdty"
-            price_data = self.simulator.get_price_change(ticker) if self.use_mock else self.get_price_with_change(ticker)
-            expiry = today + timedelta(days=30 * i)
-            
-            data.append({
-                "month": i,
-                "ticker": ticker,
-                "price": price_data["current"],
-                "change": price_data["change"],
-                "change_pct": price_data["change_pct"],
-                "expiry": expiry,
-                "days_to_expiry": (expiry - today).days
-            })
+            try:
+                price_data = self.get_price_with_change(ticker)
+                expiry = today + timedelta(days=30 * i)
+                
+                data.append({
+                    "month": i,
+                    "ticker": ticker,
+                    "price": price_data["current"],
+                    "change": price_data["change"],
+                    "change_pct": price_data["change_pct"],
+                    "expiry": expiry,
+                    "days_to_expiry": (expiry - today).days
+                })
+            except DataUnavailableError as e:
+                errors.append(str(e))
+        
+        if not data:
+            raise DataUnavailableError(f"No curve data available for {commodity}. Errors: {errors}")
         
         return pd.DataFrame(data)
     
@@ -857,13 +913,20 @@ class BloombergClient:
         return {f: ref.get(f, None) for f in fields}
     
     def get_intraday_prices(self, ticker: str) -> pd.DataFrame:
-        """Get intraday price history."""
-        if self.use_mock:
-            return self.simulator.get_intraday_history(ticker)
+        """
+        Get intraday price history.
         
-        # For real Bloomberg, would use subscription or intraday bars
-        # For now, fallback to simulator
-        return self.simulator.get_intraday_history(ticker)
+        Note: Intraday data requires Bloomberg subscription service.
+        Returns empty DataFrame if not available.
+        """
+        if self.use_mock:
+            if self._simulator is None:
+                return pd.DataFrame(columns=["timestamp", "price"])
+            return self._simulator.get_intraday_history(ticker)
+        
+        # For real Bloomberg, intraday bars would require subscription service
+        # Return empty DataFrame to indicate no intraday data available
+        return pd.DataFrame(columns=["timestamp", "price"])
     
     def disconnect(self):
         """Disconnect from Bloomberg API."""

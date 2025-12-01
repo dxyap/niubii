@@ -13,7 +13,14 @@ import yaml
 import logging
 import os
 
-from .bloomberg import BloombergClient, MockBloombergData, TickerMapper, BloombergSubscriptionService
+from .bloomberg import (
+    BloombergClient, 
+    MockBloombergData, 
+    TickerMapper, 
+    BloombergSubscriptionService,
+    DataUnavailableError,
+    BloombergConnectionError,
+)
 from .cache import DataCache, ParquetStorage
 
 logger = logging.getLogger(__name__)
@@ -24,10 +31,12 @@ class DataLoader:
     Unified data loading interface.
     
     Handles:
-    - Bloomberg API integration (real or mock)
+    - Bloomberg API integration (real data by default)
     - Caching layer
     - Parquet storage for historical data
     - Ticker validation and mapping
+    
+    Raises DataUnavailableError when data cannot be retrieved.
     """
     
     def __init__(
@@ -43,14 +52,16 @@ class DataLoader:
             config_dir: Configuration directory
             data_dir: Data storage directory
             use_mock: Use mock data instead of Bloomberg.
-                      If None, auto-detects from environment.
+                      If None, reads BLOOMBERG_USE_MOCK env var (default: false).
         """
         self.config_dir = Path(config_dir)
         self.data_dir = Path(data_dir)
         
-        # Auto-detect mock mode from environment
+        # Auto-detect mock mode from environment - DEFAULT IS FALSE (real data)
         if use_mock is None:
-            use_mock = os.environ.get("BLOOMBERG_USE_MOCK", "true").lower() == "true"
+            use_mock = os.environ.get("BLOOMBERG_USE_MOCK", "false").lower() == "true"
+        
+        self._use_mock = use_mock
         
         # Initialize components
         self.bloomberg = BloombergClient(use_mock=use_mock)
@@ -63,9 +74,19 @@ class DataLoader:
         # Load configurations
         self._load_config()
         
-        # Determine actual mode
-        actual_mode = "live (Bloomberg)" if not self.bloomberg.use_mock and self.bloomberg.connected else "simulated"
-        logger.info(f"DataLoader initialized (mode={actual_mode})")
+        # Determine actual mode and connection status
+        if use_mock:
+            self._data_mode = "mock"
+            self._connection_error = None
+            logger.info("DataLoader initialized in MOCK mode (development only)")
+        elif self.bloomberg.connected:
+            self._data_mode = "live"
+            self._connection_error = None
+            logger.info("DataLoader initialized in LIVE mode (Bloomberg connected)")
+        else:
+            self._data_mode = "disconnected"
+            self._connection_error = self.bloomberg.get_connection_error()
+            logger.warning(f"DataLoader: Bloomberg not connected - {self._connection_error}")
     
     def _load_config(self):
         """Load configuration files."""
@@ -301,28 +322,62 @@ class DataLoader:
     # FUNDAMENTAL DATA METHODS
     # =========================================================================
     
-    def get_eia_inventory(self) -> pd.DataFrame:
-        """Get EIA crude oil inventory data."""
+    def get_eia_inventory(self) -> Optional[pd.DataFrame]:
+        """
+        Get EIA crude oil inventory data.
+        
+        Returns:
+            DataFrame with inventory data, or None if unavailable.
+            
+        Note: EIA data requires Bloomberg ECST <GO> or external data source.
+        """
         cache_key = "eia_inventory"
         cached = self.cache.get(cache_key, cache_type="fundamental")
         
         if cached is not None:
             return cached
         
-        # Use mock data for demonstration
-        data = MockBloombergData.generate_eia_inventory_data()
-        self.cache.set(cache_key, data, cache_type="fundamental")
-        self.storage.save_fundamentals("eia_inventory", data)
+        # Try to load from storage
+        stored = self.storage.load_fundamentals("eia_inventory")
+        if stored is not None and not stored.empty:
+            return stored
         
-        return data
+        # No data available - return None instead of mock data
+        return None
     
-    def get_opec_production(self) -> pd.DataFrame:
-        """Get OPEC production and compliance data."""
-        return MockBloombergData.generate_opec_production_data()
+    def get_opec_production(self) -> Optional[pd.DataFrame]:
+        """
+        Get OPEC production and compliance data.
+        
+        Returns:
+            DataFrame with OPEC data, or None if unavailable.
+            
+        Note: OPEC data requires Bloomberg or external data source.
+        """
+        # Try to load from storage
+        stored = self.storage.load_fundamentals("opec_production")
+        if stored is not None and not stored.empty:
+            return stored
+        
+        # No data available
+        return None
     
-    def get_refinery_turnarounds(self) -> pd.DataFrame:
-        """Get refinery turnaround schedule."""
-        return MockBloombergData.generate_turnaround_data()
+    def get_refinery_turnarounds(self) -> Optional[pd.DataFrame]:
+        """
+        Get refinery turnaround schedule.
+        
+        Returns:
+            DataFrame with turnaround data, or None if unavailable.
+            
+        Note: Turnaround data requires Bloomberg or external data source.
+        """
+        # Try to load from storage
+        stored = self.storage.load_fundamentals("refinery_turnarounds")
+        if stored is not None and not stored.empty:
+            return stored
+        
+        # No data available
+        return None
     
     # =========================================================================
     # SPREAD CALCULATIONS
@@ -471,13 +526,15 @@ class DataLoader:
     def get_connection_status(self) -> Dict:
         """Get Bloomberg connection status."""
         return {
-            "mock_mode": self.bloomberg.use_mock,
-            "connected": self.bloomberg.connected if not self.bloomberg.use_mock else True,
+            "mock_mode": self._use_mock,
+            "connected": self.bloomberg.connected,
             "host": os.environ.get("BLOOMBERG_HOST", "localhost"),
             "port": os.environ.get("BLOOMBERG_PORT", "8194"),
             "subscriptions_enabled": self.subscription_service.subscriptions_enabled,
             "subscribed_tickers": self.subscription_service.get_subscribed_tickers(),
-            "data_mode": "live" if (not self.bloomberg.use_mock and self.bloomberg.connected) else "simulated",
+            "data_mode": self._data_mode,
+            "connection_error": self._connection_error,
+            "data_available": self._data_mode in ("live", "mock"),
         }
     
     def subscribe_to_core_tickers(self) -> None:
@@ -502,4 +559,16 @@ class DataLoader:
     
     def is_live_data(self) -> bool:
         """Check if using live Bloomberg data."""
-        return not self.bloomberg.use_mock and self.bloomberg.connected
+        return self._data_mode == "live"
+    
+    def is_data_available(self) -> bool:
+        """Check if any data source is available (live or mock)."""
+        return self._data_mode in ("live", "mock")
+    
+    def get_data_mode(self) -> str:
+        """Get current data mode: 'live', 'mock', or 'disconnected'."""
+        return self._data_mode
+    
+    def get_connection_error_message(self) -> Optional[str]:
+        """Get connection error message if disconnected."""
+        return self._connection_error

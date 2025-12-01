@@ -37,14 +37,27 @@ def get_data_loader():
 def get_positions():
     """Get current positions from session state."""
     if 'positions' not in st.session_state:
-        # Default demo positions
-        st.session_state.positions = [
-            {"symbol": "CLF5", "ticker": "CL1 Comdty", "qty": 45, "entry": 72.15, "strategy": "Momentum"},
-            {"symbol": "CLG5", "ticker": "CL2 Comdty", "qty": 20, "entry": 72.50, "strategy": "Spread"},
-            {"symbol": "COH5", "ticker": "CO1 Comdty", "qty": -15, "entry": 78.20, "strategy": "Arb"},
-            {"symbol": "XBF5", "ticker": "XB1 Comdty", "qty": 8, "entry": 2.15, "strategy": "Crack"},
-        ]
+        # Start with empty positions - no demo data
+        st.session_state.positions = []
     return st.session_state.positions
+
+
+def add_position(symbol: str, ticker: str, qty: int, entry: float, strategy: str = None):
+    """Add a new position."""
+    positions = get_positions()
+    positions.append({
+        "symbol": symbol,
+        "ticker": ticker,
+        "qty": qty,
+        "entry": entry,
+        "strategy": strategy or "Manual",
+    })
+    st.session_state.positions = positions
+
+
+def clear_positions():
+    """Clear all positions."""
+    st.session_state.positions = []
 
 
 def calculate_position_pnl(data_loader=None):
