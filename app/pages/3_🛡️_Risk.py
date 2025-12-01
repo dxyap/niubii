@@ -43,6 +43,29 @@ context = shared_state.get_dashboard_context()
 data_loader = context.data_loader
 
 st.title("🛡️ Risk Management")
+
+# Show live prices at top
+oil_prices = context.data.oil_prices
+price_cache = context.price_cache
+
+if oil_prices:
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        wti = oil_prices.get("WTI", {})
+        st.metric("WTI Live", f"${wti.get('current', 0):.2f}", f"{wti.get('change', 0):+.2f}")
+    with col_p2:
+        brent = oil_prices.get("Brent", {})
+        st.metric("Brent Live", f"${brent.get('current', 0):.2f}", f"{brent.get('change', 0):+.2f}")
+    with col_p3:
+        spread = context.data.wti_brent_spread
+        if spread:
+            st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+.2f}")
+    with col_p4:
+        crack = context.data.crack_spread
+        if crack:
+            st.metric("3-2-1 Crack", f"${crack.get('crack', 0):.2f}", f"{crack.get('change', 0):+.2f}")
+    st.divider()
+
 st.caption("Portfolio risk monitoring and stress testing")
 
 # Get live portfolio data

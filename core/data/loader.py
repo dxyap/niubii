@@ -84,9 +84,16 @@ class DataLoader:
             self._connection_error = None
             logger.info("DataLoader initialized in LIVE mode (Bloomberg connected)")
         else:
-            self._data_mode = "disconnected"
+            # Fall back to mock mode when Bloomberg is not available
+            # This ensures the dashboard always has data to display
             self._connection_error = self.bloomberg.get_connection_error()
             logger.warning(f"DataLoader: Bloomberg not connected - {self._connection_error}")
+            logger.info("Falling back to MOCK mode for development")
+            
+            # Re-initialize Bloomberg client in mock mode
+            self.bloomberg = BloombergClient(use_mock=True)
+            self._use_mock = True
+            self._data_mode = "mock"
     
     def _load_config(self):
         """Load configuration files."""

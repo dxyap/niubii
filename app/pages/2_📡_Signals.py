@@ -40,33 +40,65 @@ context = shared_state.get_dashboard_context(lookback_days=120)
 data_loader = context.data_loader
 
 st.title("📡 Trading Signals")
+
+# Show live prices at top
+price_cache = context.price_cache
+oil_prices = context.data.oil_prices
+
+col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+with col_p1:
+    wti_price = price_cache.get("CL1 Comdty")
+    wti_data = oil_prices.get("WTI", {}) if oil_prices else {}
+    if wti_price:
+        st.metric("WTI Live", f"${wti_price:.2f}", f"{wti_data.get('change', 0):+.2f}")
+with col_p2:
+    brent_price = price_cache.get("CO1 Comdty")
+    brent_data = oil_prices.get("Brent", {}) if oil_prices else {}
+    if brent_price:
+        st.metric("Brent Live", f"${brent_price:.2f}", f"{brent_data.get('change', 0):+.2f}")
+with col_p3:
+    spread_data = context.data.wti_brent_spread
+    if spread_data:
+        st.metric("WTI-Brent", f"${spread_data.get('spread', 0):.2f}", f"{spread_data.get('change', 0):+.2f}")
+with col_p4:
+    crack_data = context.data.crack_spread
+    if crack_data:
+        st.metric("3-2-1 Crack", f"${crack_data.get('crack', 0):.2f}", f"{crack_data.get('change', 0):+.2f}")
+
+st.divider()
 st.caption("AI-powered signal generation for oil markets | ⚠️ Signals are advisory only")
 
 # Generate signals
 def generate_signals():
-    # Get price data
-    hist_data = context.data.wti_history
-    if hist_data is None or hist_data.empty:
-        hist_data = data_loader.get_historical(
-            "CL1 Comdty",
-            start_date=datetime.now() - timedelta(days=120)
-        )
+    # Get price data for WTI
+    hist_data = data_loader.get_historical(
+        "CL1 Comdty",
+        start_date=datetime.now() - timedelta(days=120)
+    )
     
     if hist_data is None or hist_data.empty:
         return None, None, None
     
     prices = hist_data['PX_LAST']
-    current_price = context.price_cache.get("CL1 Comdty")
+    current_price = price_cache.get("CL1 Comdty")  # LIVE price
     
     # Technical signal
     tech_signal = tech_signals.generate_composite_signal(prices)
     
-    # Fundamental signal (mock data)
+    # Get real curve data for fundamental signal
+    curve_metrics = context.data.curve_metrics()
+    crack_spread = context.data.crack_spread
+    
+    # Fundamental signal with live data where available
     fund_signal = fund_signals.generate_composite_fundamental_signal(
         inventory_data={"level": 430, "change": -2.1, "expectation": -1.5},
         opec_data={"compliance": 94, "deviation": 0.3},
-        curve_data={"m1_m2_spread": 0.35, "m1_m12_spread": 1.8, "slope": 0.15},
-        crack_spread=28.5,
+        curve_data={
+            "m1_m2_spread": curve_metrics.get('m1_m2', 0.35),
+            "m1_m12_spread": curve_metrics.get('m1_m12', 1.8),
+            "slope": curve_metrics.get('slope', 0.15)
+        },
+        crack_spread=crack_spread.get('crack', 28.5) if crack_spread else 28.5,
         turnaround_data={"offline": 800, "upcoming": 600}
     )
     

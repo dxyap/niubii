@@ -147,7 +147,9 @@ with tab1:
         st.markdown("**Key Levels**")
         
         if hist_data is not None and not hist_data.empty:
-            current_price = hist_data['PX_LAST'].iloc[-1]
+            # Use LIVE price from data loader
+            live_brent = price_cache.get("CO1 Comdty")
+            current_price = live_brent if live_brent else hist_data['PX_LAST'].iloc[-1]
             high_range = hist_data['PX_HIGH'].max()
             low_range = hist_data['PX_LOW'].min()
             
@@ -270,259 +272,274 @@ with tab3:
     with col1:
         st.markdown("**3-2-1 Crack Spread (USGC)**")
         
-        # Get prices using cached loader context
+        # Get LIVE prices using price cache
         wti = price_cache.get("CL1 Comdty")
         rbob = price_cache.get("XB1 Comdty")
         ho = price_cache.get("HO1 Comdty")
+        brent = price_cache.get("CO1 Comdty")
         
-        crack_321 = spread_analyzer.calculate_crack_spread(wti, rbob, ho, "3-2-1")
-        
-        st.metric(
-            "Current",
-            f"${crack_321['crack_spread']:.2f}/bbl",
-            delta="+$1.20 (+4.4%)"
-        )
-        
-        # Historical chart (mock)
-        dates = pd.date_range(end=datetime.now(), periods=60, freq='D')
-        crack_values = 28 + np.cumsum(np.random.normal(0, 0.5, 60))
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=dates, y=crack_values,
-            fill='tozeroy',
-            fillcolor='rgba(0, 163, 224, 0.3)',
-            line=dict(color='#00A3E0', width=2),
-            name='3-2-1 Crack'
-        ))
-        
-        # Add mean line
-        fig.add_hline(y=crack_values.mean(), line_dash='dash', 
-                     line_color='orange', annotation_text='30-Day Avg')
-        
-        fig.update_layout(
-            template='plotly_dark',
-            height=300,
-            margin=dict(l=0, r=0, t=10, b=0),
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Metrics
-        m_col1, m_col2, m_col3 = st.columns(3)
-        with m_col1:
-            st.metric("30-Day Avg", f"${crack_values.mean():.2f}")
-        with m_col2:
-            st.metric("Percentile", "72nd")
-        with m_col3:
-            st.metric("Margin %", f"{crack_321['margin_pct']:.1f}%")
+        if wti and rbob and ho:
+            crack_321 = spread_analyzer.calculate_crack_spread(wti, rbob, ho, "3-2-1")
+            
+            # Get crack spread change from context
+            crack_data = context.data.crack_spread
+            crack_change = crack_data.get('change', 0) if crack_data else 0
+            
+            st.metric(
+                "Current",
+                f"${crack_321['crack_spread']:.2f}/bbl",
+                delta=f"{crack_change:+.2f}"
+            )
+            
+            # Component breakdown visualization
+            st.markdown("**Spread Components**")
+            rbob_bbl = rbob * 42
+            ho_bbl = ho * 42
+            
+            component_fig = go.Figure()
+            component_fig.add_trace(go.Bar(
+                x=['RBOB×2', 'HO×1', 'WTI×3', 'Crack'],
+                y=[rbob_bbl * 2, ho_bbl, -wti * 3, crack_321['crack_spread'] * 3],
+                marker_color=[COLORS['success'], COLORS['success'], COLORS['error'], COLORS['primary']],
+                text=[f"${rbob_bbl*2:.2f}", f"${ho_bbl:.2f}", f"-${wti*3:.2f}", f"${crack_321['crack_spread']*3:.2f}"],
+                textposition='outside'
+            ))
+            
+            component_fig.update_layout(
+                template='plotly_dark',
+                height=250,
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                yaxis_title='$/bbl equivalent'
+            )
+            
+            st.plotly_chart(component_fig, use_container_width=True)
+            
+            # Metrics
+            m_col1, m_col2, m_col3 = st.columns(3)
+            with m_col1:
+                st.metric("Refining Margin", f"${crack_321['crack_spread']:.2f}/bbl")
+            with m_col2:
+                st.metric("Margin %", f"{crack_321['margin_pct']:.1f}%")
+            with m_col3:
+                st.metric("Product Value", f"${(rbob_bbl*2 + ho_bbl)/3:.2f}/bbl")
+        else:
+            st.warning("Price data unavailable for crack spread calculation")
     
     with col2:
-        st.markdown("**Regional Differentials**")
+        st.markdown("**Live Spreads**")
         
-        # Mock regional differentials
-        differentials = pd.DataFrame({
-            'Spread': ['Brent-WTI', 'WCS-WTI', 'Dubai-Brent', 'Mars-WTI', 'LLS-WTI'],
-            'Value': [-4.35, -14.20, -1.80, 2.10, 1.50],
-            'Change': ['▼ narrowing', '▲ widening', '─ stable', '▲ widening', '─ stable'],
-        })
-        
-        for _, row in differentials.iterrows():
-            col_a, col_b, col_c = st.columns([2, 1, 1])
-            with col_a:
-                st.text(row['Spread'])
-            with col_b:
-                st.text(f"${row['Value']:.2f}")
-            with col_c:
-                st.text(row['Change'])
+        # Calculate LIVE regional differentials
+        if wti and brent:
+            brent_wti_spread = brent - wti
+            spread_data = context.data.wti_brent_spread
+            spread_change = spread_data.get('change', 0) if spread_data else 0
+            
+            st.metric("Brent-WTI", f"${brent_wti_spread:.2f}", delta=f"{spread_change:+.2f}")
         
         st.divider()
         
-        st.markdown("**Component Prices**")
-        st.text(f"WTI: ${wti:.2f}/bbl")
-        st.text(f"RBOB: ${rbob:.4f}/gal (${rbob*42:.2f}/bbl)")
-        st.text(f"Heating Oil: ${ho:.4f}/gal (${ho*42:.2f}/bbl)")
+        st.markdown("**Live Component Prices**")
+        if wti:
+            st.metric("WTI Crude", f"${wti:.2f}/bbl")
+        if brent:
+            st.metric("Brent Crude", f"${brent:.2f}/bbl")
+        if rbob:
+            st.metric("RBOB Gasoline", f"${rbob:.4f}/gal")
+        if ho:
+            st.metric("Heating Oil", f"${ho:.4f}/gal")
 
 with tab4:
     # Inventory Tab
     st.subheader("Inventory Analytics")
     
-    col1, col2 = st.columns([2, 1])
+    eia_data = data_loader.get_eia_inventory()
     
-    with col1:
-        st.markdown("**EIA Weekly Crude Inventory**")
+    if eia_data is None or (hasattr(eia_data, 'empty') and eia_data.empty):
+        st.info("📊 EIA inventory data requires Bloomberg connection or external data feed.")
+        st.markdown("""
+        **Data Sources:**
+        - EIA Weekly Petroleum Status Report
+        - Bloomberg ECST <GO> function
+        - API integration with EIA.gov
+        """)
+    else:
+        col1, col2 = st.columns([2, 1])
         
-        eia_data = data_loader.get_eia_inventory()
+        with col1:
+            st.markdown("**EIA Weekly Crude Inventory**")
+            
+            fig = go.Figure()
+            
+            # Inventory level
+            fig.add_trace(go.Scatter(
+                x=eia_data.index,
+                y=eia_data['inventory_mmb'],
+                name='Inventory',
+                line=dict(color=COLORS['primary'], width=2)
+            ))
+            
+            # 5-year range
+            mean = eia_data['inventory_mmb'].mean()
+            fig.add_hline(y=mean, line_dash='dash', line_color='orange',
+                         annotation_text='5-Year Avg')
+            
+            fig.update_layout(
+                template='plotly_dark',
+                height=350,
+                yaxis_title='Inventory (MMbbl)',
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Weekly change
+            st.markdown("**Weekly Change**")
+            
+            change_fig = go.Figure()
+            change_fig.add_trace(go.Bar(
+                x=eia_data.index,
+                y=eia_data['change_mmb'],
+                marker_color=[COLORS['success'] if x < 0 else COLORS['error'] for x in eia_data['change_mmb']],
+                name='Change'
+            ))
+            
+            change_fig.update_layout(
+                template='plotly_dark',
+                height=200,
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            )
+            
+            st.plotly_chart(change_fig, use_container_width=True)
         
-        fig = go.Figure()
-        
-        # Inventory level
-        fig.add_trace(go.Scatter(
-            x=eia_data.index,
-            y=eia_data['inventory_mmb'],
-            name='Inventory',
-            line=dict(color='#00A3E0', width=2)
-        ))
-        
-        # 5-year range (mock)
-        mean = eia_data['inventory_mmb'].mean()
-        fig.add_hline(y=mean, line_dash='dash', line_color='orange',
-                     annotation_text='5-Year Avg')
-        
-        fig.update_layout(
-            template='plotly_dark',
-            height=350,
-            yaxis_title='Inventory (MMbbl)',
-            margin=dict(l=0, r=0, t=10, b=0),
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Weekly change
-        st.markdown("**Weekly Change**")
-        
-        change_fig = go.Figure()
-        change_fig.add_trace(go.Bar(
-            x=eia_data.index,
-            y=eia_data['change_mmb'],
-            marker_color=['#00D26A' if x < 0 else '#FF4B4B' for x in eia_data['change_mmb']],
-            name='Change'
-        ))
-        
-        change_fig.update_layout(
-            template='plotly_dark',
-            height=200,
-            margin=dict(l=0, r=0, t=10, b=0),
-        )
-        
-        st.plotly_chart(change_fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("**Latest Report**")
-        
-        latest = eia_data.iloc[-1]
-        
-        inv_analysis = fundamental_analyzer.analyze_inventory(
-            current_level=latest['inventory_mmb'],
-            change=latest['change_mmb'],
-            expectation=latest['expectation_mmb']
-        )
-        
-        st.metric("Current Level", f"{inv_analysis['current_level']:.1f} MMbbl")
-        st.metric("Change", f"{inv_analysis['change']:+.1f} MMbbl")
-        st.metric("Surprise", f"{inv_analysis['surprise']:+.1f} MMbbl")
-        
-        # Signal
-        if "Bullish" in inv_analysis['surprise_signal']:
-            st.success(inv_analysis['surprise_signal'])
-        elif "Bearish" in inv_analysis['surprise_signal']:
-            st.error(inv_analysis['surprise_signal'])
-        else:
-            st.info(inv_analysis['surprise_signal'])
-        
-        st.divider()
-        
-        st.markdown("**Level Analysis**")
-        st.text(f"Percentile: {inv_analysis['percentile']:.0f}th")
-        st.text(f"vs 5-Year Avg: {inv_analysis['vs_5yr_avg']:+.1f} MMbbl")
-        st.text(f"Assessment: {inv_analysis['level_signal']}")
-        
-        st.divider()
-        
-        st.markdown("**Cushing Stocks**")
-        cushing = fundamental_analyzer.analyze_cushing_stocks(23.1)
-        st.metric("Level", f"{cushing['current_level']:.1f} MMbbl")
-        st.progress(int(cushing['utilization_pct']) / 100, 
-                   text=f"Utilization: {cushing['utilization_pct']:.0f}%")
+        with col2:
+            st.markdown("**Latest Report**")
+            
+            latest = eia_data.iloc[-1]
+            
+            inv_analysis = fundamental_analyzer.analyze_inventory(
+                current_level=latest['inventory_mmb'],
+                change=latest['change_mmb'],
+                expectation=latest['expectation_mmb']
+            )
+            
+            st.metric("Current Level", f"{inv_analysis['current_level']:.1f} MMbbl")
+            st.metric("Change", f"{inv_analysis['change']:+.1f} MMbbl")
+            st.metric("Surprise", f"{inv_analysis['surprise']:+.1f} MMbbl")
+            
+            # Signal
+            if "Bullish" in inv_analysis['surprise_signal']:
+                st.success(inv_analysis['surprise_signal'])
+            elif "Bearish" in inv_analysis['surprise_signal']:
+                st.error(inv_analysis['surprise_signal'])
+            else:
+                st.info(inv_analysis['surprise_signal'])
+            
+            st.divider()
+            
+            st.markdown("**Level Analysis**")
+            st.text(f"Percentile: {inv_analysis['percentile']:.0f}th")
+            st.text(f"vs 5-Year Avg: {inv_analysis['vs_5yr_avg']:+.1f} MMbbl")
+            st.text(f"Assessment: {inv_analysis['level_signal']}")
 
 with tab5:
     # OPEC Monitor Tab
     st.subheader("OPEC+ Production Monitor")
     
-    col1, col2 = st.columns([2, 1])
+    opec_data = data_loader.get_opec_production()
     
-    with col1:
-        st.markdown("**Production vs Quota by Country**")
+    if opec_data is None or (hasattr(opec_data, 'empty') and opec_data.empty):
+        st.info("📊 OPEC production data requires Bloomberg connection or external data feed.")
+        st.markdown("""
+        **Data Sources:**
+        - OPEC Monthly Oil Market Report
+        - IEA Oil Market Report
+        - Bloomberg OPEC <GO> function
+        """)
+    else:
+        col1, col2 = st.columns([2, 1])
         
-        opec_data = data_loader.get_opec_production()
+        with col1:
+            st.markdown("**Production vs Quota by Country**")
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Bar(
+                name='Quota',
+                x=opec_data['country'],
+                y=opec_data['quota_mbpd'],
+                marker_color=COLORS['primary'],
+            ))
+            
+            fig.add_trace(go.Bar(
+                name='Actual',
+                x=opec_data['country'],
+                y=opec_data['actual_mbpd'],
+                marker_color=COLORS['success'],
+            ))
+            
+            fig.update_layout(
+                template='plotly_dark',
+                height=400,
+                barmode='group',
+                yaxis_title='Production (mb/d)',
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Compliance table
+            st.markdown("**Compliance by Country**")
+            
+            st.dataframe(
+                opec_data,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'country': 'Country',
+                    'quota_mbpd': st.column_config.NumberColumn('Quota (mb/d)', format='%.2f'),
+                    'actual_mbpd': st.column_config.NumberColumn('Actual (mb/d)', format='%.2f'),
+                    'compliance_pct': st.column_config.ProgressColumn('Compliance', min_value=0, max_value=110, format='%.0f%%'),
+                }
+            )
         
-        fig = go.Figure()
-        
-        fig.add_trace(go.Bar(
-            name='Quota',
-            x=opec_data['country'],
-            y=opec_data['quota_mbpd'],
-            marker_color='#00A3E0',
-        ))
-        
-        fig.add_trace(go.Bar(
-            name='Actual',
-            x=opec_data['country'],
-            y=opec_data['actual_mbpd'],
-            marker_color='#00D26A',
-        ))
-        
-        fig.update_layout(
-            template='plotly_dark',
-            height=400,
-            barmode='group',
-            yaxis_title='Production (mb/d)',
-            margin=dict(l=0, r=0, t=10, b=0),
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Compliance table
-        st.markdown("**Compliance by Country**")
-        
-        st.dataframe(
-            opec_data,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'country': 'Country',
-                'quota_mbpd': st.column_config.NumberColumn('Quota (mb/d)', format='%.2f'),
-                'actual_mbpd': st.column_config.NumberColumn('Actual (mb/d)', format='%.2f'),
-                'compliance_pct': st.column_config.ProgressColumn('Compliance', min_value=0, max_value=110, format='%.0f%%'),
-            }
-        )
-    
-    with col2:
-        st.markdown("**Overall Compliance**")
-        
-        opec_analysis = fundamental_analyzer.analyze_opec_compliance(opec_data)
-        
-        st.metric(
-            "Overall Compliance",
-            f"{opec_analysis['overall_compliance_pct']:.1f}%"
-        )
-        
-        st.metric(
-            "Total OPEC+ Production",
-            f"{opec_analysis['total_actual_mbpd']:.2f} mb/d"
-        )
-        
-        st.metric(
-            "vs Quota",
-            f"{opec_analysis['deviation_mbpd']:+.2f} mb/d"
-        )
-        
-        # Market impact
-        st.divider()
-        st.markdown("**Market Impact Assessment**")
-        
-        if "Bullish" in opec_analysis['market_impact']:
-            st.success(opec_analysis['market_impact'])
-        elif "Bearish" in opec_analysis['market_impact']:
-            st.error(opec_analysis['market_impact'])
-        else:
-            st.info(opec_analysis['market_impact'])
-        
-        st.divider()
-        
-        st.markdown("**Next Meeting**")
-        st.text("Date: Dec 4, 2024")
-        st.text("Expected: No change")
-        
-        if opec_analysis['over_producers']:
-            st.warning(f"Over-producers: {', '.join(opec_analysis['over_producers'])}")
+        with col2:
+            st.markdown("**Overall Compliance**")
+            
+            opec_analysis = fundamental_analyzer.analyze_opec_compliance(opec_data)
+            
+            st.metric(
+                "Overall Compliance",
+                f"{opec_analysis['overall_compliance_pct']:.1f}%"
+            )
+            
+            st.metric(
+                "Total OPEC+ Production",
+                f"{opec_analysis['total_actual_mbpd']:.2f} mb/d"
+            )
+            
+            st.metric(
+                "vs Quota",
+                f"{opec_analysis['deviation_mbpd']:+.2f} mb/d"
+            )
+            
+            # Market impact
+            st.divider()
+            st.markdown("**Market Impact Assessment**")
+            
+            if "Bullish" in opec_analysis['market_impact']:
+                st.success(opec_analysis['market_impact'])
+            elif "Bearish" in opec_analysis['market_impact']:
+                st.error(opec_analysis['market_impact'])
+            else:
+                st.info(opec_analysis['market_impact'])
+            
+            if opec_analysis['over_producers']:
+                st.warning(f"Over-producers: {', '.join(opec_analysis['over_producers'])}")

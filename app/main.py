@@ -419,9 +419,13 @@ class DashboardApp:
         chart_data = pd.DataFrame({"Price": hist_data["PX_LAST"]})
         st.line_chart(chart_data, height=300, use_container_width=True, color="#0ea5e9")
 
+        # Use LIVE price from oil_prices for "Current", historical data for stats
+        prices = self.context.data.oil_prices
+        live_brent = prices.get("Brent", {}).get("current") if prices else None
+        
         stat_cols = st.columns(4)
         with stat_cols[0]:
-            current = hist_data["PX_LAST"].iloc[-1]
+            current = live_brent if live_brent else hist_data["PX_LAST"].iloc[-1]
             st.metric("Current", f"${current:.2f}")
         with stat_cols[1]:
             high = hist_data["PX_HIGH"].max()

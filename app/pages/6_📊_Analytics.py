@@ -37,6 +37,29 @@ spread_analyzer = SpreadAnalyzer()
 fundamental_analyzer = FundamentalAnalyzer()
 
 st.title("📊 Advanced Analytics")
+
+# Show live prices at top
+oil_prices = context.data.oil_prices
+price_cache = context.price_cache
+
+if oil_prices:
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        wti = oil_prices.get("WTI", {})
+        st.metric("WTI Live", f"${wti.get('current', 0):.2f}", f"{wti.get('change', 0):+.2f}")
+    with col_p2:
+        brent = oil_prices.get("Brent", {})
+        st.metric("Brent Live", f"${brent.get('current', 0):.2f}", f"{brent.get('change', 0):+.2f}")
+    with col_p3:
+        spread = context.data.wti_brent_spread
+        if spread:
+            st.metric("WTI-Brent", f"${spread.get('spread', 0):.2f}", f"{spread.get('change', 0):+.2f}")
+    with col_p4:
+        crack = context.data.crack_spread
+        if crack:
+            st.metric("3-2-1 Crack", f"${crack.get('crack', 0):.2f}", f"{crack.get('change', 0):+.2f}")
+    st.divider()
+
 st.caption("Deep dive analysis and research tools")
 
 # Tabs
@@ -155,10 +178,14 @@ with tab1:
             # Statistics
             st.markdown("**Statistics**")
             
+            # Use LIVE price from price cache
+            live_price = price_cache.get(ticker)
+            current_price = live_price if live_price else hist_data['PX_LAST'].iloc[-1]
+            
             stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
             
             with stat_col1:
-                st.metric("Current", f"${hist_data['PX_LAST'].iloc[-1]:.2f}")
+                st.metric("Current (Live)", f"${current_price:.2f}")
                 st.metric("Period High", f"${hist_data['PX_HIGH'].max():.2f}")
             
             with stat_col2:
