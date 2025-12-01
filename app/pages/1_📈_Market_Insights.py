@@ -25,6 +25,10 @@ from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
 
 st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+apply_theme(st)
+
 # Initialize components
 context = shared_state.get_dashboard_context(lookback_days=180)
 data_loader = context.data_loader
@@ -33,8 +37,17 @@ curve_analyzer = CurveAnalyzer()
 spread_analyzer = SpreadAnalyzer()
 fundamental_analyzer = FundamentalAnalyzer()
 
+# Check data mode
+connection_status = data_loader.get_connection_status()
+data_mode = connection_status.get("data_mode", "disconnected")
+
 st.title("📈 Market Insights")
-st.caption("Real-time oil market analysis and intelligence")
+if data_mode == "mock":
+    st.caption("⚠️ Simulated data mode — Bloomberg not connected")
+elif data_mode == "live":
+    st.caption("🟢 Live market data from Bloomberg")
+else:
+    st.caption("⚠️ Data source unavailable")
 
 # Tabs for different analysis views
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -52,18 +65,19 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Price chart with Plotly
-        st.markdown("**WTI Crude Oil - Daily Chart**")
+        # Price chart with Plotly - using Brent as primary
+        chart_title = "**Brent Crude Oil - Daily Chart**"
+        if data_mode == "mock":
+            chart_title += " _(simulated)_"
+        st.markdown(chart_title)
         
-        # Get historical data (shared via dashboard context)
-        hist_data = context.data.wti_history
-        if hist_data is None or hist_data.empty:
-            hist_data = data_loader.get_historical(
-                "CL1 Comdty",
-                start_date=datetime.now() - timedelta(days=180)
-            )
+        # Get Brent historical data 
+        hist_data = data_loader.get_historical(
+            "CO1 Comdty",
+            start_date=datetime.now() - timedelta(days=180)
+        )
         
-        if not hist_data.empty:
+        if hist_data is not None and not hist_data.empty:
             fig = go.Figure()
             
             # Candlestick chart
@@ -73,7 +87,9 @@ with tab1:
                 high=hist_data['PX_HIGH'],
                 low=hist_data['PX_LOW'],
                 close=hist_data['PX_LAST'],
-                name='WTI'
+                name='Brent',
+                increasing_line_color='#22c55e',
+                decreasing_line_color='#ef4444'
             ))
             
             # Add moving averages
@@ -82,70 +98,95 @@ with tab1:
             
             fig.add_trace(go.Scatter(
                 x=hist_data.index, y=hist_data['SMA20'],
-                name='SMA 20', line=dict(color='orange', width=1)
+                name='SMA 20', line=dict(color='#f59e0b', width=1.5)
             ))
             
             fig.add_trace(go.Scatter(
                 x=hist_data.index, y=hist_data['SMA50'],
-                name='SMA 50', line=dict(color='purple', width=1)
+                name='SMA 50', line=dict(color='#8b5cf6', width=1.5)
             ))
             
             fig.update_layout(
                 template='plotly_dark',
                 height=500,
                 xaxis_rangeslider_visible=False,
-                margin=dict(l=0, r=0, t=0, b=0),
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                xaxis=dict(gridcolor='rgba(51, 65, 85, 0.5)'),
+                yaxis=dict(gridcolor='rgba(51, 65, 85, 0.5)', title='Price ($/bbl)'),
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             )
             
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Historical data unavailable.")
         
         # Volume chart
         st.markdown("**Volume**")
-        if not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
+        if hist_data is not None and not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
             vol_fig = go.Figure()
             vol_fig.add_trace(go.Bar(
                 x=hist_data.index,
                 y=hist_data['PX_VOLUME'],
-                marker_color='#00A3E0',
+                marker_color='#0ea5e9',
                 name='Volume'
             ))
             vol_fig.update_layout(
                 template='plotly_dark',
                 height=150,
                 margin=dict(l=0, r=0, t=0, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                xaxis=dict(gridcolor='rgba(51, 65, 85, 0.3)'),
+                yaxis=dict(gridcolor='rgba(51, 65, 85, 0.3)'),
             )
             st.plotly_chart(vol_fig, use_container_width=True)
     
     with col2:
         st.markdown("**Key Levels**")
         
-        if not hist_data.empty:
+        if hist_data is not None and not hist_data.empty:
             current_price = hist_data['PX_LAST'].iloc[-1]
-            high_52w = hist_data['PX_HIGH'].max()
-            low_52w = hist_data['PX_LOW'].min()
+            high_range = hist_data['PX_HIGH'].max()
+            low_range = hist_data['PX_LOW'].min()
             
             st.metric("Current Price", f"${current_price:.2f}")
-            st.metric("52-Week High", f"${high_52w:.2f}")
-            st.metric("52-Week Low", f"${low_52w:.2f}")
+            st.metric("180D High", f"${high_range:.2f}")
+            st.metric("180D Low", f"${low_range:.2f}")
             
             # Price position
-            position = (current_price - low_52w) / (high_52w - low_52w) * 100
-            st.progress(int(position) / 100, text=f"Range Position: {position:.0f}%")
+            if high_range != low_range:
+                position = (current_price - low_range) / (high_range - low_range) * 100
+                st.progress(int(min(max(position, 0), 100)) / 100, text=f"Range Position: {position:.0f}%")
         
         st.divider()
         
         st.markdown("**Technical Indicators**")
         
-        # Mock technical indicators
-        indicators = {
-            'RSI (14)': 58.5,
-            'MACD': 'Bullish',
-            'BB Position': '65%',
-            'ADX': 28.5,
-        }
-        
-        for ind, val in indicators.items():
-            st.text(f"{ind}: {val}")
+        # Calculate real technical indicators if we have data
+        if hist_data is not None and not hist_data.empty and len(hist_data) >= 14:
+            closes = hist_data['PX_LAST']
+            
+            # RSI calculation
+            delta = closes.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = rsi.iloc[-1] if not np.isnan(rsi.iloc[-1]) else 50
+            
+            # Simple trend determination
+            sma20 = closes.rolling(20).mean().iloc[-1] if len(closes) >= 20 else closes.iloc[-1]
+            sma50 = closes.rolling(50).mean().iloc[-1] if len(closes) >= 50 else closes.iloc[-1]
+            trend = "Bullish" if sma20 > sma50 else "Bearish" if sma20 < sma50 else "Neutral"
+            
+            st.text(f"RSI (14): {current_rsi:.1f}")
+            st.text(f"Trend: {trend}")
+            st.text(f"SMA20: ${sma20:.2f}")
+            st.text(f"SMA50: ${sma50:.2f}")
+        else:
+            st.text("Insufficient data for indicators")
 
 with tab2:
     # Term Structure Tab

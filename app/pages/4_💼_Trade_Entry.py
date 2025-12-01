@@ -21,6 +21,10 @@ from core.risk import RiskLimits
 
 st.set_page_config(page_title="Trade Entry | Oil Trading", page_icon="💼", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS
+apply_theme(st)
+
 # Initialize components
 @st.cache_resource
 def get_components():

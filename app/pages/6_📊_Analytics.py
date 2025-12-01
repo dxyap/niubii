@@ -25,6 +25,10 @@ from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
 
 st.set_page_config(page_title="Analytics | Oil Trading", page_icon="📊", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+apply_theme(st)
+
 # Initialize
 context = shared_state.get_dashboard_context(lookback_days=365)
 data_loader = context.data_loader

@@ -23,6 +23,10 @@ from core.signals import TechnicalSignals, FundamentalSignals, SignalAggregator
 
 st.set_page_config(page_title="Signals | Oil Trading", page_icon="📡", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS
+apply_theme(st)
+
 # Initialize components
 @st.cache_resource
 def get_components():
@@ -86,13 +90,13 @@ if composite:
         st.subheader("🎯 Active Signal - WTI Crude Oil")
         
         # Signal card
-        direction_color = "#00D26A" if composite.direction == "LONG" else "#FF4B4B" if composite.direction == "SHORT" else "#808080"
+        direction_color = COLORS["success"] if composite.direction == "LONG" else COLORS["error"] if composite.direction == "SHORT" else "#94a3b8"
         direction_icon = "🟢" if composite.direction == "LONG" else "🔴" if composite.direction == "SHORT" else "⚪"
         
         st.markdown(f"""
-        <div style="background-color: #1E2127; border-radius: 10px; padding: 20px; border-left: 4px solid {direction_color};">
-            <h2 style="margin: 0; color: {direction_color};">{direction_icon} {composite.direction}</h2>
-            <p style="color: #A0A0A0; margin: 5px 0;">Confidence: {composite.confidence}%</p>
+        <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(51, 65, 85, 0.6)); border-radius: 12px; padding: 24px; border-left: 4px solid {direction_color}; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <h2 style="margin: 0; color: {direction_color}; font-family: 'Outfit', sans-serif;">{direction_icon} {composite.direction}</h2>
+            <p style="color: #94a3b8; margin: 8px 0 0 0; font-family: 'IBM Plex Mono', monospace;">Confidence: {composite.confidence}%</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -116,13 +120,13 @@ if composite:
         drivers_df = pd.DataFrame(composite.drivers)
         
         for _, driver in drivers_df.iterrows():
-            signal_color = "#00D26A" if "LONG" in str(driver.get('signal', '')) or "BUY" in str(driver.get('signal', '')) else "#FF4B4B" if "SHORT" in str(driver.get('signal', '')) or "SELL" in str(driver.get('signal', '')) else "#808080"
+            signal_color = COLORS["success"] if "LONG" in str(driver.get('signal', '')) or "BUY" in str(driver.get('signal', '')) else COLORS["error"] if "SHORT" in str(driver.get('signal', '')) or "SELL" in str(driver.get('signal', '')) else "#94a3b8"
             
             st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; padding: 10px; background-color: #1E2127; border-radius: 5px; margin: 5px 0;">
-                <span>{driver['source']}</span>
-                <span style="color: {signal_color};">{driver.get('signal', 'N/A')}</span>
-                <span style="color: #A0A0A0;">{driver.get('weight', 0):.0f}% weight</span>
+            <div style="display: flex; justify-content: space-between; padding: 12px 16px; background: rgba(30, 41, 59, 0.6); border-radius: 8px; margin: 6px 0; border: 1px solid #334155;">
+                <span style="color: #e2e8f0;">{driver['source']}</span>
+                <span style="color: {signal_color}; font-weight: 600;">{driver.get('signal', 'N/A')}</span>
+                <span style="color: #94a3b8;">{driver.get('weight', 0):.0f}% weight</span>
             </div>
             """, unsafe_allow_html=True)
     
@@ -131,14 +135,14 @@ if composite:
         
         # Confidence visualization
         confidence = composite.confidence
-        confidence_color = "#00D26A" if confidence > 70 else "#FFA500" if confidence > 50 else "#808080"
+        confidence_color = COLORS["success"] if confidence > 70 else COLORS["warning"] if confidence > 50 else "#94a3b8"
         
         st.markdown(f"""
-        <div style="text-align: center; padding: 20px;">
-            <div style="font-size: 72px; font-weight: bold; color: {confidence_color};">
+        <div style="text-align: center; padding: 24px; background: rgba(30, 41, 59, 0.4); border-radius: 12px;">
+            <div style="font-size: 64px; font-weight: 700; color: {confidence_color}; font-family: 'IBM Plex Mono', monospace;">
                 {confidence:.0f}%
             </div>
-            <p style="color: #A0A0A0;">Signal Confidence</p>
+            <p style="color: #94a3b8; margin-top: 8px; font-family: 'Outfit', sans-serif;">Signal Confidence</p>
         </div>
         """, unsafe_allow_html=True)
         

@@ -26,6 +26,10 @@ from core.risk import VaRCalculator, RiskLimits, RiskMonitor
 
 st.set_page_config(page_title="Risk Management | Oil Trading", page_icon="🛡️", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+apply_theme(st)
+
 # Initialize components
 @st.cache_resource
 def get_risk_components():
