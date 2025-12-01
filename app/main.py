@@ -33,7 +33,7 @@ from app.dashboard_core import DashboardContext, PortfolioAnalytics
 # =============================================================================
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_historical_data_cached(lookback_days: int = 90):
+def get_historical_data_cached(ticker: str = "CO1 Comdty", lookback_days: int = 90):
     """
     Cache historical data with 5-minute TTL.
     Historical data doesn't change frequently, so caching is safe.
@@ -42,13 +42,13 @@ def get_historical_data_cached(lookback_days: int = 90):
     end = datetime.now()
     start = end - timedelta(days=lookback_days)
     try:
-        return data_loader.get_historical("CL1 Comdty", start_date=start, end_date=end)
+        return data_loader.get_historical(ticker, start_date=start, end_date=end)
     except Exception:
         return None
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def get_futures_curve_cached(commodity: str = "wti", num_months: int = 12):
+def get_futures_curve_cached(commodity: str = "brent", num_months: int = 12):
     """
     Cache futures curve with 1-minute TTL.
     Curve data changes throughout the day but not every second.
@@ -70,57 +70,141 @@ st.set_page_config(
 
 THEME_CSS = """
 <style>
-    .stApp { background-color: #0E1117; }
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+    
+    .stApp { 
+        background: linear-gradient(135deg, #0a0f1a 0%, #111827 50%, #0f172a 100%);
+    }
+    
     [data-testid="stMetricValue"] {
-        font-size: 28px;
-        font-weight: bold;
-        font-family: 'JetBrains Mono', 'SF Mono', monospace;
+        font-size: 26px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+        color: #e2e8f0 !important;
     }
+    
     [data-testid="stMetricDelta"] {
-        font-size: 14px;
-        font-family: 'JetBrains Mono', 'SF Mono', monospace;
+        font-size: 13px;
+        font-family: 'IBM Plex Mono', monospace;
     }
-    h1, h2, h3 { font-family: 'Inter', -apple-system, sans-serif; font-weight: 600; }
-    .metric-card {
-        background-color: #1E2127;
-        border-radius: 8px;
-        padding: 20px;
-        border: 1px solid #2D3139;
+    
+    [data-testid="stMetricLabel"] {
+        color: #94a3b8 !important;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.05em;
     }
-    .profit { color: #00D26A !important; }
-    .loss { color: #FF4B4B !important; }
-    .dataframe { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    
+    h1 { 
+        font-family: 'Outfit', sans-serif; 
+        font-weight: 700; 
+        color: #f1f5f9 !important;
+        letter-spacing: -0.02em;
+    }
+    
+    h2, h3 { 
+        font-family: 'Outfit', sans-serif; 
+        font-weight: 600; 
+        color: #e2e8f0 !important;
+    }
+    
+    p, span, div { color: #cbd5e1; }
+    
+    .stMarkdown { color: #cbd5e1; }
+    
     [data-testid="stSidebar"] {
-        background-color: #0E1117;
-        border-right: 1px solid #2D3139;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        border-right: 1px solid #334155;
     }
+    
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #f8fafc !important;
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown { color: #94a3b8; }
+    
     .stButton > button {
-        background-color: #00A3E0;
+        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
         color: white;
         border: none;
-        border-radius: 6px;
-        font-weight: 500;
+        border-radius: 8px;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
+        padding: 0.5rem 1rem;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
     }
-    .stButton > button:hover { background-color: #0088C2; }
+    
+    .stButton > button:hover { 
+        background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+        box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+        transform: translateY(-1px);
+    }
+    
     .live-indicator {
         display: inline-block;
-        width: 8px;
-        height: 8px;
-        background-color: #00D26A;
+        width: 10px;
+        height: 10px;
+        background-color: #22c55e;
         border-radius: 50%;
-        margin-right: 6px;
+        margin-right: 8px;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
         animation: pulse 2s infinite;
     }
+    
     @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
+        0% { opacity: 1; box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+        50% { opacity: 0.7; box-shadow: 0 0 16px rgba(34, 197, 94, 0.4); }
+        100% { opacity: 1; box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
     }
-    .status-ok { color: #00D26A; }
-    .status-warning { color: #FFA500; }
-    .status-critical { color: #FF4B4B; }
+    
+    .profit { color: #22c55e !important; }
+    .loss { color: #ef4444 !important; }
+    
+    .dataframe { 
+        font-family: 'IBM Plex Mono', monospace; 
+        font-size: 13px;
+        color: #e2e8f0;
+    }
+    
+    [data-testid="stDataFrame"] {
+        background: rgba(30, 41, 59, 0.5);
+        border-radius: 8px;
+        border: 1px solid #334155;
+    }
+    
+    .stProgress > div > div {
+        background: linear-gradient(90deg, #0ea5e9 0%, #22c55e 100%);
+    }
+    
+    .stDivider {
+        border-color: #334155;
+    }
+    
+    [data-testid="stExpander"] {
+        background: rgba(30, 41, 59, 0.3);
+        border: 1px solid #334155;
+        border-radius: 8px;
+    }
+    
+    .status-ok { color: #22c55e; }
+    .status-warning { color: #f59e0b; }
+    .status-critical { color: #ef4444; }
+    
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
+    
+    /* Chart container styling */
+    [data-testid="stVegaLiteChart"] {
+        background: rgba(15, 23, 42, 0.4);
+        border-radius: 8px;
+        padding: 8px;
+        border: 1px solid #334155;
+    }
 </style>
 """
 
@@ -325,19 +409,23 @@ class DashboardApp:
             self._render_risk_section()
 
     def _render_price_chart(self) -> None:
-        st.subheader("WTI Crude Oil Price")
+        st.subheader("Brent Crude Oil Price")
         # Use cached historical data (5-min TTL) - much faster!
-        hist_data = get_historical_data_cached(90)
+        hist_data = get_historical_data_cached("CO1 Comdty", 90)
         if hist_data is None or hist_data.empty:
             st.info("Historical data unavailable.")
             return
 
         chart_data = pd.DataFrame({"Price": hist_data["PX_LAST"]})
-        st.line_chart(chart_data, height=300, use_container_width=True)
+        st.line_chart(chart_data, height=300, use_container_width=True, color="#0ea5e9")
 
+        # Use LIVE price from oil_prices for "Current", historical data for stats
+        prices = self.context.data.oil_prices
+        live_brent = prices.get("Brent", {}).get("current") if prices else None
+        
         stat_cols = st.columns(4)
         with stat_cols[0]:
-            current = hist_data["PX_LAST"].iloc[-1]
+            current = live_brent if live_brent else hist_data["PX_LAST"].iloc[-1]
             st.metric("Current", f"${current:.2f}")
         with stat_cols[1]:
             high = hist_data["PX_HIGH"].max()
@@ -350,15 +438,15 @@ class DashboardApp:
             st.metric("90D Avg", f"${avg:.2f}")
 
     def _render_curve_section(self) -> None:
-        st.subheader("WTI Futures Curve")
+        st.subheader("Brent Futures Curve")
         # Use cached curve data (1-min TTL)
-        curve = get_futures_curve_cached("wti", 12)
+        curve = get_futures_curve_cached("brent", 12)
         if curve is None or curve.empty:
             self._curve_structure = "Unknown"
             st.info("Futures curve unavailable.")
             return
         curve_chart = pd.DataFrame({"Month": curve["month"], "Price": curve["price"]})
-        st.bar_chart(curve_chart.set_index("Month"), height=250, use_container_width=True)
+        st.bar_chart(curve_chart.set_index("Month"), height=250, use_container_width=True, color="#0ea5e9")
 
         # Calculate metrics from cached curve
         prices = curve["price"]
@@ -403,7 +491,7 @@ class DashboardApp:
 
         total_pnl = self.context.portfolio.summary["total_pnl"]
         st.markdown(
-            f"<h3 style='color:{'#00D26A' if total_pnl >= 0 else '#FF4B4B'};'>"
+            f"<h3 style='color:{'#22c55e' if total_pnl >= 0 else '#ef4444'}; font-family: IBM Plex Mono, monospace;'>"
             f"Total P&L: {PortfolioAnalytics.format_pnl(total_pnl)}</h3>",
             unsafe_allow_html=True,
         )

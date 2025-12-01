@@ -21,6 +21,10 @@ from core.risk import RiskLimits
 
 st.set_page_config(page_title="Trade Entry | Oil Trading", page_icon="💼", layout="wide")
 
+# Apply shared theme
+from app.components.theme import apply_theme, COLORS
+apply_theme(st)
+
 # Initialize components
 @st.cache_resource
 def get_components():
@@ -37,6 +41,27 @@ portfolio_summary = context.portfolio.summary
 positions_df = context.portfolio.positions_dataframe
 
 st.title("💼 Trade Entry")
+
+# Show live prices at top
+oil_prices = context.data.oil_prices
+if oil_prices:
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        wti = oil_prices.get("WTI", {})
+        st.metric("WTI Live", f"${wti.get('current', 0):.2f}", f"{wti.get('change', 0):+.2f}")
+    with col_p2:
+        brent = oil_prices.get("Brent", {})
+        st.metric("Brent Live", f"${brent.get('current', 0):.2f}", f"{brent.get('change', 0):+.2f}")
+    with col_p3:
+        rbob = price_cache.get("XB1 Comdty")
+        if rbob:
+            st.metric("RBOB", f"${rbob:.4f}/gal")
+    with col_p4:
+        ho = price_cache.get("HO1 Comdty")
+        if ho:
+            st.metric("Heating Oil", f"${ho:.4f}/gal")
+    st.divider()
+
 st.caption("Enter trades manually after execution | Pre-trade risk checks included")
 
 # Layout
