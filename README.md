@@ -117,44 +117,52 @@ Open in browser at `http://localhost:8501`
 
 ## Bloomberg Integration
 
-### Data Modes
+### Data Requirements
 
-The dashboard supports two data modes:
+**This dashboard requires a Bloomberg Terminal connection for live data.** Without Bloomberg, the dashboard will display "Disconnected" status and show "Data Unavailable" for all market data.
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | **Live** | Connects to Bloomberg Terminal via BLPAPI | Production trading |
-| **Simulated** | Realistic price simulation with GARCH volatility | Development/Demo |
+| **Disconnected** | No data source available | Shows error messages |
+| **Mock** | Simulated prices (development only) | Development/Testing |
 
 ### Live Mode (Default)
 
-The dashboard is configured to use live Bloomberg data by default. When a Bloomberg Terminal is not available, it automatically falls back to the sophisticated price simulator.
+The dashboard defaults to live Bloomberg data. If Bloomberg is not connected, you will see:
+- Red "Disconnected" indicator in the sidebar
+- Error message explaining the connection failure
+- "N/A" or "Data Unavailable" for all price data
 
 ```python
 from core.data import DataLoader
 
-# Auto-detect mode from environment (default: live)
+# Default: requires Bloomberg Terminal
 loader = DataLoader()
 
 # Check connection status
 status = loader.get_connection_status()
-print(f"Data mode: {status['data_mode']}")  # 'live' or 'simulated'
-print(f"Is live: {loader.is_live_data()}")
+print(f"Data mode: {status['data_mode']}")  # 'live', 'mock', or 'disconnected'
+print(f"Connected: {status['connected']}")
+print(f"Error: {status['connection_error']}")
 ```
 
-### Simulated Mode (Development)
+### Mock Mode (Development Only)
 
-The price simulator provides realistic market data:
-- **Tick-by-tick updates** with GARCH-like volatility clustering
-- **Proper term structure** (contango/backwardation)
-- **Realistic bid/ask spreads** varying by instrument liquidity
-- **Session-consistent prices** with change tracking
-- **Intraday history** for charting
+⚠️ **Warning**: Mock mode displays **simulated data, NOT real market data**. Only use for development/testing.
 
 ```python
-# Force simulation mode
+# Force mock mode for development
 loader = DataLoader(use_mock=True)
+
+# Or set environment variable
+# BLOOMBERG_USE_MOCK=true
 ```
+
+Mock mode features (for development testing only):
+- Simulated tick-by-tick updates
+- Simulated term structure
+- Simulated bid/ask spreads
 
 ### Real-time Subscriptions
 
@@ -204,6 +212,93 @@ else:
     print("Using simulation (Bloomberg not available)")
 ```
 
+## Performance Optimizations
+
+The dashboard is optimized for fast data loading and responsive UI with the following techniques:
+
+### Batch API Calls
+
+All price fetches are batched to minimize API round-trips:
+
+```python
+# Before: 12 sequential API calls for futures curve
+for i in range(1, 13):
+    get_price(f"CL{i} Comdty")  # Slow!
+
+# After: Single batch call
+get_prices(["CL1 Comdty", "CL2 Comdty", ..., "CL12 Comdty"])  # Fast!
+```
+
+**Impact**: Futures curve loads ~10x faster (1 call vs 12 calls)
+
+### Streamlit Caching
+
+Expensive operations use Streamlit's caching with appropriate TTLs:
+
+| Data Type | Cache TTL | Reason |
+|-----------|-----------|--------|
+| Historical data | 5 minutes | Doesn't change frequently |
+| Futures curve | 1 minute | Updates throughout trading day |
+| Real-time prices | No cache | Always fresh |
+
+```python
+@st.cache_data(ttl=300)  # 5 minutes
+def get_historical_data_cached(lookback_days: int = 90):
+    return data_loader.get_historical("CL1 Comdty", ...)
+```
+
+### Thread-Safe TTL Cache
+
+Real-time price data uses an efficient in-memory TTL cache:
+
+```python
+from core.data import TTLCache
+
+cache = TTLCache(max_size=1000, default_ttl=5.0)
+cache.set("CL1 Comdty", 72.50)
+price = cache.get("CL1 Comdty")  # Fast lookup, auto-expires
+```
+
+### Non-Blocking Auto-Refresh
+
+Auto-refresh uses `streamlit-autorefresh` instead of `time.sleep()`:
+
+```python
+# Before: Blocking sleep (freezes UI)
+time.sleep(5)
+st.rerun()
+
+# After: Non-blocking with streamlit-autorefresh
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=5000)  # Milliseconds
+```
+
+### Lazy Loading
+
+Expensive data is loaded only when needed:
+
+```python
+class DashboardData:
+    @property
+    def wti_history(self):
+        # Only fetches when first accessed
+        if self._wti_history is self._NOT_LOADED:
+            self._wti_history = self.data_loader.get_historical(...)
+        return self._wti_history
+```
+
+### Configuration
+
+Adjust performance settings in `.env`:
+
+```bash
+# Auto-refresh interval (seconds) - increase to reduce load
+AUTO_REFRESH_INTERVAL=10
+
+# Enable/disable real-time subscriptions
+BLOOMBERG_ENABLE_SUBSCRIPTIONS=true
+```
+
 ## Configuration
 
 ### Environment Variables (`.env`)
@@ -212,11 +307,15 @@ else:
 # =============================================================================
 # BLOOMBERG CONFIGURATION
 # =============================================================================
-BLOOMBERG_USE_MOCK=false          # false = live data, true = simulation
+# IMPORTANT: Dashboard requires Bloomberg Terminal by default
+BLOOMBERG_USE_MOCK=false          # false = live data (default), true = mock (dev only)
 BLOOMBERG_HOST=localhost          # Bloomberg API host
 BLOOMBERG_PORT=8194               # Bloomberg API port
 BLOOMBERG_TIMEOUT=30              # Request timeout (seconds)
 BLOOMBERG_ENABLE_SUBSCRIPTIONS=true  # Enable real-time subscriptions
+
+# If Bloomberg is unavailable, set BLOOMBERG_USE_MOCK=true for development
+# WARNING: Mock mode displays simulated data, NOT real market prices
 
 # =============================================================================
 # RISK LIMITS
@@ -430,39 +529,413 @@ pytest tests/test_analytics.py -v
 
 ## Status & Roadmap
 
-| Component | Status |
-|-----------|--------|
-| Data Infrastructure | ✅ Complete |
-| Market Analytics | ✅ Complete |
-| Signal Engine | ✅ Complete |
-| Risk Management | ✅ Complete |
-| Trading Module | ✅ Complete |
-| Dashboard UI | ✅ Complete |
-| Test Suite | ✅ 64 tests |
-| Live Price Simulation | ✅ Complete |
-| Auto-Refresh (5s) | ✅ Complete |
-| Bloomberg Integration | ✅ Complete |
-| Ticker Validation | ✅ Complete |
-| Live Data Mode | ✅ Complete |
-| Real-time Subscriptions | ✅ Complete |
-| ML Integration | 🔲 Planned |
-| Backtesting Engine | 🔲 Planned |
+### Current Status
 
-### Phase 3 Complete ✅
+| Component | Status | Phase |
+|-----------|--------|-------|
+| Data Infrastructure | ✅ Complete | 1 |
+| Market Analytics | ✅ Complete | 1 |
+| Signal Engine | ✅ Complete | 2 |
+| Risk Management | ✅ Complete | 2 |
+| Trading Module | ✅ Complete | 2 |
+| Dashboard UI | ✅ Complete | 2 |
+| Test Suite | ✅ 64 tests | 2 |
+| Live Price Simulation | ✅ Complete | 3 |
+| Auto-Refresh (5s) | ✅ Complete | 3 |
+| Bloomberg Integration | ✅ Complete | 3 |
+| Ticker Validation | ✅ Complete | 3 |
+| Live Data Mode | ✅ Complete | 3 |
+| Real-time Subscriptions | ✅ Complete | 3 |
+| ML Signal Models | 🔲 Planned | 4 |
+| Backtesting Engine | 🔲 Planned | 5 |
+| Execution & Automation | 🔲 Planned | 6 |
+| Multi-channel Alerts | 🔲 Planned | 7 |
+| Advanced Analytics & AI | 🔲 Planned | 8 |
+| Production Hardening | 🔲 Planned | 9 |
 
-- **Live Bloomberg Data**: Dashboard defaults to live Bloomberg data with automatic fallback to simulation
-- **Real-time Subscription Service**: Subscribe to core oil market tickers for streaming updates
-- **Environment-based Configuration**: Control data mode via `.env` file
-- **Enhanced Price Simulator**: GARCH-like volatility, proper term structure, realistic spreads
-- **Comprehensive Test Suite**: 64 tests covering all modules
-- **Full Documentation**: API reference and configuration guide
+---
 
-### Planned Features
+## Development Phases
 
-- ML signal models (XGBoost/LightGBM)
-- Backtesting engine with vectorbt
-- Multi-channel alerts (Email/SMS/Telegram)
-- LLM news summarization
+### ✅ Phase 1: Foundation (Complete)
+
+**Data Infrastructure & Market Analytics**
+
+- [x] Bloomberg API integration with `blpapi`
+- [x] Multi-layer caching (memory + disk with `diskcache`)
+- [x] Parquet storage for historical data
+- [x] Unified `DataLoader` interface
+- [x] Ticker mapping and validation (`TickerMapper`)
+- [x] Futures curve analysis (contango/backwardation)
+- [x] Spread calculations (WTI-Brent, crack spreads)
+- [x] Fundamental data (EIA inventory, OPEC production)
+
+### ✅ Phase 2: Core Trading Features (Complete)
+
+**Signals, Risk, and Trading**
+
+- [x] Technical signal generation (MA crossovers, RSI, Bollinger Bands)
+- [x] Fundamental signal generation (inventory surprises, term structure)
+- [x] Signal aggregation with weighted confidence scoring
+- [x] VaR calculations (parametric, historical, Monte Carlo)
+- [x] Expected Shortfall (CVaR)
+- [x] Position and exposure limits
+- [x] Stress testing with historical scenarios
+- [x] Trade blotter with SQLite persistence
+- [x] Position management and live P&L
+- [x] Streamlit dashboard with 6 pages
+
+### ✅ Phase 3: Live Data Integration (Complete)
+
+**Bloomberg Live Mode & Enhanced Simulation**
+
+- [x] Live Bloomberg data as default mode
+- [x] Real-time subscription service for streaming updates
+- [x] Environment-based configuration (`.env`)
+- [x] Enhanced price simulator with GARCH-like volatility
+- [x] Proper term structure simulation
+- [x] Realistic bid/ask spreads
+- [x] Comprehensive test suite (64 tests)
+- [x] Full API documentation
+
+---
+
+## 🔮 Future Phases
+
+### 🔲 Phase 4: Machine Learning Integration
+
+**ML-Powered Signal Generation**
+
+Build machine learning models to enhance signal quality and prediction accuracy.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Feature Engineering | Create ML features from price, volume, and fundamental data | High |
+| XGBoost/LightGBM Models | Gradient boosting for direction and volatility prediction | High |
+| LSTM/Transformer Models | Deep learning for time-series forecasting | Medium |
+| Ensemble Methods | Combine multiple models with meta-learning | Medium |
+| Model Monitoring | Track model performance and detect drift | High |
+| AutoML Pipeline | Automated feature selection and hyperparameter tuning | Low |
+
+**Implementation Plan:**
+```
+core/
+├── ml/
+│   ├── __init__.py
+│   ├── features.py          # Feature engineering pipeline
+│   ├── models/
+│   │   ├── gradient_boost.py   # XGBoost/LightGBM models
+│   │   ├── time_series.py      # LSTM/Transformer models
+│   │   └── ensemble.py         # Model ensembling
+│   ├── training.py          # Training pipeline
+│   ├── prediction.py        # Inference service
+│   └── monitoring.py        # Model performance tracking
+```
+
+**New Dependencies:**
+```
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.1.0
+optuna>=3.4.0          # Hyperparameter optimization
+mlflow>=2.8.0          # Experiment tracking
+```
+
+---
+
+### 🔲 Phase 5: Backtesting Engine
+
+**Historical Strategy Testing & Optimization**
+
+Build a robust backtesting framework for strategy development and validation.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Event-Driven Backtest | Tick-by-tick or bar-by-bar simulation engine | High |
+| Strategy Framework | Define strategies as composable classes | High |
+| Transaction Costs | Realistic slippage, commissions, and market impact | High |
+| Walk-Forward Optimization | Rolling window parameter optimization | Medium |
+| Performance Metrics | Sharpe, Sortino, Calmar, max drawdown, etc. | High |
+| Monte Carlo Analysis | Bootstrap resampling for robustness testing | Medium |
+| Strategy Comparison | Side-by-side strategy evaluation | Medium |
+
+**Implementation Plan:**
+```
+core/
+├── backtest/
+│   ├── __init__.py
+│   ├── engine.py            # Main backtesting engine
+│   ├── strategy.py          # Strategy base class and examples
+│   ├── execution.py         # Order execution simulation
+│   ├── costs.py             # Transaction cost models
+│   ├── metrics.py           # Performance metrics
+│   ├── optimization.py      # Parameter optimization
+│   └── reporting.py         # Backtest reports
+app/pages/
+├── 7_🔬_Backtest.py        # Backtest configuration UI
+├── 8_📈_Strategy_Builder.py # Visual strategy builder
+```
+
+**New Dependencies:**
+```
+vectorbt>=0.26.0       # Vectorized backtesting
+empyrical>=0.5.5       # Performance metrics
+pyfolio>=0.9.2         # Portfolio analysis
+```
+
+---
+
+### 🔲 Phase 6: Execution & Automation
+
+**Order Management & Automated Trading**
+
+Connect signals to execution with an order management system.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Order Management System | Track orders through lifecycle (new→filled→settled) | High |
+| Paper Trading Mode | Simulate execution without real orders | High |
+| Position Sizing | Kelly criterion, volatility targeting, risk parity | High |
+| Execution Algorithms | TWAP, VWAP, implementation shortfall | Medium |
+| Broker Integration | Connect to Interactive Brokers, CQG, or TT | Medium |
+| Smart Order Routing | Optimal venue selection | Low |
+| Auto-Execution Rules | Trigger orders based on signals + conditions | Medium |
+
+**Implementation Plan:**
+```
+core/
+├── execution/
+│   ├── __init__.py
+│   ├── oms.py               # Order management system
+│   ├── paper_trading.py     # Paper trading engine
+│   ├── sizing.py            # Position sizing algorithms
+│   ├── algorithms.py        # Execution algorithms (TWAP, VWAP)
+│   ├── brokers/
+│   │   ├── base.py          # Broker interface
+│   │   ├── ib.py            # Interactive Brokers
+│   │   └── simulator.py     # Simulated broker
+│   └── routing.py           # Order routing logic
+app/pages/
+├── 9_🤖_Automation.py      # Automation rules UI
+```
+
+**New Dependencies:**
+```
+ib_insync>=0.9.86      # Interactive Brokers API
+```
+
+---
+
+### 🔲 Phase 7: Alerts & Notifications
+
+**Multi-Channel Alert System**
+
+Proactive notifications for trading signals, risk breaches, and market events.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Alert Rules Engine | Configurable conditions and triggers | High |
+| Email Notifications | SMTP-based email alerts | High |
+| Telegram Bot | Real-time Telegram notifications | High |
+| Slack Integration | Slack channel alerts | Medium |
+| SMS Alerts | Critical alerts via SMS (Twilio) | Medium |
+| Scheduled Reports | Daily/weekly P&L and risk summaries | High |
+| Alert History | Track and audit all alerts | Medium |
+| Alert Escalation | Escalate unacknowledged critical alerts | Low |
+
+**Implementation Plan:**
+```
+core/
+├── alerts/
+│   ├── __init__.py
+│   ├── rules.py             # Alert rule definitions
+│   ├── engine.py            # Alert evaluation engine
+│   ├── channels/
+│   │   ├── email.py         # Email notifications
+│   │   ├── telegram.py      # Telegram bot
+│   │   ├── slack.py         # Slack integration
+│   │   └── sms.py           # SMS via Twilio
+│   ├── scheduler.py         # Scheduled reports
+│   └── history.py           # Alert audit log
+config/
+├── alerts.yaml              # Alert configurations
+```
+
+**New Dependencies:**
+```
+python-telegram-bot>=20.6
+slack-sdk>=3.23.0
+twilio>=8.10.0
+jinja2>=3.1.2          # Report templates
+```
+
+---
+
+### 🔲 Phase 8: Advanced Analytics & AI
+
+**Research Tools & Alternative Data**
+
+Advanced analytics, AI-powered research, and alternative data sources.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| LLM News Analysis | Summarize and sentiment-score news with GPT/Claude | High |
+| Alternative Data | Satellite imagery, shipping data, refinery schedules | Medium |
+| Cross-Asset Correlations | Oil vs. equities, FX, rates correlations | Medium |
+| Regime Detection | Hidden Markov Models for market regime identification | Medium |
+| Scenario Analysis | What-if analysis for portfolio changes | High |
+| Factor Analysis | Decompose returns into risk factors | Medium |
+| Research Notebooks | Jupyter integration for ad-hoc analysis | Medium |
+
+**Implementation Plan:**
+```
+core/
+├── research/
+│   ├── __init__.py
+│   ├── llm/
+│   │   ├── news_analyzer.py    # LLM news summarization
+│   │   ├── sentiment.py        # Sentiment scoring
+│   │   └── embeddings.py       # Document embeddings
+│   ├── alt_data/
+│   │   ├── satellite.py        # Satellite imagery analysis
+│   │   ├── shipping.py         # Tanker tracking
+│   │   └── positioning.py      # COT/positioning data
+│   ├── correlations.py      # Cross-asset analysis
+│   ├── regimes.py           # Regime detection
+│   └── factors.py           # Factor models
+app/pages/
+├── 10_🔍_Research.py       # Research dashboard
+├── 11_📰_News.py           # News & sentiment feed
+notebooks/
+├── research_template.ipynb
+```
+
+**New Dependencies:**
+```
+openai>=1.3.0          # GPT API
+anthropic>=0.7.0       # Claude API
+langchain>=0.0.340     # LLM orchestration
+hmmlearn>=0.3.0        # Hidden Markov Models
+statsmodels>=0.14.0    # Statistical models
+```
+
+---
+
+### 🔲 Phase 9: Production Hardening
+
+**Enterprise-Ready Deployment**
+
+Prepare the system for production deployment with security, reliability, and compliance.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Authentication | User authentication (OAuth2, SSO) | High |
+| Role-Based Access | Permission levels for traders, risk, admins | High |
+| Audit Logging | Complete audit trail of all actions | High |
+| Database Migration | Alembic migrations for schema changes | Medium |
+| High Availability | Redis for state, PostgreSQL for persistence | Medium |
+| Containerization | Docker + Docker Compose deployment | High |
+| Kubernetes | K8s manifests for cloud deployment | Low |
+| Monitoring | Prometheus metrics + Grafana dashboards | Medium |
+| Disaster Recovery | Backup and restore procedures | Medium |
+| Compliance Reports | MiFID II, Dodd-Frank reporting templates | Low |
+
+**Implementation Plan:**
+```
+├── docker/
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── docker-compose.prod.yml
+├── k8s/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── configmap.yaml
+├── migrations/
+│   └── versions/
+core/
+├── auth/
+│   ├── __init__.py
+│   ├── authentication.py    # Auth providers
+│   ├── authorization.py     # RBAC
+│   └── audit.py             # Audit logging
+├── monitoring/
+│   ├── metrics.py           # Prometheus metrics
+│   └── health.py            # Health checks
+config/
+├── logging.yaml             # Structured logging config
+```
+
+**New Dependencies:**
+```
+redis>=5.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.12.0
+python-jose>=3.3.0     # JWT handling
+passlib>=1.7.4         # Password hashing
+prometheus-client>=0.18.0
+```
+
+---
+
+## Prioritized Roadmap
+
+```
+Q1 2025: Phase 4 - ML Integration
+├── Feature engineering pipeline
+├── XGBoost/LightGBM models for direction prediction
+├── Model monitoring and drift detection
+└── Integration with signal aggregator
+
+Q2 2025: Phase 5 - Backtesting Engine
+├── Event-driven backtest framework
+├── Strategy definition DSL
+├── Walk-forward optimization
+└── Performance reporting
+
+Q3 2025: Phase 6 & 7 - Execution & Alerts
+├── Paper trading mode
+├── Position sizing algorithms
+├── Multi-channel alert system
+├── Scheduled reporting
+
+Q4 2025: Phase 8 & 9 - Advanced Analytics & Production
+├── LLM news analysis
+├── Cross-asset correlations
+├── Docker deployment
+├── Authentication & audit logging
+```
+
+---
+
+## Contributing to Future Phases
+
+We welcome contributions to any of the planned phases. To contribute:
+
+1. Check the phase you want to work on
+2. Open an issue to discuss your approach
+3. Follow the implementation plan structure
+4. Include tests for all new functionality
+5. Update documentation
+
+### Development Setup for Contributors
+
+```bash
+# Clone and setup
+git clone <repository-url>
+cd oil-trading-dashboard
+python -m venv venv
+source venv/bin/activate
+
+# Install dev dependencies
+pip install -r requirements.txt
+pip install -r requirements-research.txt  # For ML/research work
+
+# Run tests
+pytest tests/ -v --cov=core
+
+# Start dashboard
+streamlit run app/main.py
+```
 
 ## Design Philosophy
 
@@ -486,22 +959,32 @@ pytest tests/test_analytics.py -v
 
 ### Common Issues
 
-**1. "diskcache not available" warning**
+**1. Dashboard shows "Disconnected" status**
+
+The dashboard requires a Bloomberg Terminal connection by default. If disconnected:
+- Verify Bloomberg Terminal is running on localhost:8194
+- Check `BLOOMBERG_HOST` and `BLOOMBERG_PORT` in `.env`
+- Install the Bloomberg API: `pip install blpapi`
+- For development without Bloomberg, set `BLOOMBERG_USE_MOCK=true` in `.env`
+
+**2. "Data Unavailable" messages**
+
+This means the required data cannot be retrieved from Bloomberg:
+- Check your Bloomberg Terminal connection
+- Verify you have the required Bloomberg data subscriptions
+- Check the connection error message in the sidebar
+
+**3. "diskcache not available" warning**
 ```bash
 pip install diskcache
 ```
 
-**2. Bloomberg connection fails**
-- Verify Bloomberg Terminal is running
-- Check `BLOOMBERG_HOST` and `BLOOMBERG_PORT` in `.env`
-- The dashboard will automatically fall back to simulation
-
-**3. Missing dependencies**
+**4. Missing dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-**4. Test failures**
+**5. Test failures**
 ```bash
 # Ensure all dependencies are installed
 pip install -r requirements.txt
@@ -510,6 +993,20 @@ pip install pytest pytest-cov
 # Run tests
 pytest tests/ -v
 ```
+
+**6. How to run in development mode (without Bloomberg)**
+```bash
+# Set environment variable
+export BLOOMBERG_USE_MOCK=true
+
+# Or add to .env file
+echo "BLOOMBERG_USE_MOCK=true" >> .env
+
+# Run the dashboard
+streamlit run app/main.py
+```
+
+⚠️ Note: Development mode shows simulated data, NOT real market prices.
 
 ## Disclaimer
 

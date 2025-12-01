@@ -37,14 +37,27 @@ def get_data_loader():
 def get_positions():
     """Get current positions from session state."""
     if 'positions' not in st.session_state:
-        # Default demo positions
-        st.session_state.positions = [
-            {"symbol": "CLF5", "ticker": "CL1 Comdty", "qty": 45, "entry": 72.15, "strategy": "Momentum"},
-            {"symbol": "CLG5", "ticker": "CL2 Comdty", "qty": 20, "entry": 72.50, "strategy": "Spread"},
-            {"symbol": "COH5", "ticker": "CO1 Comdty", "qty": -15, "entry": 78.20, "strategy": "Arb"},
-            {"symbol": "XBF5", "ticker": "XB1 Comdty", "qty": 8, "entry": 2.15, "strategy": "Crack"},
-        ]
+        # Start with empty positions - no demo data
+        st.session_state.positions = []
     return st.session_state.positions
+
+
+def add_position(symbol: str, ticker: str, qty: int, entry: float, strategy: str = None):
+    """Add a new position."""
+    positions = get_positions()
+    positions.append({
+        "symbol": symbol,
+        "ticker": ticker,
+        "qty": qty,
+        "entry": entry,
+        "strategy": strategy or "Manual",
+    })
+    st.session_state.positions = positions
+
+
+def clear_positions():
+    """Clear all positions."""
+    st.session_state.positions = []
 
 
 def calculate_position_pnl(data_loader=None):
@@ -151,24 +164,46 @@ def _positions_signature(positions):
     return tuple(sorted_positions)
 
 
-def get_dashboard_context(lookback_days: int = 90) -> DashboardContext:
-    """Return a cached DashboardContext shared across pages."""
+def get_dashboard_context(lookback_days: int = 90, force_refresh: bool = False) -> DashboardContext:
+    """
+    Return a cached DashboardContext shared across pages.
+    
+    The context is cached based on:
+    - Lookback days
+    - Position signature (changes when positions are modified)
+    - Time-based refresh (max 30 second cache for price data)
+    
+    This reduces redundant data fetching while ensuring data freshness.
+    """
     positions = get_positions()
     signature = _positions_signature(positions)
-    last_refresh = st.session_state.get("last_refresh")
+    current_time = datetime.now()
+    
     store = st.session_state.setdefault("_dashboard_context_store", {})
     entry = store.get(lookback_days)
 
-    if entry:
-        context, cached_refresh, cached_signature = entry
-        if cached_refresh == last_refresh and cached_signature == signature:
+    if entry and not force_refresh:
+        context, cached_time, cached_signature = entry
+        time_diff = (current_time - cached_time).total_seconds()
+        
+        # Cache is valid if:
+        # 1. Position signature hasn't changed
+        # 2. Cache is less than 30 seconds old (for live price data)
+        if cached_signature == signature and time_diff < 30:
             return context
 
+    # Create new context with prefetched data
     context = DashboardContext(
         get_data_loader(),
         positions,
         lookback_days=lookback_days,
     )
-    store[lookback_days] = (context, last_refresh, signature)
+    store[lookback_days] = (context, current_time, signature)
     st.session_state["_dashboard_context_store"] = store
     return context
+
+
+def invalidate_context_cache():
+    """Force refresh of the dashboard context on next access."""
+    if "_dashboard_context_store" in st.session_state:
+        del st.session_state["_dashboard_context_store"]
