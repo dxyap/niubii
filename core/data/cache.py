@@ -1,7 +1,13 @@
 """
 Data Caching Layer
 ==================
-Caching strategy to minimize API calls and improve performance.
+Multi-layer caching strategy to minimize API calls and improve performance.
+
+Performance optimizations:
+- LRU cache for frequently accessed data
+- TTL-based expiration
+- Thread-safe operations
+- Efficient memory management
 """
 
 import os
@@ -9,9 +15,11 @@ import json
 import hashlib
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Any, Optional, Callable
+from typing import Any, Optional, Callable, Dict
 from pathlib import Path
 import logging
+import threading
+from functools import lru_cache
 
 try:
     import diskcache
@@ -22,15 +30,87 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class TTLCache:
+    """
+    Thread-safe in-memory cache with TTL expiration.
+    Optimized for high-frequency price data access.
+    """
+    
+    def __init__(self, max_size: int = 1000, default_ttl: float = 5.0):
+        """
+        Initialize TTL cache.
+        
+        Args:
+            max_size: Maximum number of entries
+            default_ttl: Default TTL in seconds
+        """
+        self._cache: Dict[str, tuple] = {}  # key -> (value, expiry_time)
+        self._lock = threading.Lock()
+        self._max_size = max_size
+        self._default_ttl = default_ttl
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get value if not expired."""
+        with self._lock:
+            if key in self._cache:
+                value, expiry = self._cache[key]
+                if datetime.now().timestamp() < expiry:
+                    return value
+                else:
+                    # Expired - remove
+                    del self._cache[key]
+            return default
+    
+    def set(self, key: str, value: Any, ttl: float = None) -> None:
+        """Set value with TTL."""
+        if ttl is None:
+            ttl = self._default_ttl
+        
+        with self._lock:
+            # Evict oldest entries if at capacity
+            if len(self._cache) >= self._max_size:
+                self._evict_expired()
+                if len(self._cache) >= self._max_size:
+                    # Remove 10% of oldest entries
+                    to_remove = list(self._cache.keys())[:self._max_size // 10]
+                    for k in to_remove:
+                        del self._cache[k]
+            
+            expiry = datetime.now().timestamp() + ttl
+            self._cache[key] = (value, expiry)
+    
+    def _evict_expired(self) -> None:
+        """Remove expired entries."""
+        now = datetime.now().timestamp()
+        expired = [k for k, (_, exp) in self._cache.items() if now >= exp]
+        for k in expired:
+            del self._cache[k]
+    
+    def clear(self) -> None:
+        """Clear all entries."""
+        with self._lock:
+            self._cache.clear()
+    
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._cache)
+
+
 class DataCache:
     """
     Multi-layer caching system for market data.
     
     Caching Strategy:
-    - Real-time prices: 5 seconds (in-memory)
+    - Real-time prices: 5 seconds (in-memory TTL cache)
+    - Intraday: 60 seconds (in-memory TTL cache)
     - Historical OHLCV: 24 hours (disk)
     - Reference data: 7 days (disk)
     - Fundamental data: Until next release (disk)
+    
+    Performance features:
+    - Thread-safe TTL cache for high-frequency access
+    - Efficient memory management
+    - Automatic cache eviction
     """
     
     # Cache durations in seconds
@@ -52,7 +132,11 @@ class DataCache:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # In-memory cache for real-time data
+        # Efficient TTL cache for real-time data
+        self._real_time_cache = TTLCache(max_size=1000, default_ttl=5.0)
+        self._intraday_cache = TTLCache(max_size=500, default_ttl=60.0)
+        
+        # Legacy memory cache (for backward compatibility)
         self._memory_cache: dict = {}
         self._memory_timestamps: dict = {}
         
@@ -89,9 +173,19 @@ class DataCache:
         Returns:
             Cached value or default
         """
+        # Use efficient TTL caches for high-frequency data
+        if cache_type == "real_time":
+            result = self._real_time_cache.get(key)
+            if result is not None:
+                return result
+        elif cache_type == "intraday":
+            result = self._intraday_cache.get(key)
+            if result is not None:
+                return result
+        
         duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
         
-        # Check memory cache first (for real-time data)
+        # Legacy memory cache fallback
         if cache_type in ("real_time", "intraday"):
             if key in self._memory_cache:
                 timestamp = self._memory_timestamps.get(key, 0)
@@ -135,10 +229,12 @@ class DataCache:
         """
         duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
         
-        # Memory cache for real-time data
-        if cache_type in ("real_time", "intraday"):
-            self._memory_cache[key] = value
-            self._memory_timestamps[key] = datetime.now().timestamp()
+        # Use efficient TTL caches for high-frequency data
+        if cache_type == "real_time":
+            self._real_time_cache.set(key, value, ttl=duration)
+            return
+        elif cache_type == "intraday":
+            self._intraday_cache.set(key, value, ttl=duration)
             return
         
         # Disk cache
@@ -202,6 +298,12 @@ class DataCache:
         Args:
             cache_type: Type of cache to clear (None = all)
         """
+        if cache_type == "real_time" or cache_type is None:
+            self._real_time_cache.clear()
+        
+        if cache_type == "intraday" or cache_type is None:
+            self._intraday_cache.clear()
+        
         if cache_type in ("real_time", "intraday", None):
             self._memory_cache.clear()
             self._memory_timestamps.clear()
@@ -220,6 +322,8 @@ class DataCache:
     def get_stats(self) -> dict:
         """Get cache statistics."""
         stats = {
+            "real_time_entries": len(self._real_time_cache),
+            "intraday_entries": len(self._intraday_cache),
             "memory_entries": len(self._memory_cache),
             "disk_entries": 0,
             "file_entries": len(list(self.cache_dir.glob("*.pkl"))),

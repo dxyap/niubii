@@ -224,24 +224,61 @@ class PortfolioAnalytics:
 
 
 class DashboardData:
-    """Data bundle for the dashboard with caching."""
+    """
+    Data bundle for the dashboard with optimized loading.
+    
+    Key optimizations:
+    - Prefetch all price data in a single batch call
+    - Lazy loading for expensive historical data
+    - Caching of computed metrics
+    """
 
     # Sentinel to distinguish "not loaded" from "loaded but None/empty"
     _NOT_LOADED = object()
 
-    def __init__(self, data_loader, lookback_days: int = 90):
+    def __init__(self, data_loader, lookback_days: int = 90, prefetch: bool = True):
         self.data_loader = data_loader
         self.lookback_days = lookback_days
+        
+        # Price data (loaded together in batch)
         self._oil_prices = self._NOT_LOADED
-        self._wti_brent_spread = self._NOT_LOADED
-        self._crack_321 = self._NOT_LOADED
+        self._all_spreads = self._NOT_LOADED
+        
+        # Curve data
         self._futures_curve = self._NOT_LOADED
         self._brent_curve = self._NOT_LOADED
+        
+        # Historical data (expensive - loaded lazily)
         self._wti_history = self._NOT_LOADED
+        
+        # Connection status
         self._connection_status: Dict[str, str] | None = None
         
         # Store errors for display
         self._errors: Dict[str, str] = {}
+        
+        # Prefetch price data if requested
+        if prefetch:
+            self._prefetch_price_data()
+    
+    def _prefetch_price_data(self) -> None:
+        """
+        Prefetch all price-related data in optimized batch calls.
+        This significantly reduces API calls on page load.
+        """
+        try:
+            # Fetch oil prices (4 tickers in 1 call)
+            self._oil_prices = self.data_loader.get_oil_prices()
+        except Exception as e:
+            self._errors["oil_prices"] = str(e)
+            self._oil_prices = None
+        
+        try:
+            # Fetch all spreads in a single batch (4 tickers total)
+            self._all_spreads = self.data_loader.get_all_spreads()
+        except Exception as e:
+            self._errors["spreads"] = str(e)
+            self._all_spreads = None
 
     @property
     def oil_prices(self) -> Optional[Dict[str, Dict[str, float]]]:
@@ -255,23 +292,29 @@ class DashboardData:
 
     @property
     def wti_brent_spread(self) -> Optional[Dict[str, float]]:
-        if self._wti_brent_spread is self._NOT_LOADED:
-            try:
-                self._wti_brent_spread = self.data_loader.get_wti_brent_spread()
-            except Exception as e:
-                self._errors["wti_brent_spread"] = str(e)
-                self._wti_brent_spread = None
-        return self._wti_brent_spread
+        # Use prefetched spread data if available
+        if self._all_spreads is not self._NOT_LOADED and self._all_spreads is not None:
+            return self._all_spreads.get("wti_brent")
+        
+        # Fallback to direct fetch
+        try:
+            return self.data_loader.get_wti_brent_spread()
+        except Exception as e:
+            self._errors["wti_brent_spread"] = str(e)
+            return None
 
     @property
     def crack_spread(self) -> Optional[Dict[str, float]]:
-        if self._crack_321 is self._NOT_LOADED:
-            try:
-                self._crack_321 = self.data_loader.get_crack_spread_321()
-            except Exception as e:
-                self._errors["crack_spread"] = str(e)
-                self._crack_321 = None
-        return self._crack_321
+        # Use prefetched spread data if available
+        if self._all_spreads is not self._NOT_LOADED and self._all_spreads is not None:
+            return self._all_spreads.get("crack_321")
+        
+        # Fallback to direct fetch
+        try:
+            return self.data_loader.get_crack_spread_321()
+        except Exception as e:
+            self._errors["crack_spread"] = str(e)
+            return None
 
     @property
     def futures_curve(self) -> Optional[pd.DataFrame]:
@@ -295,6 +338,7 @@ class DashboardData:
 
     @property
     def wti_history(self) -> Optional[pd.DataFrame]:
+        """Historical data is loaded lazily as it's expensive."""
         if self._wti_history is self._NOT_LOADED:
             try:
                 end = datetime.now()

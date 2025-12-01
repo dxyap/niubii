@@ -805,7 +805,7 @@ class BloombergClient:
     ) -> pd.DataFrame:
         """Generate historical data that connects to current price."""
         # Get current price to anchor the series
-        current_price = self.simulator.get_price(ticker)
+        current_price = self._simulator.get_price(ticker)
         
         # Generate date range
         if frequency == "DAILY":
@@ -863,37 +863,59 @@ class BloombergClient:
     
     def get_curve(self, commodity: str = "wti", num_months: int = 12) -> pd.DataFrame:
         """
-        Get futures curve data.
+        Get futures curve data (batch optimized).
+        
+        Fetches all curve points in a single batch API call for efficiency.
         
         Raises:
             DataUnavailableError: If curve data cannot be retrieved
         """
         ticker_prefix = "CL" if commodity.lower() == "wti" else "CO" if commodity.lower() == "brent" else commodity.upper()[:2]
         
+        # Build list of tickers for the curve
+        tickers = [f"{ticker_prefix}{i} Comdty" for i in range(1, num_months + 1)]
+        
+        # Batch fetch all curve prices in a single API call
+        fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
+        try:
+            prices_df = self.get_prices(tickers, fields)
+        except Exception as e:
+            raise DataUnavailableError(f"Failed to fetch curve data for {commodity}: {e}")
+        
+        if prices_df is None or prices_df.empty:
+            raise DataUnavailableError(f"No curve data available for {commodity}")
+        
+        # Build curve DataFrame from batch results
         data = []
-        errors = []
         today = datetime.now()
         
-        for i in range(1, num_months + 1):
-            ticker = f"{ticker_prefix}{i} Comdty"
-            try:
-                price_data = self.get_price_with_change(ticker)
-                expiry = today + timedelta(days=30 * i)
-                
-                data.append({
-                    "month": i,
-                    "ticker": ticker,
-                    "price": price_data["current"],
-                    "change": price_data["change"],
-                    "change_pct": price_data["change_pct"],
-                    "expiry": expiry,
-                    "days_to_expiry": (expiry - today).days
-                })
-            except DataUnavailableError as e:
-                errors.append(str(e))
+        for i, ticker in enumerate(tickers, 1):
+            if ticker not in prices_df.index:
+                continue
+            
+            row = prices_df.loc[ticker]
+            current = row.get("PX_LAST", 0)
+            open_price = row.get("PX_OPEN", current)
+            
+            if current is None or (hasattr(current, '__iter__') and not current):
+                continue
+            
+            change = current - open_price if current and open_price else 0
+            change_pct = (change / open_price * 100) if open_price else 0
+            expiry = today + timedelta(days=30 * i)
+            
+            data.append({
+                "month": i,
+                "ticker": ticker,
+                "price": current,
+                "change": round(change, 4),
+                "change_pct": round(change_pct, 4),
+                "expiry": expiry,
+                "days_to_expiry": (expiry - today).days
+            })
         
         if not data:
-            raise DataUnavailableError(f"No curve data available for {commodity}. Errors: {errors}")
+            raise DataUnavailableError(f"No valid curve data available for {commodity}")
         
         return pd.DataFrame(data)
     

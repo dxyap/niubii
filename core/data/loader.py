@@ -144,24 +144,60 @@ class DataLoader:
         """Get current prices for multiple tickers."""
         return self.bloomberg.get_prices(tickers)
     
+    def get_prices_batch(self, tickers: List[str]) -> Dict[str, Dict[str, float]]:
+        """
+        Get prices with changes for multiple tickers in a single batch call.
+        Much more efficient than calling get_price_with_change() for each ticker.
+        
+        Returns:
+            Dict mapping ticker to price data dict
+        """
+        fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
+        df = self.bloomberg.get_prices(tickers, fields)
+        
+        result = {}
+        for ticker in tickers:
+            if ticker in df.index:
+                row = df.loc[ticker]
+                current = row.get("PX_LAST", 0)
+                open_price = row.get("PX_OPEN", current)
+                change = current - open_price if current and open_price else 0
+                change_pct = (change / open_price * 100) if open_price else 0
+                
+                result[ticker] = {
+                    "current": current,
+                    "open": open_price,
+                    "change": round(change, 4),
+                    "change_pct": round(change_pct, 4),
+                    "high": row.get("PX_HIGH", current),
+                    "low": row.get("PX_LOW", current),
+                }
+        
+        return result
+    
     def get_oil_prices(self) -> Dict[str, Dict[str, float]]:
-        """Get current oil prices for key benchmarks with changes."""
-        tickers = {
+        """Get current oil prices for key benchmarks with changes (batch optimized)."""
+        ticker_map = {
             "WTI": "CL1 Comdty",
             "Brent": "CO1 Comdty",
             "RBOB": "XB1 Comdty",
             "Heating Oil": "HO1 Comdty",
         }
         
+        # Batch fetch all prices at once
+        batch_prices = self.get_prices_batch(list(ticker_map.values()))
+        
+        # Map back to friendly names
         prices = {}
-        for name, ticker in tickers.items():
-            prices[name] = self.get_price_with_change(ticker)
+        for name, ticker in ticker_map.items():
+            if ticker in batch_prices:
+                prices[name] = batch_prices[ticker]
         
         return prices
     
     def get_all_oil_prices(self) -> Dict[str, Dict[str, float]]:
-        """Get prices for all tracked oil products."""
-        tickers = {
+        """Get prices for all tracked oil products (batch optimized)."""
+        ticker_map = {
             "WTI Front": "CL1 Comdty",
             "WTI 2nd": "CL2 Comdty",
             "Brent Front": "CO1 Comdty",
@@ -172,12 +208,14 @@ class DataLoader:
             "Natural Gas": "NG1 Comdty",
         }
         
+        # Batch fetch all prices at once
+        batch_prices = self.get_prices_batch(list(ticker_map.values()))
+        
+        # Map back to friendly names
         prices = {}
-        for name, ticker in tickers.items():
-            try:
-                prices[name] = self.get_price_with_change(ticker)
-            except Exception as e:
-                logger.warning(f"Could not get price for {ticker}: {e}")
+        for name, ticker in ticker_map.items():
+            if ticker in batch_prices:
+                prices[name] = batch_prices[ticker]
         
         return prices
     
@@ -380,43 +418,57 @@ class DataLoader:
         return None
     
     # =========================================================================
-    # SPREAD CALCULATIONS
+    # SPREAD CALCULATIONS (Optimized - single batch fetch)
     # =========================================================================
     
     def get_wti_brent_spread(self) -> Dict[str, float]:
-        """Calculate WTI-Brent spread with details."""
-        wti_data = self.get_price_with_change("CL1 Comdty")
-        brent_data = self.get_price_with_change("CO1 Comdty")
+        """Calculate WTI-Brent spread with details (batch optimized)."""
+        # Batch fetch both tickers in one call
+        batch = self.get_prices_batch(["CL1 Comdty", "CO1 Comdty"])
+        wti_data = batch.get("CL1 Comdty", {})
+        brent_data = batch.get("CO1 Comdty", {})
         
-        spread = wti_data["current"] - brent_data["current"]
-        spread_open = wti_data["open"] - brent_data["open"]
+        wti_current = wti_data.get("current", 0)
+        brent_current = brent_data.get("current", 0)
+        wti_open = wti_data.get("open", wti_current)
+        brent_open = brent_data.get("open", brent_current)
+        
+        spread = wti_current - brent_current
+        spread_open = wti_open - brent_open
         
         return {
             "spread": round(spread, 2),
             "change": round(spread - spread_open, 2),
-            "wti": wti_data["current"],
-            "brent": brent_data["current"],
+            "wti": wti_current,
+            "brent": brent_current,
         }
     
     def get_crack_spread_321(self) -> Dict[str, float]:
         """
-        Calculate 3-2-1 crack spread.
+        Calculate 3-2-1 crack spread (batch optimized).
         
         3-2-1 = (2 * RBOB + 1 * HO - 3 * WTI) / 3
         Converted to $/barrel
         """
-        wti = self.get_price("CL1 Comdty")
-        rbob = self.get_price("XB1 Comdty") * 42  # Convert $/gal to $/bbl
-        ho = self.get_price("HO1 Comdty") * 42
+        # Batch fetch all 3 tickers in one call (was 6 separate calls before!)
+        batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
+        
+        wti_data = batch.get("CL1 Comdty", {})
+        rbob_data = batch.get("XB1 Comdty", {})
+        ho_data = batch.get("HO1 Comdty", {})
+        
+        wti = wti_data.get("current", 0)
+        rbob = rbob_data.get("current", 0) * 42  # Convert $/gal to $/bbl
+        ho = ho_data.get("current", 0) * 42
         
         crack = (2 * rbob + ho - 3 * wti) / 3
         
-        # Calculate change
-        wti_data = self.get_price_with_change("CL1 Comdty")
-        rbob_data = self.get_price_with_change("XB1 Comdty")
-        ho_data = self.get_price_with_change("HO1 Comdty")
+        # Calculate change using data already fetched
+        wti_open = wti_data.get("open", wti)
+        rbob_open = rbob_data.get("open", rbob_data.get("current", 0)) * 42
+        ho_open = ho_data.get("open", ho_data.get("current", 0)) * 42
         
-        crack_open = (2 * rbob_data["open"] * 42 + ho_data["open"] * 42 - 3 * wti_data["open"]) / 3
+        crack_open = (2 * rbob_open + ho_open - 3 * wti_open) / 3
         
         return {
             "crack": round(crack, 2),
@@ -427,10 +479,13 @@ class DataLoader:
         }
     
     def get_crack_spread_211(self) -> Dict[str, float]:
-        """Calculate 2-1-1 crack spread."""
-        wti = self.get_price("CL1 Comdty")
-        rbob = self.get_price("XB1 Comdty") * 42
-        ho = self.get_price("HO1 Comdty") * 42
+        """Calculate 2-1-1 crack spread (batch optimized)."""
+        # Batch fetch all 3 tickers in one call
+        batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
+        
+        wti = batch.get("CL1 Comdty", {}).get("current", 0)
+        rbob = batch.get("XB1 Comdty", {}).get("current", 0) * 42
+        ho = batch.get("HO1 Comdty", {}).get("current", 0) * 42
         
         crack = (rbob + ho - 2 * wti) / 2
         
@@ -439,6 +494,63 @@ class DataLoader:
             "wti": wti,
             "rbob_bbl": round(rbob, 2),
             "ho_bbl": round(ho, 2),
+        }
+    
+    def get_all_spreads(self) -> Dict[str, Dict]:
+        """
+        Get all spread data in a single optimized call.
+        Fetches WTI-Brent spread, 3-2-1 crack, and 2-1-1 crack with one batch fetch.
+        """
+        # Single batch fetch for all spread calculations
+        batch = self.get_prices_batch([
+            "CL1 Comdty", "CO1 Comdty", "XB1 Comdty", "HO1 Comdty"
+        ])
+        
+        wti_data = batch.get("CL1 Comdty", {})
+        brent_data = batch.get("CO1 Comdty", {})
+        rbob_data = batch.get("XB1 Comdty", {})
+        ho_data = batch.get("HO1 Comdty", {})
+        
+        # WTI-Brent spread
+        wti_current = wti_data.get("current", 0)
+        brent_current = brent_data.get("current", 0)
+        wti_open = wti_data.get("open", wti_current)
+        brent_open = brent_data.get("open", brent_current)
+        
+        wti_brent_spread = wti_current - brent_current
+        wti_brent_spread_open = wti_open - brent_open
+        
+        # Crack spreads
+        rbob_bbl = rbob_data.get("current", 0) * 42
+        ho_bbl = ho_data.get("current", 0) * 42
+        rbob_open_bbl = rbob_data.get("open", 0) * 42
+        ho_open_bbl = ho_data.get("open", 0) * 42
+        
+        crack_321 = (2 * rbob_bbl + ho_bbl - 3 * wti_current) / 3
+        crack_321_open = (2 * rbob_open_bbl + ho_open_bbl - 3 * wti_open) / 3
+        
+        crack_211 = (rbob_bbl + ho_bbl - 2 * wti_current) / 2
+        
+        return {
+            "wti_brent": {
+                "spread": round(wti_brent_spread, 2),
+                "change": round(wti_brent_spread - wti_brent_spread_open, 2),
+                "wti": wti_current,
+                "brent": brent_current,
+            },
+            "crack_321": {
+                "crack": round(crack_321, 2),
+                "change": round(crack_321 - crack_321_open, 2),
+                "wti": wti_current,
+                "rbob_bbl": round(rbob_bbl, 2),
+                "ho_bbl": round(ho_bbl, 2),
+            },
+            "crack_211": {
+                "crack": round(crack_211, 2),
+                "wti": wti_current,
+                "rbob_bbl": round(rbob_bbl, 2),
+                "ho_bbl": round(ho_bbl, 2),
+            },
         }
     
     # =========================================================================

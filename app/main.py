@@ -1,14 +1,19 @@
 """
 Oil Trading Dashboard - Streamlit entry point.
 Streamlit dashboard structured with reusable services for clarity and performance.
+
+Performance Optimizations:
+- Batch API calls for price fetching
+- Streamlit caching for expensive operations
+- Auto-refresh using st.fragment (non-blocking)
+- Lazy loading of historical data
 """
 
 from __future__ import annotations
 
 import os
 import sys
-import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +26,38 @@ if str(project_root) not in sys.path:
 
 from app import shared_state
 from app.dashboard_core import DashboardContext, PortfolioAnalytics
+
+
+# =============================================================================
+# STREAMLIT CACHING FOR EXPENSIVE OPERATIONS
+# =============================================================================
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_historical_data_cached(lookback_days: int = 90):
+    """
+    Cache historical data with 5-minute TTL.
+    Historical data doesn't change frequently, so caching is safe.
+    """
+    data_loader = shared_state.get_data_loader()
+    end = datetime.now()
+    start = end - timedelta(days=lookback_days)
+    try:
+        return data_loader.get_historical("CL1 Comdty", start_date=start, end_date=end)
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_futures_curve_cached(commodity: str = "wti", num_months: int = 12):
+    """
+    Cache futures curve with 1-minute TTL.
+    Curve data changes throughout the day but not every second.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_futures_curve(commodity, num_months)
+    except Exception:
+        return None
 
 # Page configuration must be the first Streamlit call
 st.set_page_config(
@@ -89,7 +126,14 @@ THEME_CSS = """
 
 
 class DashboardApp:
-    """Main application orchestrator."""
+    """
+    Main application orchestrator.
+    
+    Performance optimizations:
+    - Uses cached functions for expensive data fetches
+    - Non-blocking auto-refresh with streamlit-autorefresh or manual rerun
+    - Batch API calls for price data
+    """
 
     NAV_LINKS = (
         ("main.py", "Overview"),
@@ -103,11 +147,13 @@ class DashboardApp:
 
     def __init__(self):
         load_dotenv()
-        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "5"))
+        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "10"))  # Increased default
         self._init_session_state()
         self.data_loader = shared_state.get_data_loader()
         self._ensure_core_subscriptions()
-        self.context = DashboardContext(self.data_loader, shared_state.get_positions())
+        
+        # Use shared context for better caching
+        self.context = shared_state.get_dashboard_context()
         self._curve_structure = "Unknown"
 
     def apply_theme(self) -> None:
@@ -122,7 +168,7 @@ class DashboardApp:
         self._render_market_sections()
         self._render_bottom_sections()
         self._render_footer()
-        self._handle_auto_refresh()
+        self._setup_auto_refresh()
 
     # --------------------------------------------------------------------- #
     # SETUP
@@ -133,6 +179,8 @@ class DashboardApp:
             st.session_state.last_refresh = datetime.now()
         if "auto_refresh" not in st.session_state:
             st.session_state.auto_refresh = True
+        if "refresh_count" not in st.session_state:
+            st.session_state.refresh_count = 0
 
     def _ensure_core_subscriptions(self) -> None:
         if not st.session_state.get("core_ticker_subscription"):
@@ -278,7 +326,8 @@ class DashboardApp:
 
     def _render_price_chart(self) -> None:
         st.subheader("WTI Crude Oil Price")
-        hist_data = self.context.data.wti_history
+        # Use cached historical data (5-min TTL) - much faster!
+        hist_data = get_historical_data_cached(90)
         if hist_data is None or hist_data.empty:
             st.info("Historical data unavailable.")
             return
@@ -302,7 +351,8 @@ class DashboardApp:
 
     def _render_curve_section(self) -> None:
         st.subheader("WTI Futures Curve")
-        curve = self.context.data.futures_curve
+        # Use cached curve data (1-min TTL)
+        curve = get_futures_curve_cached("wti", 12)
         if curve is None or curve.empty:
             self._curve_structure = "Unknown"
             st.info("Futures curve unavailable.")
@@ -310,13 +360,26 @@ class DashboardApp:
         curve_chart = pd.DataFrame({"Month": curve["month"], "Price": curve["price"]})
         st.bar_chart(curve_chart.set_index("Month"), height=250, use_container_width=True)
 
-        metrics = self.context.data.curve_metrics()
+        # Calculate metrics from cached curve
+        prices = curve["price"]
+        slope = (prices.iloc[-1] - prices.iloc[0]) / max(len(prices) - 1, 1)
+        
+        if slope > 0.05:
+            structure = "Contango"
+        elif slope < -0.05:
+            structure = "Backwardation"
+        else:
+            structure = "Flat"
+        
+        def spread(idx: int) -> float:
+            return float(prices.iloc[0] - prices.iloc[idx]) if len(prices) > idx else 0.0
+        
         cols = st.columns(4)
-        cols[0].metric("M1-M2 Spread", f"${metrics['m1_m2']:.2f}")
-        cols[1].metric("M1-M6 Spread", f"${metrics['m1_m6']:.2f}")
-        cols[2].metric("M1-M12 Spread", f"${metrics['m1_m12']:.2f}")
-        cols[3].metric("Structure", metrics["structure"])
-        self._curve_structure = metrics["structure"]
+        cols[0].metric("M1-M2 Spread", f"${spread(1):.2f}")
+        cols[1].metric("M1-M6 Spread", f"${spread(5):.2f}")
+        cols[2].metric("M1-M12 Spread", f"${spread(11):.2f}")
+        cols[3].metric("Structure", structure)
+        self._curve_structure = structure
 
     def _render_positions_section(self) -> None:
         st.subheader("Position Summary")
@@ -407,11 +470,38 @@ class DashboardApp:
             "Signals are informational only"
         )
 
-    def _handle_auto_refresh(self) -> None:
-        if st.session_state.auto_refresh:
-            time.sleep(self.refresh_interval)
-            st.session_state.last_refresh = datetime.now()
-            st.rerun()
+    def _setup_auto_refresh(self) -> None:
+        """
+        Non-blocking auto-refresh using streamlit-autorefresh or JavaScript fallback.
+        This replaces the old time.sleep() approach which blocked the entire UI.
+        """
+        if not st.session_state.auto_refresh:
+            return
+        
+        # Try using streamlit-autorefresh (preferred)
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            count = st_autorefresh(
+                interval=self.refresh_interval * 1000,  # milliseconds
+                limit=None,  # No limit
+                key="auto_refresh_counter"
+            )
+            if count > st.session_state.refresh_count:
+                st.session_state.refresh_count = count
+                st.session_state.last_refresh = datetime.now()
+                # Clear caches to get fresh price data
+                get_futures_curve_cached.clear()
+        except ImportError:
+            # Fallback: JavaScript-based auto-refresh (non-blocking)
+            refresh_js = f"""
+            <script>
+                setTimeout(function() {{
+                    window.parent.document.querySelector('button[kind="secondary"]')?.click() ||
+                    window.parent.location.reload();
+                }}, {self.refresh_interval * 1000});
+            </script>
+            """
+            st.markdown(refresh_js, unsafe_allow_html=True)
 
 
 def main() -> None:

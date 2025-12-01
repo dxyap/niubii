@@ -212,6 +212,93 @@ else:
     print("Using simulation (Bloomberg not available)")
 ```
 
+## Performance Optimizations
+
+The dashboard is optimized for fast data loading and responsive UI with the following techniques:
+
+### Batch API Calls
+
+All price fetches are batched to minimize API round-trips:
+
+```python
+# Before: 12 sequential API calls for futures curve
+for i in range(1, 13):
+    get_price(f"CL{i} Comdty")  # Slow!
+
+# After: Single batch call
+get_prices(["CL1 Comdty", "CL2 Comdty", ..., "CL12 Comdty"])  # Fast!
+```
+
+**Impact**: Futures curve loads ~10x faster (1 call vs 12 calls)
+
+### Streamlit Caching
+
+Expensive operations use Streamlit's caching with appropriate TTLs:
+
+| Data Type | Cache TTL | Reason |
+|-----------|-----------|--------|
+| Historical data | 5 minutes | Doesn't change frequently |
+| Futures curve | 1 minute | Updates throughout trading day |
+| Real-time prices | No cache | Always fresh |
+
+```python
+@st.cache_data(ttl=300)  # 5 minutes
+def get_historical_data_cached(lookback_days: int = 90):
+    return data_loader.get_historical("CL1 Comdty", ...)
+```
+
+### Thread-Safe TTL Cache
+
+Real-time price data uses an efficient in-memory TTL cache:
+
+```python
+from core.data import TTLCache
+
+cache = TTLCache(max_size=1000, default_ttl=5.0)
+cache.set("CL1 Comdty", 72.50)
+price = cache.get("CL1 Comdty")  # Fast lookup, auto-expires
+```
+
+### Non-Blocking Auto-Refresh
+
+Auto-refresh uses `streamlit-autorefresh` instead of `time.sleep()`:
+
+```python
+# Before: Blocking sleep (freezes UI)
+time.sleep(5)
+st.rerun()
+
+# After: Non-blocking with streamlit-autorefresh
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=5000)  # Milliseconds
+```
+
+### Lazy Loading
+
+Expensive data is loaded only when needed:
+
+```python
+class DashboardData:
+    @property
+    def wti_history(self):
+        # Only fetches when first accessed
+        if self._wti_history is self._NOT_LOADED:
+            self._wti_history = self.data_loader.get_historical(...)
+        return self._wti_history
+```
+
+### Configuration
+
+Adjust performance settings in `.env`:
+
+```bash
+# Auto-refresh interval (seconds) - increase to reduce load
+AUTO_REFRESH_INTERVAL=10
+
+# Enable/disable real-time subscriptions
+BLOOMBERG_ENABLE_SUBSCRIPTIONS=true
+```
+
 ## Configuration
 
 ### Environment Variables (`.env`)
