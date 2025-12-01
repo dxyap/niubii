@@ -2,6 +2,7 @@
 Dashboard Theme
 ===============
 Shared styling for all dashboard pages.
+Professional trading terminal aesthetics with enhanced chart support.
 """
 
 DASHBOARD_THEME_CSS = """
@@ -134,28 +135,50 @@ DASHBOARD_THEME_CSS = """
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     
-    /* Chart container styling */
-    [data-testid="stVegaLiteChart"] {
+    /* Enhanced chart container styling */
+    [data-testid="stVegaLiteChart"],
+    .stPlotlyChart {
         background: rgba(15, 23, 42, 0.4);
-        border-radius: 8px;
-        padding: 8px;
+        border-radius: 12px;
+        padding: 12px;
         border: 1px solid #334155;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Chart card styling */
+    .chart-container {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid rgba(51, 65, 85, 0.5);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
     
     /* Tabs styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
+        background: rgba(15, 23, 42, 0.4);
+        padding: 4px;
+        border-radius: 10px;
     }
     
     .stTabs [data-baseweb="tab"] {
-        background-color: rgba(30, 41, 59, 0.5);
+        background-color: transparent;
         border-radius: 8px;
         color: #94a3b8;
         padding: 8px 16px;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: rgba(30, 41, 59, 0.6);
+        color: #e2e8f0;
     }
     
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
         color: white !important;
     }
     
@@ -163,6 +186,7 @@ DASHBOARD_THEME_CSS = """
     [data-testid="stSelectbox"] > div > div {
         background-color: rgba(30, 41, 59, 0.8);
         border-color: #334155;
+        border-radius: 8px;
     }
     
     /* Input styling */
@@ -171,6 +195,25 @@ DASHBOARD_THEME_CSS = """
         background-color: rgba(30, 41, 59, 0.8);
         border-color: #334155;
         color: #e2e8f0;
+        border-radius: 8px;
+    }
+    
+    /* Slider styling */
+    .stSlider > div > div > div {
+        background-color: #0ea5e9;
+    }
+    
+    /* Alert styling */
+    .stAlert {
+        border-radius: 8px;
+    }
+    
+    /* Metric card enhancement */
+    [data-testid="stMetric"] {
+        background: rgba(30, 41, 59, 0.3);
+        padding: 12px 16px;
+        border-radius: 10px;
+        border: 1px solid rgba(51, 65, 85, 0.3);
     }
 </style>
 """
@@ -183,26 +226,115 @@ def apply_theme(st):
 
 # Color palette for consistent use
 COLORS = {
+    # Primary colors
     "primary": "#0ea5e9",
     "primary_light": "#38bdf8",
+    "primary_dark": "#0284c7",
+    
+    # Secondary colors
     "secondary": "#8b5cf6",
-    "success": "#22c55e",
+    "secondary_light": "#a78bfa",
+    
+    # Semantic colors
+    "success": "#00DC82",
     "warning": "#f59e0b",
-    "error": "#ef4444",
+    "error": "#FF5252",
+    "info": "#00A3E0",
+    
+    # Candlestick colors (solid fills)
+    "candle_up": "#00DC82",
+    "candle_down": "#FF5252",
+    
+    # Text colors
     "text": "#e2e8f0",
     "text_muted": "#94a3b8",
+    "text_bright": "#f8fafc",
+    
+    # Background colors
     "background": "#0f172a",
     "surface": "#1e293b",
+    "surface_light": "#334155",
     "border": "#334155",
+    
+    # Chart colors
+    "chart_bg": "rgba(15, 23, 42, 0.8)",
+    "chart_grid": "rgba(51, 65, 85, 0.4)",
+    
+    # Moving average colors
+    "ma_fast": "#FFB020",
+    "ma_slow": "#A855F7",
+    "ma_long": "#06B6D4",
 }
 
 
-# Plotly theme configuration
+# Plotly theme configuration - enhanced for professional trading charts
 PLOTLY_LAYOUT = {
     "template": "plotly_dark",
     "paper_bgcolor": "rgba(0,0,0,0)",
     "plot_bgcolor": "rgba(15, 23, 42, 0.6)",
-    "font": {"color": "#e2e8f0"},
-    "xaxis": {"gridcolor": "rgba(51, 65, 85, 0.5)"},
-    "yaxis": {"gridcolor": "rgba(51, 65, 85, 0.5)"},
+    "font": {
+        "family": "'IBM Plex Mono', 'SF Mono', monospace",
+        "color": "#e2e8f0",
+        "size": 12,
+    },
+    "xaxis": {
+        "gridcolor": "rgba(51, 65, 85, 0.4)",
+        "gridwidth": 1,
+        "zeroline": False,
+        "tickfont": {"size": 11, "color": "#94a3b8"},
+    },
+    "yaxis": {
+        "gridcolor": "rgba(51, 65, 85, 0.4)",
+        "gridwidth": 1,
+        "zeroline": False,
+        "tickfont": {"size": 11, "color": "#94a3b8"},
+        "side": "right",
+    },
+    "legend": {
+        "orientation": "h",
+        "yanchor": "bottom",
+        "y": 1.02,
+        "xanchor": "right",
+        "x": 1,
+        "bgcolor": "rgba(0,0,0,0)",
+        "font": {"size": 11, "color": "#94a3b8"},
+    },
+    "margin": {"l": 10, "r": 60, "t": 40, "b": 40},
+    "hovermode": "x unified",
+    "hoverlabel": {
+        "bgcolor": "rgba(10, 15, 30, 0.95)",
+        "bordercolor": "#334155",
+        "font": {"family": "'IBM Plex Mono', monospace", "size": 12},
+    },
 }
+
+
+# Chart-specific configurations
+CANDLESTICK_CONFIG = {
+    "increasing": {
+        "line": {"color": "#00DC82", "width": 1},
+        "fillcolor": "#00DC82",
+    },
+    "decreasing": {
+        "line": {"color": "#FF5252", "width": 1},
+        "fillcolor": "#FF5252",
+    },
+}
+
+
+def get_chart_config():
+    """Get chart display configuration for Streamlit."""
+    return {
+        "displayModeBar": True,
+        "displaylogo": False,
+        "modeBarButtonsToRemove": [
+            "autoScale2d",
+            "lasso2d",
+            "select2d",
+        ],
+        "modeBarButtonsToAdd": [
+            "drawline",
+            "drawopenpath",
+            "eraseshape",
+        ],
+    }
