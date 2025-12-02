@@ -364,6 +364,34 @@ class PriceSimulator:
         
         return spreads.get(commodity, 0.0005)
     
+    def get_open_interest(self, ticker: str) -> int:
+        """Generate stable-but-realistic open interest for mock data."""
+        parsed = TickerMapper.parse_ticker(ticker)
+        commodity = parsed.get("commodity", "CL")
+        month = parsed.get("month_number") or parsed.get("month") or 1
+        
+        # Base levels approximate actual market depth
+        base_levels = {
+            "CL": 350_000,
+            "CO": 280_000,
+            "XB": 120_000,
+            "HO": 95_000,
+            "NG": 400_000,
+            "QS": 60_000,
+        }
+        base = base_levels.get(commodity, 80_000)
+        
+        # Later contracts generally have less activity
+        month_factor = max(0.25, 1 - 0.08 * (month - 1))
+        
+        # Deterministic noise so values stay consistent across refreshes
+        seed = int(hashlib.md5(ticker.encode()).hexdigest()[:8], 16)
+        rng = np.random.RandomState(seed)
+        noise = rng.randint(-8_000, 8_000)
+        
+        value = max(int(base * month_factor + noise), 1_000)
+        return value
+    
     def _update_price(self, ticker: str, elapsed_seconds: float):
         """Update price using realistic market microstructure model."""
         current = self._current_prices[ticker]
@@ -646,6 +674,8 @@ class BloombergClient:
                 for field in fields:
                     if field == "PX_VOLUME":
                         row[field] = np.random.randint(10000, 100000)
+                    elif field == "OPEN_INT":
+                        row[field] = self._simulator.get_open_interest(ticker)
                     else:
                         row[field] = self._simulator.get_price(ticker, field)
                 data[ticker] = row
@@ -876,7 +906,7 @@ class BloombergClient:
         tickers = [f"{ticker_prefix}{i} Comdty" for i in range(1, num_months + 1)]
         
         # Batch fetch all curve prices in a single API call
-        fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
+        fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW", "OPEN_INT"]
         try:
             prices_df = self.get_prices(tickers, fields)
         except Exception as e:
@@ -903,6 +933,9 @@ class BloombergClient:
             change = current - open_price if current and open_price else 0
             change_pct = (change / open_price * 100) if open_price else 0
             expiry = today + timedelta(days=30 * i)
+            open_interest = row.get("OPEN_INT")
+            if pd.isna(open_interest):
+                open_interest = None
             
             data.append({
                 "month": i,
@@ -911,7 +944,8 @@ class BloombergClient:
                 "change": round(change, 4),
                 "change_pct": round(change_pct, 4),
                 "expiry": expiry,
-                "days_to_expiry": (expiry - today).days
+                "days_to_expiry": (expiry - today).days,
+                "open_interest": open_interest
             })
         
         if not data:

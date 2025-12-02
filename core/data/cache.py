@@ -402,11 +402,23 @@ class ParquetStorage:
             return None
         
         df = pd.read_parquet(filepath)
+        # Normalize index to pandas datetime for safe comparisons
+        try:
+            df.index = pd.to_datetime(df.index)
+        except Exception:
+            df.reset_index(inplace=True)
+            df.rename(columns={"index": "date"}, inplace=True)
+            df["date"] = pd.to_datetime(df["date"])
+            df.set_index("date", inplace=True)
         
         # Apply date filters
         if start_date is not None:
+            if not isinstance(start_date, pd.Timestamp):
+                start_date = pd.Timestamp(start_date)
             df = df[df.index >= start_date]
         if end_date is not None:
+            if not isinstance(end_date, pd.Timestamp):
+                end_date = pd.Timestamp(end_date)
             df = df[df.index <= end_date]
         
         return df

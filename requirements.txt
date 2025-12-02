@@ -20,6 +20,7 @@ sqlalchemy>=2.0.0
 plotly>=5.18.0
 matplotlib>=3.8.0
 wordcloud>=1.9.0
+altair>=5.1.0
 
 # Caching & Storage
 diskcache>=5.6.0

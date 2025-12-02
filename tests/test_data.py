@@ -188,6 +188,7 @@ class TestBloombergClient:
         assert "price" in curve.columns
         assert "ticker" in curve.columns
         assert "month" in curve.columns
+        assert "open_interest" in curve.columns
     
     def test_get_intraday_prices(self):
         """Test getting intraday prices."""
@@ -275,6 +276,28 @@ class TestDataCache:
         assert "memory_entries" in stats
         assert "disk_entries" in stats
         assert "file_entries" in stats
+    
+    def test_parquet_storage_handles_date_index(self, tmp_path):
+        """Ensure cached OHLCV loads even when index stored as python date objects."""
+        storage = ParquetStorage(base_dir=str(tmp_path / "data"))
+        dates = pd.date_range("2024-01-01", periods=3, freq="D")
+        df = pd.DataFrame(
+            {"PX_LAST": [70.0, 71.0, 72.0]},
+            index=pd.Index([d.date() for d in dates], name="date"),
+        )
+        storage.save_ohlcv("CL1 Comdty", df, "daily")
+        
+        loaded = storage.load_ohlcv(
+            "CL1 Comdty",
+            frequency="daily",
+            start_date=datetime(2024, 1, 2),
+            end_date=datetime(2024, 1, 3),
+        )
+        
+        assert isinstance(loaded, pd.DataFrame)
+        assert len(loaded) == 2
+        assert loaded.index.min() >= pd.Timestamp("2024-01-02")
+        assert loaded.index.max() <= pd.Timestamp("2024-01-03")
 
 
 class TestDataLoader:
@@ -373,6 +396,7 @@ class TestDataLoader:
         assert isinstance(curve, pd.DataFrame)
         assert len(curve) == 12
         assert "price" in curve.columns
+        assert "open_interest" in curve.columns
     
     def test_get_term_structure(self, tmp_path):
         """Test term structure analysis."""
