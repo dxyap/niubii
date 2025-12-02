@@ -181,11 +181,21 @@ class TickerMapper:
         
         return {"ticker": ticker, "type": "unknown"}
     
+    # Known index tickers (non-standard format)
+    INDEX_TICKERS = {
+        "PGCR1MOE Index": {"name": "Dubai Crude", "multiplier": 1000},
+        "PGCR2MOE Index": {"name": "Dubai Crude M2", "multiplier": 1000},
+    }
+    
     @classmethod
     def validate_ticker(cls, ticker: str) -> Tuple[bool, str]:
         """Validate a Bloomberg ticker format."""
         if not ticker:
             return False, "Empty ticker"
+        
+        # Check for known index tickers
+        if ticker in cls.INDEX_TICKERS:
+            return True, "Valid (Index)"
         
         if not ticker.endswith(" Comdty"):
             return False, "Missing ' Comdty' suffix"
@@ -230,6 +240,7 @@ class PriceSimulator:
             "CL2 Comdty": 72.65,   # WTI 2nd Month
             "CO1 Comdty": 77.20,   # Brent Front Month
             "CO2 Comdty": 77.35,   # Brent 2nd Month
+            "PGCR1MOE Index": 76.80,  # Dubai Crude (Platts)
             "XB1 Comdty": 2.18,    # RBOB Gasoline ($/gal)
             "XB2 Comdty": 2.19,    # RBOB 2nd Month
             "HO1 Comdty": 2.52,    # Heating Oil ($/gal)
@@ -325,6 +336,10 @@ class PriceSimulator:
     
     def _infer_base_price(self, ticker: str) -> float:
         """Infer base price for unknown ticker from similar instruments."""
+        # Handle special tickers (non-standard format)
+        if "PGCR" in ticker or "Dubai" in ticker.upper():
+            return 76.80  # Dubai crude
+        
         parsed = TickerMapper.parse_ticker(ticker)
         commodity = parsed.get("commodity", "CL")
         month_num = parsed.get("month_number", 1)

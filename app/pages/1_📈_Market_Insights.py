@@ -71,97 +71,127 @@ with tab1:
     # Price Action Tab
     st.subheader("Price Action & Structure")
     
-    col1, col2 = st.columns([2, 1])
+    # Instrument definitions
+    instruments = {
+        "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil", "icon": "🇬🇧"},
+        "WTI": {"ticker": "CL1 Comdty", "name": "WTI Crude Oil", "icon": "🇺🇸"},
+        "Dubai": {"ticker": "PGCR1MOE Index", "name": "Dubai Crude Oil", "icon": "🇦🇪"},
+    }
     
-    with col1:
-        # Price chart with Plotly - using Brent as primary
-        chart_title = "**Brent Crude Oil - Daily Chart**"
-        if data_mode == "mock":
-            chart_title += " _(simulated)_"
-        st.markdown(chart_title)
+    # Instrument tabs
+    brent_tab, wti_tab, dubai_tab = st.tabs([
+        f"{instruments['Brent']['icon']} Brent",
+        f"{instruments['WTI']['icon']} WTI",
+        f"{instruments['Dubai']['icon']} Dubai"
+    ])
+    
+    def render_price_action(instrument_key: str):
+        """Render price action charts for an instrument."""
+        inst = instruments[instrument_key]
+        ticker = inst["ticker"]
+        name = inst["name"]
         
-        # Get Brent historical data 
-        hist_data = data_loader.get_historical(
-            "CO1 Comdty",
-            start_date=datetime.now() - timedelta(days=180)
-        )
+        col1, col2 = st.columns([2, 1])
         
-        if hist_data is not None and not hist_data.empty:
-            # Use enhanced candlestick chart with solid green/red fills
-            fig = create_candlestick_chart(
-                data=hist_data,
-                title="",
-                height=500,
-                show_volume=False,
-                show_ma=True,
-                ma_periods=[20, 50],
+        with col1:
+            # Price chart
+            chart_title = f"**{name} - Daily Chart**"
+            if data_mode == "mock":
+                chart_title += " _(simulated)_"
+            st.markdown(chart_title)
+            
+            # Get historical data
+            hist_data = data_loader.get_historical(
+                ticker,
+                start_date=datetime.now() - timedelta(days=180)
             )
             
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        else:
-            st.info("Historical data unavailable.")
+            if hist_data is not None and not hist_data.empty:
+                # Candlestick chart
+                fig = create_candlestick_chart(
+                    data=hist_data,
+                    title="",
+                    height=450,
+                    show_volume=False,
+                    show_ma=True,
+                    ma_periods=[20, 50],
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                
+                # Volume and Open Interest charts side by side
+                vol_col, oi_col = st.columns(2)
+                
+                with vol_col:
+                    st.markdown("**Volume**")
+                    if 'PX_VOLUME' in hist_data.columns:
+                        vol_fig = create_volume_chart(hist_data, height=120)
+                        st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+                
+                with oi_col:
+                    st.markdown("**Open Interest**")
+                    if 'OPEN_INT' in hist_data.columns:
+                        oi_fig = create_open_interest_chart(hist_data, height=120)
+                        st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+            else:
+                st.info(f"Historical data unavailable for {name}.")
+                hist_data = None
         
-        # Volume and Open Interest charts side by side
-        vol_col, oi_col = st.columns(2)
-        
-        with vol_col:
-            st.markdown("**Volume**")
-            if hist_data is not None and not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
-                vol_fig = create_volume_chart(hist_data, height=130)
-                st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
-        
-        with oi_col:
-            st.markdown("**Open Interest**")
-            if hist_data is not None and not hist_data.empty and 'OPEN_INT' in hist_data.columns:
-                oi_fig = create_open_interest_chart(hist_data, height=130)
-                st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+        with col2:
+            st.markdown("**Key Levels**")
+            
+            if hist_data is not None and not hist_data.empty:
+                # Get live price
+                live_price = price_cache.get(ticker)
+                current_price = live_price if live_price else hist_data['PX_LAST'].iloc[-1]
+                high_range = hist_data['PX_HIGH'].max()
+                low_range = hist_data['PX_LOW'].min()
+                
+                st.metric("Current Price", f"${current_price:.2f}")
+                st.metric("180D High", f"${high_range:.2f}")
+                st.metric("180D Low", f"${low_range:.2f}")
+                
+                # Price position
+                if high_range != low_range:
+                    position = (current_price - low_range) / (high_range - low_range) * 100
+                    st.progress(int(min(max(position, 0), 100)) / 100, text=f"Range Position: {position:.0f}%")
+            
+            st.divider()
+            
+            st.markdown("**Technical Indicators**")
+            
+            # Calculate technical indicators
+            if hist_data is not None and not hist_data.empty and len(hist_data) >= 14:
+                closes = hist_data['PX_LAST']
+                
+                # RSI calculation
+                delta = closes.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                current_rsi = rsi.iloc[-1] if not np.isnan(rsi.iloc[-1]) else 50
+                
+                # Trend determination
+                sma20 = closes.rolling(20).mean().iloc[-1] if len(closes) >= 20 else closes.iloc[-1]
+                sma50 = closes.rolling(50).mean().iloc[-1] if len(closes) >= 50 else closes.iloc[-1]
+                trend = "Bullish" if sma20 > sma50 else "Bearish" if sma20 < sma50 else "Neutral"
+                
+                st.text(f"RSI (14): {current_rsi:.1f}")
+                st.text(f"Trend: {trend}")
+                st.text(f"SMA20: ${sma20:.2f}")
+                st.text(f"SMA50: ${sma50:.2f}")
+            else:
+                st.text("Insufficient data for indicators")
     
-    with col2:
-        st.markdown("**Key Levels**")
-        
-        if hist_data is not None and not hist_data.empty:
-            # Use LIVE price from data loader
-            live_brent = price_cache.get("CO1 Comdty")
-            current_price = live_brent if live_brent else hist_data['PX_LAST'].iloc[-1]
-            high_range = hist_data['PX_HIGH'].max()
-            low_range = hist_data['PX_LOW'].min()
-            
-            st.metric("Current Price", f"${current_price:.2f}")
-            st.metric("180D High", f"${high_range:.2f}")
-            st.metric("180D Low", f"${low_range:.2f}")
-            
-            # Price position
-            if high_range != low_range:
-                position = (current_price - low_range) / (high_range - low_range) * 100
-                st.progress(int(min(max(position, 0), 100)) / 100, text=f"Range Position: {position:.0f}%")
-        
-        st.divider()
-        
-        st.markdown("**Technical Indicators**")
-        
-        # Calculate real technical indicators if we have data
-        if hist_data is not None and not hist_data.empty and len(hist_data) >= 14:
-            closes = hist_data['PX_LAST']
-            
-            # RSI calculation
-            delta = closes.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            current_rsi = rsi.iloc[-1] if not np.isnan(rsi.iloc[-1]) else 50
-            
-            # Simple trend determination
-            sma20 = closes.rolling(20).mean().iloc[-1] if len(closes) >= 20 else closes.iloc[-1]
-            sma50 = closes.rolling(50).mean().iloc[-1] if len(closes) >= 50 else closes.iloc[-1]
-            trend = "Bullish" if sma20 > sma50 else "Bearish" if sma20 < sma50 else "Neutral"
-            
-            st.text(f"RSI (14): {current_rsi:.1f}")
-            st.text(f"Trend: {trend}")
-            st.text(f"SMA20: ${sma20:.2f}")
-            st.text(f"SMA50: ${sma50:.2f}")
-        else:
-            st.text("Insufficient data for indicators")
+    with brent_tab:
+        render_price_action("Brent")
+    
+    with wti_tab:
+        render_price_action("WTI")
+    
+    with dubai_tab:
+        render_price_action("Dubai")
 
 with tab2:
     # Term Structure Tab
