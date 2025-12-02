@@ -76,10 +76,10 @@ with tab1:
     
     # Instrument definitions
     # Note: Dubai uses 2nd month swap (DAT2) to avoid BALMO (Balance of Month)
-    # Note: WTI uses ICE prices (T1 Comdty) not NYMEX (CL1)
+    # Note: WTI uses ICE prices (ENA1 Comdty) not NYMEX (CL1)
     instruments = {
         "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil (ICE)", "icon": "🇬🇧"},
-        "WTI": {"ticker": "T1 Comdty", "name": "WTI Crude Oil (ICE)", "icon": "🇺🇸"},
+        "WTI": {"ticker": "ENA1 Comdty", "name": "WTI Crude Oil (ICE)", "icon": "🇺🇸"},
         "Dubai": {"ticker": "DAT2 Comdty", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
     

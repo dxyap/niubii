@@ -42,7 +42,7 @@ class TickerMapper:
     TICKER_FORMATS = {
         # Crude Oil Futures
         "wti": "CL{n} Comdty",         # WTI Crude (NYMEX)
-        "wti_ice": "T{n} Comdty",      # WTI Crude (ICE)
+        "wti_ice": "ENA{n} Comdty",    # WTI Crude (ICE)
         "brent": "CO{n} Comdty",       # Brent Crude (ICE)
         "dubai": "DAT{n} Comdty",      # Dubai Crude Swap (ICE)
         
@@ -79,7 +79,7 @@ class TickerMapper:
     # Contract multipliers (for position sizing)
     CONTRACT_MULTIPLIERS = {
         "CL": 1000,    # 1,000 barrels (WTI NYMEX)
-        "T": 1000,     # 1,000 barrels (WTI ICE)
+        "ENA": 1000,   # 1,000 barrels (WTI ICE)
         "CO": 1000,    # 1,000 barrels (Brent ICE)
         "DAT": 1000,   # 1,000 barrels (Dubai Crude Swap)
         "XB": 42000,   # 42,000 gallons
@@ -91,7 +91,7 @@ class TickerMapper:
     # Exchange mappings
     EXCHANGES = {
         "CL": "NYMEX",
-        "T": "ICE",      # WTI ICE
+        "ENA": "ICE",    # WTI ICE
         "CO": "ICE",
         "DAT": "ICE",    # Dubai Crude Swap
         "XB": "NYMEX",
@@ -216,10 +216,10 @@ class TickerMapper:
     }
     
     # Special ticker patterns that don't follow standard 2-char prefix
-    # DAT = Dubai Average Crude, T = ICE WTI
+    # DAT = Dubai Average Crude, ENA = ICE WTI
     SPECIAL_PREFIXES = {
         "DAT": {"name": "Dubai Crude Swap", "multiplier": 1000, "exchange": "ICE"},
-        "T": {"name": "WTI Crude (ICE)", "multiplier": 1000, "exchange": "ICE"},
+        "ENA": {"name": "WTI Crude (ICE)", "multiplier": 1000, "exchange": "ICE"},
     }
     
     @classmethod
@@ -274,8 +274,8 @@ class PriceSimulator:
         self._reference_prices = {
             "CL1 Comdty": 72.50,   # WTI Front Month (NYMEX)
             "CL2 Comdty": 72.65,   # WTI 2nd Month (NYMEX)
-            "T1 Comdty": 72.55,    # WTI Front Month (ICE)
-            "T2 Comdty": 72.70,    # WTI 2nd Month (ICE)
+            "ENA1 Comdty": 72.55,  # WTI Front Month (ICE)
+            "ENA2 Comdty": 72.70,  # WTI 2nd Month (ICE)
             "CO1 Comdty": 77.20,   # Brent Front Month
             "CO2 Comdty": 77.35,   # Brent 2nd Month
             "DAT2 Comdty": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
@@ -294,7 +294,7 @@ class PriceSimulator:
             # WTI NYMEX: slight contango
             self._reference_prices[f"CL{i} Comdty"] = 72.50 + (i - 1) * 0.12
             # WTI ICE: slight contango (tracks NYMEX closely)
-            self._reference_prices[f"T{i} Comdty"] = 72.55 + (i - 1) * 0.12
+            self._reference_prices[f"ENA{i} Comdty"] = 72.55 + (i - 1) * 0.12
             # Brent: slight contango
             self._reference_prices[f"CO{i} Comdty"] = 77.20 + (i - 1) * 0.10
             # Dubai: slight contango (starts at M2)
@@ -391,7 +391,7 @@ class PriceSimulator:
         # Base prices by commodity (including ICE WTI and Dubai)
         base_prices = {
             "CL": 72.50,   # WTI NYMEX
-            "T": 72.55,    # WTI ICE
+            "ENA": 72.55,  # WTI ICE
             "CO": 77.20,   # Brent
             "DAT": 76.80,  # Dubai Crude Swap
             "XB": 2.18,

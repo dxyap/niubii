@@ -64,14 +64,14 @@ wti_nymex:
 wti:
   name: "WTI Crude Oil (ICE)"
   exchange: "ICE"
-  base_ticker: "T"
+  base_ticker: "ENA"
   contract_size: 1000          # barrels
   tick_size: 0.01              # $/bbl
   tick_value: 10.00            # $
   currency: "USD"
   trading_hours: "20:00-18:00 ET"
-  front_month: "T1 Comdty"
-  second_month: "T2 Comdty"
+  front_month: "ENA1 Comdty"
+  second_month: "ENA2 Comdty"
   notes: "ICE WTI - mirrors NYMEX WTI pricing"
   
 # Brent Crude Oil (ICE)
@@ -184,8 +184,8 @@ month_codes:
 # =============================================================================
 front_month:
   wti_nymex: "CL1 Comdty"     # WTI on NYMEX
-  wti_ice: "T1 Comdty"        # WTI on ICE (preferred)
-  wti: "T1 Comdty"            # Default WTI uses ICE
+  wti_ice: "ENA1 Comdty"      # WTI on ICE (preferred)
+  wti: "ENA1 Comdty"          # Default WTI uses ICE
   brent: "CO1 Comdty"
   dubai: "DAT2 Comdty"        # M2 swap (avoid BALMO)
   rbob: "XB1 Comdty"
@@ -195,8 +195,8 @@ front_month:
 
 second_month:
   wti_nymex: "CL2 Comdty"
-  wti_ice: "T2 Comdty"
-  wti: "T2 Comdty"            # Default WTI uses ICE
+  wti_ice: "ENA2 Comdty"
+  wti: "ENA2 Comdty"          # Default WTI uses ICE
   brent: "CO2 Comdty"
   dubai: "DAT3 Comdty"        # M3 swap
   rbob: "XB2 Comdty"
