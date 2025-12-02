@@ -1,0 +1,172 @@
+"""
+Core Constants
+==============
+Centralized constants for the Oil Trading Dashboard.
+
+This module provides a single source of truth for:
+- Contract specifications
+- Default configuration values
+- Trading hours
+- Risk parameters
+"""
+
+from typing import Dict, Final
+
+# =============================================================================
+# CONTRACT SPECIFICATIONS
+# =============================================================================
+
+# Contract multipliers (barrels or gallons per contract)
+CONTRACT_MULTIPLIERS: Final[Dict[str, int]] = {
+    "CL": 1000,     # WTI Crude (NYMEX) - 1,000 barrels
+    "ENA": 1000,    # WTI Crude (ICE) - 1,000 barrels
+    "CO": 1000,     # Brent Crude (ICE) - 1,000 barrels
+    "DAT": 1000,    # Dubai Crude Swap - 1,000 barrels
+    "XB": 42000,    # RBOB Gasoline (NYMEX) - 42,000 gallons
+    "HO": 42000,    # Heating Oil (NYMEX) - 42,000 gallons
+    "QS": 100,      # Gasoil (ICE) - 100 metric tonnes
+    "NG": 10000,    # Natural Gas (NYMEX) - 10,000 MMBtu
+}
+
+# Tick sizes (minimum price increment)
+TICK_SIZES: Final[Dict[str, float]] = {
+    "CL": 0.01,
+    "ENA": 0.01,
+    "CO": 0.01,
+    "DAT": 0.01,
+    "XB": 0.0001,
+    "HO": 0.0001,
+    "QS": 0.25,
+    "NG": 0.001,
+}
+
+# Tick values ($ value per tick)
+TICK_VALUES: Final[Dict[str, float]] = {
+    "CL": 10.00,
+    "ENA": 10.00,
+    "CO": 10.00,
+    "DAT": 10.00,
+    "XB": 4.20,
+    "HO": 4.20,
+    "QS": 25.00,
+    "NG": 10.00,
+}
+
+# Exchange mappings
+EXCHANGES: Final[Dict[str, str]] = {
+    "CL": "NYMEX",
+    "ENA": "ICE",
+    "CO": "ICE",
+    "DAT": "ICE",
+    "XB": "NYMEX",
+    "HO": "NYMEX",
+    "QS": "ICE",
+    "NG": "NYMEX",
+}
+
+# =============================================================================
+# DEFAULT RISK PARAMETERS
+# =============================================================================
+
+DEFAULT_VAR_LIMIT: Final[float] = 375_000.0  # Maximum 1-day VaR (USD)
+DEFAULT_GROSS_EXPOSURE_LIMIT: Final[float] = 20_000_000.0  # Maximum gross exposure
+DEFAULT_NET_EXPOSURE_LIMIT: Final[float] = 15_000_000.0  # Maximum net exposure
+DEFAULT_DAILY_DRAWDOWN_LIMIT: Final[float] = 0.05  # 5% daily drawdown
+
+# VaR confidence levels
+VAR_CONFIDENCE_95: Final[float] = 0.95
+VAR_CONFIDENCE_99: Final[float] = 0.99
+
+# Simplified VaR estimate factor (percentage of gross exposure)
+SIMPLIFIED_VAR_FACTOR: Final[float] = 0.02  # 2%
+
+# =============================================================================
+# CACHE SETTINGS
+# =============================================================================
+
+CACHE_TTL_REALTIME: Final[int] = 5  # seconds
+CACHE_TTL_INTRADAY: Final[int] = 60  # seconds
+CACHE_TTL_HISTORICAL: Final[int] = 86400  # 24 hours
+CACHE_TTL_REFERENCE: Final[int] = 604800  # 7 days
+
+# =============================================================================
+# BLOOMBERG FIELD MAPPINGS
+# =============================================================================
+
+BLOOMBERG_FIELDS: Final[Dict[str, str]] = {
+    "last": "PX_LAST",
+    "bid": "PX_BID",
+    "ask": "PX_ASK",
+    "open": "PX_OPEN",
+    "high": "PX_HIGH",
+    "low": "PX_LOW",
+    "close": "PX_LAST",
+    "volume": "PX_VOLUME",
+    "open_interest": "OPEN_INT",
+    "vwap": "PX_VWAP",
+    "settlement": "PX_SETTLE",
+}
+
+# =============================================================================
+# MONTH CODES
+# =============================================================================
+
+MONTH_CODES: Final[Dict[int, str]] = {
+    1: 'F',   # January
+    2: 'G',   # February
+    3: 'H',   # March
+    4: 'J',   # April
+    5: 'K',   # May
+    6: 'M',   # June
+    7: 'N',   # July
+    8: 'Q',   # August
+    9: 'U',   # September
+    10: 'V',  # October
+    11: 'X',  # November
+    12: 'Z',  # December
+}
+
+MONTH_CODES_REVERSE: Final[Dict[str, int]] = {v: k for k, v in MONTH_CODES.items()}
+
+# =============================================================================
+# DASHBOARD SETTINGS
+# =============================================================================
+
+DEFAULT_REFRESH_INTERVAL: Final[int] = 10  # seconds
+DEFAULT_LOOKBACK_DAYS: Final[int] = 90
+MAX_POSITIONS_DISPLAY: Final[int] = 50
+
+# =============================================================================
+# ML MODEL SETTINGS
+# =============================================================================
+
+DEFAULT_PREDICTION_HORIZON: Final[int] = 5  # days
+DEFAULT_TRAIN_TEST_SPLIT: Final[float] = 0.8
+MIN_TRAINING_SAMPLES: Final[int] = 252  # ~1 year of daily data
+
+# =============================================================================
+# PRICE REFERENCE VALUES (for simulation)
+# =============================================================================
+
+REFERENCE_PRICES: Final[Dict[str, float]] = {
+    "CL": 72.50,    # WTI NYMEX
+    "ENA": 72.55,   # WTI ICE
+    "CO": 77.20,    # Brent
+    "DAT": 76.80,   # Dubai
+    "XB": 2.18,     # RBOB ($/gal)
+    "HO": 2.52,     # Heating Oil ($/gal)
+    "QS": 680.50,   # Gasoil ($/tonne)
+    "NG": 3.25,     # Natural Gas
+}
+
+# Annualized volatility estimates (for VaR)
+ANNUALIZED_VOLATILITY: Final[Dict[str, float]] = {
+    "CL": 0.25,     # 25% annual vol
+    "ENA": 0.25,
+    "CO": 0.25,
+    "DAT": 0.25,
+    "XB": 0.30,
+    "HO": 0.30,
+    "QS": 0.28,
+    "NG": 0.40,
+}
