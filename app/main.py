@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -26,6 +27,12 @@ if str(project_root) not in sys.path:
 
 from app import shared_state
 from app.dashboard_core import DashboardContext, PortfolioAnalytics
+from app.components.charts import (
+    create_candlestick_chart,
+    create_futures_curve_chart,
+    CHART_COLORS,
+)
+from app.components.theme import get_chart_config
 
 
 # =============================================================================
@@ -416,8 +423,17 @@ class DashboardApp:
             st.info("Historical data unavailable.")
             return
 
-        chart_data = pd.DataFrame({"Price": hist_data["PX_LAST"]})
-        st.line_chart(chart_data, height=300, use_container_width=True, color="#0ea5e9")
+        # Create professional candlestick chart with solid green/red fills
+        fig = create_candlestick_chart(
+            data=hist_data,
+            title="",
+            height=380,
+            show_volume=False,
+            show_ma=True,
+            ma_periods=[20, 50],
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         # Use LIVE price from oil_prices for "Current", historical data for stats
         prices = self.context.data.oil_prices
@@ -445,8 +461,15 @@ class DashboardApp:
             self._curve_structure = "Unknown"
             st.info("Futures curve unavailable.")
             return
-        curve_chart = pd.DataFrame({"Month": curve["month"], "Price": curve["price"]})
-        st.bar_chart(curve_chart.set_index("Month"), height=250, use_container_width=True, color="#0ea5e9")
+        
+        # Create elegant line chart for futures curve with proper y-axis
+        fig = create_futures_curve_chart(
+            curve_data=curve,
+            title="",
+            height=280,
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         # Calculate metrics from cached curve
         prices = curve["price"]

@@ -23,11 +23,12 @@ sys.path.insert(0, str(app_dir))
 
 from app import shared_state
 from core.trading import TradeBlotter, PositionManager, PnLCalculator
+from app.components.charts import create_pnl_chart, create_bar_chart, CHART_COLORS, BASE_LAYOUT
 
 st.set_page_config(page_title="Trade Blotter | Oil Trading", page_icon="📋", layout="wide")
 
 # Apply shared theme
-from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
 apply_theme(st)
 
 # Initialize components
@@ -177,29 +178,30 @@ with tab1:
         
         # Determine fill color based on current P&L
         current_pnl = intraday['pnl'].iloc[-1]
-        fill_color = 'rgba(0, 210, 106, 0.3)' if current_pnl >= 0 else 'rgba(255, 75, 75, 0.3)'
-        line_color = '#00D26A' if current_pnl >= 0 else '#FF4B4B'
+        fill_color = 'rgba(0, 220, 130, 0.15)' if current_pnl >= 0 else 'rgba(255, 82, 82, 0.15)'
+        line_color = CHART_COLORS['profit'] if current_pnl >= 0 else CHART_COLORS['loss']
         
         fig.add_trace(go.Scatter(
             x=intraday['timestamp'],
             y=intraday['pnl'],
             fill='tozeroy',
             fillcolor=fill_color,
-            line=dict(color=line_color, width=2),
-            name='WTI P&L'
+            line=dict(color=line_color, width=2.5),
+            name='WTI P&L',
+            hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
         ))
         
-        fig.add_hline(y=0, line_dash='solid', line_color='white', line_width=1)
+        fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
         
         fig.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=300,
             yaxis_title='P&L ($)',
+            yaxis_tickformat='$,.0f',
             xaxis_title='Time',
-            margin=dict(l=0, r=0, t=10, b=0),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
     else:
         st.info("Collecting intraday price data...")
 
@@ -327,27 +329,32 @@ with tab3:
     ])
     
     if not strategy_pnl.empty:
-        # Bar chart
+        # Bar chart with enhanced styling
         fig = go.Figure()
         
-        colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in strategy_pnl['P&L']]
+        colors = [CHART_COLORS['profit'] if x > 0 else CHART_COLORS['loss'] for x in strategy_pnl['P&L']]
         
         fig.add_trace(go.Bar(
             x=strategy_pnl['Strategy'],
             y=strategy_pnl['P&L'],
             marker_color=colors,
+            marker_line_width=0,
             text=[f"${x:,.0f}" for x in strategy_pnl['P&L']],
             textposition='outside',
+            textfont=dict(size=12, color=CHART_COLORS['text_primary']),
+            hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
         ))
         
+        fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)')
+        
         fig.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=350,
             yaxis_title='P&L ($)',
-            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis_tickformat='$,.0f',
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
     
     # Performance metrics
     st.subheader("Performance Metrics (MTD)")
@@ -390,25 +397,26 @@ with tab3:
         fig2 = go.Figure()
         
         current_pnl = cumulative_pnl.iloc[-1]
-        fill_color = 'rgba(0, 163, 224, 0.3)' if current_pnl >= 0 else 'rgba(255, 75, 75, 0.3)'
-        line_color = '#00A3E0' if current_pnl >= 0 else '#FF4B4B'
+        fill_color = 'rgba(0, 220, 130, 0.15)' if current_pnl >= 0 else 'rgba(255, 82, 82, 0.15)'
+        line_color = CHART_COLORS['profit'] if current_pnl >= 0 else CHART_COLORS['loss']
         
         fig2.add_trace(go.Scatter(
             x=hist_data.index,
             y=cumulative_pnl,
             fill='tozeroy',
             fillcolor=fill_color,
-            line=dict(color=line_color, width=2),
-            name='Cumulative P&L'
+            line=dict(color=line_color, width=2.5),
+            name='Cumulative P&L',
+            hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
         ))
         
-        fig2.add_hline(y=0, line_dash='solid', line_color='white')
+        fig2.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)')
         
         fig2.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=350,
             yaxis_title='Cumulative P&L ($)',
-            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis_tickformat='$,.0f',
         )
         
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, config=get_chart_config())

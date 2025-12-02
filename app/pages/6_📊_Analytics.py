@@ -22,11 +22,18 @@ load_dotenv()
 
 from app import shared_state
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
+from app.components.charts import (
+    create_candlestick_chart,
+    create_volume_chart,
+    create_heatmap,
+    CHART_COLORS,
+    BASE_LAYOUT,
+)
 
 st.set_page_config(page_title="Analytics | Oil Trading", page_icon="📊", layout="wide")
 
 # Apply shared theme
-from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
 apply_theme(st)
 
 # Initialize
@@ -112,68 +119,39 @@ with tab1:
             )
         
         if not hist_data.empty:
-            fig = go.Figure()
+            # Create enhanced candlestick chart
+            ma_periods = [20, 50] if show_ma else []
+            fig = create_candlestick_chart(
+                data=hist_data,
+                title="",
+                height=450,
+                show_volume=False,
+                show_ma=show_ma,
+                ma_periods=ma_periods,
+            )
             
-            # Candlestick
-            fig.add_trace(go.Candlestick(
-                x=hist_data.index,
-                open=hist_data['PX_OPEN'],
-                high=hist_data['PX_HIGH'],
-                low=hist_data['PX_LOW'],
-                close=hist_data['PX_LAST'],
-                name='Price'
-            ))
-            
-            if show_ma:
-                hist_data['SMA20'] = hist_data['PX_LAST'].rolling(20).mean()
-                hist_data['SMA50'] = hist_data['PX_LAST'].rolling(50).mean()
-                
-                fig.add_trace(go.Scatter(
-                    x=hist_data.index, y=hist_data['SMA20'],
-                    name='SMA 20', line=dict(color='orange', width=1)
-                ))
-                fig.add_trace(go.Scatter(
-                    x=hist_data.index, y=hist_data['SMA50'],
-                    name='SMA 50', line=dict(color='purple', width=1)
-                ))
-            
+            # Add Bollinger Bands if enabled
             if show_bb:
                 sma = hist_data['PX_LAST'].rolling(20).mean()
                 std = hist_data['PX_LAST'].rolling(20).std()
                 
                 fig.add_trace(go.Scatter(
                     x=hist_data.index, y=sma + 2*std,
-                    name='BB Upper', line=dict(color='gray', width=1, dash='dash')
+                    name='BB Upper', line=dict(color=CHART_COLORS['text_secondary'], width=1, dash='dash'),
+                    hovertemplate='Upper BB: $%{y:.2f}<extra></extra>',
                 ))
                 fig.add_trace(go.Scatter(
                     x=hist_data.index, y=sma - 2*std,
-                    name='BB Lower', line=dict(color='gray', width=1, dash='dash'),
-                    fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'
+                    name='BB Lower', line=dict(color=CHART_COLORS['text_secondary'], width=1, dash='dash'),
+                    fill='tonexty', fillcolor='rgba(148, 163, 184, 0.1)',
+                    hovertemplate='Lower BB: $%{y:.2f}<extra></extra>',
                 ))
             
-            fig.update_layout(
-                template='plotly_dark',
-                height=450,
-                xaxis_rangeslider_visible=False,
-                margin=dict(l=0, r=0, t=10, b=0),
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
             
             if show_volume and 'PX_VOLUME' in hist_data.columns:
-                vol_fig = go.Figure()
-                vol_fig.add_trace(go.Bar(
-                    x=hist_data.index,
-                    y=hist_data['PX_VOLUME'],
-                    marker_color='#00A3E0',
-                    name='Volume'
-                ))
-                vol_fig.update_layout(
-                    template='plotly_dark',
-                    height=120,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                )
-                st.plotly_chart(vol_fig, use_container_width=True)
+                vol_fig = create_volume_chart(hist_data, height=120)
+                st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
             
             # Statistics
             st.markdown("**Statistics**")
@@ -218,20 +196,10 @@ with tab2:
         'S&P 500': [0.42, 0.38, 0.35, 0.32, -0.55, 1.00],
     }, index=['WTI', 'Brent', 'RBOB', 'Heating Oil', 'USD Index', 'S&P 500'])
     
-    fig = px.imshow(
-        corr_data,
-        text_auto='.2f',
-        color_continuous_scale='RdBu_r',
-        zmin=-1, zmax=1,
-    )
+    # Create enhanced heatmap
+    fig = create_heatmap(corr_data, title="", colorscale="RdBu_r", height=400)
     
-    fig.update_layout(
-        template='plotly_dark',
-        height=400,
-        margin=dict(l=0, r=0, t=10, b=0),
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
     
     st.divider()
     
@@ -247,23 +215,23 @@ with tab2:
     fig2.add_trace(go.Scatter(
         x=dates, y=corr_series,
         fill='tozeroy',
-        fillcolor='rgba(0, 163, 224, 0.3)',
-        line=dict(color='#00A3E0', width=2),
-        name='Correlation'
+        fillcolor='rgba(0, 163, 224, 0.1)',
+        line=dict(color=CHART_COLORS['primary'], width=2.5),
+        name='Correlation',
+        hovertemplate='%{x}<br>Corr: %{y:.3f}<extra></extra>',
     ))
     
-    fig2.add_hline(y=0.95, line_dash='dash', line_color='orange',
+    fig2.add_hline(y=0.95, line_dash='dash', line_color=CHART_COLORS['ma_fast'],
                   annotation_text='Long-term Avg')
     
     fig2.update_layout(
-        template='plotly_dark',
+        **BASE_LAYOUT,
         height=300,
         yaxis_title='Correlation',
-        yaxis=dict(range=[0.8, 1.0]),
-        margin=dict(l=0, r=0, t=10, b=0),
+        yaxis=dict(**BASE_LAYOUT['yaxis'], range=[0.8, 1.0], tickformat='.2f'),
     )
     
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, config=get_chart_config())
 
 with tab3:
     st.subheader("Seasonality Analysis")
@@ -304,18 +272,20 @@ with tab3:
             x=months + months[::-1],
             y=seasonal_high + seasonal_low[::-1],
             fill='toself',
-            fillcolor='rgba(0, 163, 224, 0.2)',
+            fillcolor='rgba(0, 163, 224, 0.1)',
             line=dict(color='rgba(255,255,255,0)'),
             name='Historical Range',
+            hoverinfo='skip',
         ))
         
         # Average line
         fig.add_trace(go.Scatter(
             x=months, y=seasonal,
             mode='lines+markers',
-            line=dict(color='#00A3E0', width=3),
-            marker=dict(size=10),
+            line=dict(color=CHART_COLORS['primary'], width=3, shape='spline'),
+            marker=dict(size=10, color=CHART_COLORS['primary'], line=dict(width=2, color='white')),
             name='5-Year Average',
+            hovertemplate='%{x}<br>Avg: %{y:+.1f}%<extra></extra>',
         ))
         
         # Current year (mock)
@@ -325,21 +295,22 @@ with tab3:
         fig.add_trace(go.Scatter(
             x=months[:current_month], y=current_year,
             mode='lines+markers',
-            line=dict(color='#00D26A', width=3),
-            marker=dict(size=10),
+            line=dict(color=CHART_COLORS['profit'], width=3, shape='spline'),
+            marker=dict(size=10, color=CHART_COLORS['profit'], line=dict(width=2, color='white')),
             name='Current Year',
+            hovertemplate='%{x}<br>YTD: %{y:+.1f}%<extra></extra>',
         ))
         
-        fig.add_hline(y=0, line_dash='solid', line_color='white', line_width=1)
+        fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
         
         fig.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=400,
             yaxis_title='Return (%)',
-            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis_tickformat='+.0f',
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
         
         # Monthly stats table
         st.markdown("**Monthly Statistics**")
@@ -431,18 +402,19 @@ with tab4:
         fig.add_trace(go.Scatter(
             x=dates, y=equity,
             fill='tozeroy',
-            fillcolor='rgba(0, 210, 106, 0.3)',
-            line=dict(color='#00D26A', width=2),
-            name='Equity'
+            fillcolor='rgba(0, 220, 130, 0.15)',
+            line=dict(color=CHART_COLORS['profit'], width=2.5),
+            name='Equity',
+            hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
         ))
         
         fig.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=200,
-            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis_tickformat='$,.0f',
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
     
     st.divider()
     

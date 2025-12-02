@@ -23,11 +23,12 @@ sys.path.insert(0, str(app_dir))
 
 from app import shared_state
 from core.risk import VaRCalculator, RiskLimits, RiskMonitor
+from app.components.charts import create_gauge_chart, create_bar_chart, CHART_COLORS, BASE_LAYOUT
 
 st.set_page_config(page_title="Risk Management | Oil Trading", page_icon="🛡️", layout="wide")
 
 # Apply shared theme
-from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
 apply_theme(st)
 
 # Initialize components
@@ -162,39 +163,18 @@ with tab1:
     with col1:
         st.subheader("VaR Utilization")
         
-        # VaR gauge
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
+        # VaR gauge with enhanced styling
+        fig = create_gauge_chart(
             value=var_util,
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "VaR Utilization (%)", 'font': {'size': 16}},
-            delta={'reference': 75, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
-            gauge={
-                'axis': {'range': [0, 100], 'tickwidth': 1},
-                'bar': {'color': "#00A3E0"},
-                'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "gray",
-                'steps': [
-                    {'range': [0, 75], 'color': 'rgba(0, 210, 106, 0.3)'},
-                    {'range': [75, 90], 'color': 'rgba(255, 165, 0, 0.3)'},
-                    {'range': [90, 100], 'color': 'rgba(255, 75, 75, 0.3)'}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 90
-                }
-            }
-        ))
-        
-        fig.update_layout(
+            title="VaR Utilization",
+            min_val=0,
+            max_val=100,
+            warning_threshold=75,
+            critical_threshold=90,
             height=300,
-            template='plotly_dark',
-            margin=dict(l=20, r=20, t=50, b=20),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
         
         # VaR breakdown - calculated from actual positions
         st.subheader("Risk Contribution by Position")
@@ -219,16 +199,30 @@ with tab1:
             values='VaR Contribution', 
             names='Position',
             title='VaR Contribution by Position',
-            color_discrete_sequence=px.colors.sequential.Blues_r
+            color_discrete_sequence=[CHART_COLORS['primary'], CHART_COLORS['ma_fast'], CHART_COLORS['secondary'], CHART_COLORS['profit']],
         )
         
         fig2.update_layout(
-            template='plotly_dark',
+            **BASE_LAYOUT,
             height=350,
-            margin=dict(l=0, r=0, t=40, b=0),
+            showlegend=True,
+            legend=dict(
+                orientation='v',
+                yanchor='middle',
+                y=0.5,
+                xanchor='left',
+                x=1.02,
+                font=dict(size=11, color=CHART_COLORS['text_secondary']),
+            ),
         )
         
-        st.plotly_chart(fig2, use_container_width=True)
+        fig2.update_traces(
+            textposition='inside',
+            textfont=dict(size=12, color='white'),
+            hovertemplate='%{label}<br>$%{value:,.0f}<extra></extra>',
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True, config=get_chart_config())
     
     with col2:
         st.subheader("Risk Metrics")
@@ -458,28 +452,31 @@ with tab3:
     
     fig = go.Figure()
     
-    colors = ['#00D26A' if x > 0 else '#FF4B4B' for x in stress_df['pnl']]
+    colors = [CHART_COLORS['profit'] if x > 0 else CHART_COLORS['loss'] for x in stress_df['pnl']]
     
     fig.add_trace(go.Bar(
         x=stress_df['scenario'],
         y=stress_df['pnl'],
         marker_color=colors,
+        marker_line_width=0,
         text=[f"${x:,.0f}" for x in stress_df['pnl']],
         textposition='outside',
+        textfont=dict(size=12, color=CHART_COLORS['text_primary']),
+        hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
     ))
     
-    fig.add_hline(y=0, line_dash='solid', line_color='white')
-    fig.add_hline(y=-var_limit, line_dash='dash', line_color='red', 
+    fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)')
+    fig.add_hline(y=-var_limit, line_dash='dash', line_color=CHART_COLORS['loss'], 
                  annotation_text='VaR Limit')
     
     fig.update_layout(
-        template='plotly_dark',
+        **BASE_LAYOUT,
         height=400,
         yaxis_title='P&L Impact ($)',
-        margin=dict(l=0, r=0, t=10, b=0),
+        yaxis_tickformat='$,.0f',
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
     
     # Custom scenario
     st.subheader("Custom Scenario Analysis")

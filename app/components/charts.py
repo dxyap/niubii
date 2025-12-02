@@ -1,159 +1,404 @@
 """
 Chart Components
 ================
-Reusable chart components for the dashboard.
+Reusable, beautifully styled chart components for the dashboard.
+Features professional trading terminal aesthetics with high readability.
 """
 
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+
+# =============================================================================
+# CHART THEME CONSTANTS
+# =============================================================================
+
+# Color palette - inspired by professional trading terminals
+CHART_COLORS = {
+    # Candlestick colors
+    "candle_up": "#00DC82",        # Vivid green for bullish
+    "candle_down": "#FF5252",      # Vivid red for bearish
+    "candle_up_fill": "#00DC82",   # Solid fill for up candles
+    "candle_down_fill": "#FF5252", # Solid fill for down candles
+    
+    # Line colors
+    "primary": "#00A3E0",          # Electric blue
+    "secondary": "#8B5CF6",        # Purple
+    "tertiary": "#F59E0B",         # Amber
+    "accent": "#EC4899",           # Pink
+    
+    # Moving averages
+    "ma_fast": "#FFB020",          # Gold for fast MA
+    "ma_slow": "#A855F7",          # Purple for slow MA
+    "ma_long": "#06B6D4",          # Cyan for long MA
+    
+    # Backgrounds and grids
+    "bg_primary": "rgba(10, 15, 30, 0.95)",
+    "bg_secondary": "rgba(15, 23, 42, 0.8)",
+    "grid": "rgba(51, 65, 85, 0.4)",
+    "grid_light": "rgba(71, 85, 105, 0.25)",
+    
+    # Text
+    "text_primary": "#E2E8F0",
+    "text_secondary": "#94A3B8",
+    
+    # Profit/Loss
+    "profit": "#00DC82",
+    "loss": "#FF5252",
+}
+
+# Common layout settings for all charts
+BASE_LAYOUT = {
+    "template": "plotly_dark",
+    "paper_bgcolor": "rgba(0,0,0,0)",
+    "plot_bgcolor": CHART_COLORS["bg_secondary"],
+    "font": {
+        "family": "'IBM Plex Mono', 'SF Mono', monospace",
+        "size": 12,
+        "color": CHART_COLORS["text_primary"],
+    },
+    "xaxis": {
+        "gridcolor": CHART_COLORS["grid"],
+        "gridwidth": 1,
+        "showgrid": True,
+        "zeroline": False,
+        "tickfont": {"size": 11, "color": CHART_COLORS["text_secondary"]},
+        "title_font": {"size": 12, "color": CHART_COLORS["text_secondary"]},
+    },
+    "yaxis": {
+        "gridcolor": CHART_COLORS["grid"],
+        "gridwidth": 1,
+        "showgrid": True,
+        "zeroline": False,
+        "tickfont": {"size": 11, "color": CHART_COLORS["text_secondary"]},
+        "title_font": {"size": 12, "color": CHART_COLORS["text_secondary"]},
+        "tickformat": "$.2f",
+        "side": "right",  # Price scale on right side (trader convention)
+    },
+    "legend": {
+        "orientation": "h",
+        "yanchor": "bottom",
+        "y": 1.02,
+        "xanchor": "right",
+        "x": 1,
+        "bgcolor": "rgba(0,0,0,0)",
+        "font": {"size": 11, "color": CHART_COLORS["text_secondary"]},
+    },
+    "margin": {"l": 10, "r": 60, "t": 40, "b": 40},
+    "hovermode": "x unified",
+    "hoverlabel": {
+        "bgcolor": CHART_COLORS["bg_primary"],
+        "bordercolor": CHART_COLORS["grid"],
+        "font": {"family": "'IBM Plex Mono', monospace", "size": 12},
+    },
+}
+
+
+def apply_base_layout(fig: go.Figure, height: int = 400, **kwargs) -> go.Figure:
+    """Apply consistent base layout to any chart."""
+    layout = {**BASE_LAYOUT, "height": height, **kwargs}
+    fig.update_layout(**layout)
+    return fig
+
+
+# =============================================================================
+# CANDLESTICK CHART
+# =============================================================================
 
 def create_candlestick_chart(
     data: pd.DataFrame,
     title: str = "",
-    show_volume: bool = True,
-    show_ma: bool = True
+    height: int = 450,
+    show_volume: bool = False,
+    show_ma: bool = True,
+    ma_periods: List[int] = [20, 50],
 ) -> go.Figure:
     """
-    Create a candlestick chart with optional volume and moving averages.
+    Create a professional candlestick chart with solid green/red fills.
     
     Args:
-        data: DataFrame with OHLCV data
+        data: DataFrame with OHLCV data (PX_OPEN, PX_HIGH, PX_LOW, PX_LAST)
         title: Chart title
-        show_volume: Show volume subplot
+        height: Chart height in pixels
+        show_volume: Include volume subplot
         show_ma: Show moving averages
+        ma_periods: List of MA periods to display
         
     Returns:
-        Plotly figure
+        Plotly figure with professional styling
     """
-    fig = go.Figure()
+    # Create figure with secondary y-axis if volume is shown
+    if show_volume and 'PX_VOLUME' in data.columns:
+        from plotly.subplots import make_subplots
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.8, 0.2],
+        )
+    else:
+        fig = go.Figure()
     
-    # Candlestick
-    fig.add_trace(go.Candlestick(
+    # Candlestick trace with solid fills
+    candlestick = go.Candlestick(
         x=data.index,
         open=data['PX_OPEN'],
         high=data['PX_HIGH'],
         low=data['PX_LOW'],
         close=data['PX_LAST'],
-        name='Price'
-    ))
+        name='Price',
+        increasing=dict(
+            line=dict(color=CHART_COLORS["candle_up"], width=1),
+            fillcolor=CHART_COLORS["candle_up_fill"],
+        ),
+        decreasing=dict(
+            line=dict(color=CHART_COLORS["candle_down"], width=1),
+            fillcolor=CHART_COLORS["candle_down_fill"],
+        ),
+        whiskerwidth=0.8,
+        hoverinfo='x+y',
+    )
     
+    if show_volume and 'PX_VOLUME' in data.columns:
+        fig.add_trace(candlestick, row=1, col=1)
+    else:
+        fig.add_trace(candlestick)
+    
+    # Add moving averages
     if show_ma:
-        # 20-day MA
-        ma20 = data['PX_LAST'].rolling(20).mean()
-        fig.add_trace(go.Scatter(
-            x=data.index, y=ma20,
-            name='MA 20',
-            line=dict(color='orange', width=1)
-        ))
+        ma_colors = [CHART_COLORS["ma_fast"], CHART_COLORS["ma_slow"], CHART_COLORS["ma_long"]]
         
-        # 50-day MA
-        ma50 = data['PX_LAST'].rolling(50).mean()
-        fig.add_trace(go.Scatter(
-            x=data.index, y=ma50,
-            name='MA 50',
-            line=dict(color='purple', width=1)
-        ))
+        for i, period in enumerate(ma_periods):
+            if len(data) >= period:
+                ma = data['PX_LAST'].rolling(period).mean()
+                ma_trace = go.Scatter(
+                    x=data.index,
+                    y=ma,
+                    name=f'MA {period}',
+                    line=dict(color=ma_colors[i % len(ma_colors)], width=1.5),
+                    hovertemplate=f'MA{period}: $%{{y:.2f}}<extra></extra>',
+                )
+                
+                if show_volume and 'PX_VOLUME' in data.columns:
+                    fig.add_trace(ma_trace, row=1, col=1)
+                else:
+                    fig.add_trace(ma_trace)
     
-    fig.update_layout(
-        title=title,
-        template='plotly_dark',
+    # Add volume bars
+    if show_volume and 'PX_VOLUME' in data.columns:
+        colors = [CHART_COLORS["candle_up"] if c >= o else CHART_COLORS["candle_down"] 
+                  for c, o in zip(data['PX_LAST'], data['PX_OPEN'])]
+        
+        fig.add_trace(
+            go.Bar(
+                x=data.index,
+                y=data['PX_VOLUME'],
+                marker_color=colors,
+                marker_opacity=0.6,
+                name='Volume',
+                hovertemplate='Vol: %{y:,.0f}<extra></extra>',
+            ),
+            row=2, col=1
+        )
+        
+        # Update axes for subplot
+        fig.update_yaxes(title_text="Price", row=1, col=1, tickformat="$.2f", side="right")
+        fig.update_yaxes(title_text="Volume", row=2, col=1, tickformat=".2s", side="right")
+    
+    # Apply professional layout
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
         xaxis_rangeslider_visible=False,
-        margin=dict(l=0, r=0, t=30 if title else 0, b=0),
     )
     
     return fig
 
 
-def create_curve_chart(
-    wti_curve: pd.DataFrame,
-    brent_curve: Optional[pd.DataFrame] = None,
-    title: str = "Futures Curve"
+# =============================================================================
+# FUTURES CURVE CHART
+# =============================================================================
+
+def create_futures_curve_chart(
+    curve_data: pd.DataFrame,
+    secondary_curve: Optional[pd.DataFrame] = None,
+    title: str = "Futures Curve",
+    height: int = 350,
+    show_spread: bool = False,
 ) -> go.Figure:
     """
-    Create a futures curve chart.
+    Create an elegant futures curve line chart with proper y-axis scaling.
     
     Args:
-        wti_curve: WTI curve data
-        brent_curve: Optional Brent curve data
+        curve_data: Primary curve DataFrame with 'month' and 'price' columns
+        secondary_curve: Optional second curve for comparison
         title: Chart title
+        height: Chart height in pixels
+        show_spread: Show spread between curves
         
     Returns:
-        Plotly figure
+        Plotly figure with professional styling
     """
     fig = go.Figure()
     
+    # Determine y-axis range with padding for readability
+    all_prices = list(curve_data['price'])
+    if secondary_curve is not None:
+        all_prices.extend(list(secondary_curve['price']))
+    
+    price_min = min(all_prices)
+    price_max = max(all_prices)
+    price_range = price_max - price_min
+    
+    # Add 15% padding for better visualization
+    y_min = price_min - (price_range * 0.15)
+    y_max = price_max + (price_range * 0.15)
+    
+    # If range is very small, create reasonable bounds
+    if price_range < 2:
+        mid = (price_min + price_max) / 2
+        y_min = mid - 2
+        y_max = mid + 2
+    
+    # Primary curve with area fill for depth
     fig.add_trace(go.Scatter(
-        x=wti_curve['month'],
-        y=wti_curve['price'],
-        name='WTI',
+        x=curve_data['month'],
+        y=curve_data['price'],
+        name='Brent',
         mode='lines+markers',
-        line=dict(color='#00D26A', width=2)
+        line=dict(color=CHART_COLORS["primary"], width=3, shape='spline'),
+        marker=dict(
+            size=10,
+            color=CHART_COLORS["primary"],
+            line=dict(width=2, color='white'),
+            symbol='circle',
+        ),
+        fill='tozeroy',
+        fillcolor='rgba(0, 163, 224, 0.1)',
+        hovertemplate='%{x}<br>$%{y:.2f}<extra>Brent</extra>',
     ))
     
-    if brent_curve is not None:
+    # Secondary curve if provided
+    if secondary_curve is not None:
         fig.add_trace(go.Scatter(
-            x=brent_curve['month'],
-            y=brent_curve['price'],
-            name='Brent',
+            x=secondary_curve['month'],
+            y=secondary_curve['price'],
+            name='WTI',
             mode='lines+markers',
-            line=dict(color='#00A3E0', width=2)
+            line=dict(color=CHART_COLORS["tertiary"], width=3, shape='spline'),
+            marker=dict(
+                size=10,
+                color=CHART_COLORS["tertiary"],
+                line=dict(width=2, color='white'),
+                symbol='diamond',
+            ),
+            hovertemplate='%{x}<br>$%{y:.2f}<extra>WTI</extra>',
         ))
     
-    fig.update_layout(
-        title=title,
-        template='plotly_dark',
-        xaxis_title='Month',
-        yaxis_title='Price ($/bbl)',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02),
-        margin=dict(l=0, r=0, t=40, b=0),
+    # Apply professional layout with adjusted y-axis
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
+        yaxis=dict(
+            **BASE_LAYOUT["yaxis"],
+            range=[y_min, y_max],
+            title_text="Price ($/bbl)",
+            dtick=max(1, round(price_range / 5)),  # Smart tick spacing
+        ),
+        xaxis=dict(
+            **BASE_LAYOUT["xaxis"],
+            title_text="Contract Month",
+        ),
     )
     
     return fig
 
 
+# =============================================================================
+# P&L CHART
+# =============================================================================
+
 def create_pnl_chart(
-    pnl_data: pd.DataFrame,
-    cumulative: bool = True
+    pnl_data: pd.Series,
+    cumulative: bool = True,
+    height: int = 300,
+    title: str = "",
 ) -> go.Figure:
     """
-    Create a P&L chart.
+    Create a beautiful P&L chart with gradient fills.
     
     Args:
-        pnl_data: P&L data with timestamp index
+        pnl_data: P&L data series with timestamp index
         cumulative: Show cumulative P&L
+        height: Chart height
+        title: Chart title
         
     Returns:
-        Plotly figure
+        Plotly figure with professional styling
     """
     fig = go.Figure()
     
     y_data = pnl_data.cumsum() if cumulative else pnl_data
+    current_pnl = y_data.iloc[-1] if len(y_data) > 0 else 0
     
-    colors = ['#00D26A' if v >= 0 else '#FF4B4B' for v in y_data]
+    # Determine colors based on P&L
+    if current_pnl >= 0:
+        line_color = CHART_COLORS["profit"]
+        fill_color = "rgba(0, 220, 130, 0.15)"
+    else:
+        line_color = CHART_COLORS["loss"]
+        fill_color = "rgba(255, 82, 82, 0.15)"
     
     fig.add_trace(go.Scatter(
         x=pnl_data.index,
         y=y_data,
         fill='tozeroy',
-        fillcolor='rgba(0, 210, 106, 0.3)' if y_data.iloc[-1] >= 0 else 'rgba(255, 75, 75, 0.3)',
-        line=dict(color='#00D26A' if y_data.iloc[-1] >= 0 else '#FF4B4B', width=2),
-        name='P&L'
+        fillcolor=fill_color,
+        line=dict(color=line_color, width=2.5),
+        name='P&L',
+        hovertemplate='$%{y:,.0f}<extra></extra>',
     ))
     
-    fig.add_hline(y=0, line_dash='solid', line_color='white', line_width=1)
+    # Zero line
+    fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
     
-    fig.update_layout(
-        template='plotly_dark',
-        yaxis_title='P&L ($)',
-        margin=dict(l=0, r=0, t=10, b=0),
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
+        yaxis=dict(
+            **BASE_LAYOUT["yaxis"],
+            title_text="P&L ($)",
+            tickformat="$,.0f",
+        ),
     )
     
     return fig
 
+
+# =============================================================================
+# GAUGE CHART
+# =============================================================================
 
 def create_gauge_chart(
     value: float,
@@ -161,10 +406,11 @@ def create_gauge_chart(
     min_val: float = 0,
     max_val: float = 100,
     warning_threshold: float = 75,
-    critical_threshold: float = 90
+    critical_threshold: float = 90,
+    height: int = 220,
 ) -> go.Figure:
     """
-    Create a gauge chart for utilization metrics.
+    Create a modern gauge chart for utilization metrics.
     
     Args:
         value: Current value
@@ -173,55 +419,76 @@ def create_gauge_chart(
         max_val: Maximum value
         warning_threshold: Warning threshold
         critical_threshold: Critical threshold
+        height: Chart height
         
     Returns:
-        Plotly figure
+        Plotly figure with professional styling
     """
+    # Determine bar color based on value
+    if value >= critical_threshold:
+        bar_color = CHART_COLORS["loss"]
+    elif value >= warning_threshold:
+        bar_color = CHART_COLORS["tertiary"]
+    else:
+        bar_color = CHART_COLORS["primary"]
+    
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': title, 'font': {'size': 14}},
+        title={'text': title, 'font': {'size': 14, 'color': CHART_COLORS["text_secondary"]}},
+        number={'font': {'size': 36, 'color': CHART_COLORS["text_primary"]}, 'suffix': '%'},
         gauge={
-            'axis': {'range': [min_val, max_val], 'tickwidth': 1},
-            'bar': {'color': "#00A3E0"},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
+            'axis': {
+                'range': [min_val, max_val],
+                'tickwidth': 1,
+                'tickcolor': CHART_COLORS["text_secondary"],
+                'tickfont': {'size': 10, 'color': CHART_COLORS["text_secondary"]},
+            },
+            'bar': {'color': bar_color, 'thickness': 0.8},
+            'bgcolor': CHART_COLORS["bg_secondary"],
+            'borderwidth': 0,
             'steps': [
-                {'range': [min_val, warning_threshold], 'color': 'rgba(0, 210, 106, 0.3)'},
-                {'range': [warning_threshold, critical_threshold], 'color': 'rgba(255, 165, 0, 0.3)'},
-                {'range': [critical_threshold, max_val], 'color': 'rgba(255, 75, 75, 0.3)'}
+                {'range': [min_val, warning_threshold], 'color': 'rgba(0, 220, 130, 0.15)'},
+                {'range': [warning_threshold, critical_threshold], 'color': 'rgba(245, 158, 11, 0.15)'},
+                {'range': [critical_threshold, max_val], 'color': 'rgba(255, 82, 82, 0.15)'}
             ],
             'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
+                'line': {'color': CHART_COLORS["loss"], 'width': 3},
+                'thickness': 0.8,
                 'value': critical_threshold
             }
         }
     ))
     
     fig.update_layout(
-        template='plotly_dark',
-        height=200,
-        margin=dict(l=10, r=10, t=50, b=10),
+        height=height,
+        paper_bgcolor='rgba(0,0,0,0)',
+        font={'color': CHART_COLORS["text_primary"]},
+        margin=dict(l=20, r=20, t=60, b=20),
     )
     
     return fig
 
 
+# =============================================================================
+# HEATMAP
+# =============================================================================
+
 def create_heatmap(
     data: pd.DataFrame,
     title: str = "",
-    colorscale: str = "RdBu_r"
+    colorscale: str = "RdBu_r",
+    height: int = 400,
 ) -> go.Figure:
     """
-    Create a heatmap chart.
+    Create a professional correlation heatmap.
     
     Args:
         data: DataFrame for heatmap
         title: Chart title
         colorscale: Color scale name
+        height: Chart height
         
     Returns:
         Plotly figure
@@ -234,10 +501,186 @@ def create_heatmap(
         zmax=1 if colorscale == "RdBu_r" else None,
     )
     
-    fig.update_layout(
-        title=title,
-        template='plotly_dark',
-        margin=dict(l=0, r=0, t=30 if title else 0, b=0),
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
+    )
+    
+    # Update text styling
+    fig.update_traces(
+        textfont=dict(size=11, color='white'),
+    )
+    
+    return fig
+
+
+# =============================================================================
+# BAR CHART
+# =============================================================================
+
+def create_bar_chart(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    title: str = "",
+    height: int = 300,
+    color_by_value: bool = True,
+    orientation: str = 'v',
+) -> go.Figure:
+    """
+    Create a styled bar chart with optional value-based coloring.
+    
+    Args:
+        data: DataFrame with data
+        x: Column name for x-axis
+        y: Column name for y-axis
+        title: Chart title
+        height: Chart height
+        color_by_value: Color bars based on positive/negative values
+        orientation: 'v' for vertical, 'h' for horizontal
+        
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+    
+    if color_by_value:
+        colors = [CHART_COLORS["profit"] if v >= 0 else CHART_COLORS["loss"] for v in data[y]]
+    else:
+        colors = CHART_COLORS["primary"]
+    
+    fig.add_trace(go.Bar(
+        x=data[x] if orientation == 'v' else data[y],
+        y=data[y] if orientation == 'v' else data[x],
+        marker_color=colors,
+        marker_line_width=0,
+        orientation=orientation,
+        text=[f"${v:,.0f}" if isinstance(v, (int, float)) else str(v) for v in data[y]],
+        textposition='outside',
+        textfont=dict(size=11, color=CHART_COLORS["text_primary"]),
+        hovertemplate='%{x}<br>$%{y:,.0f}<extra></extra>',
+    ))
+    
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
+    )
+    
+    return fig
+
+
+# =============================================================================
+# VOLUME BAR CHART (for standalone volume)
+# =============================================================================
+
+def create_volume_chart(
+    data: pd.DataFrame,
+    height: int = 120,
+) -> go.Figure:
+    """
+    Create a standalone volume bar chart.
+    
+    Args:
+        data: DataFrame with PX_VOLUME, PX_OPEN, PX_LAST columns
+        height: Chart height
+        
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+    
+    colors = [CHART_COLORS["candle_up"] if c >= o else CHART_COLORS["candle_down"] 
+              for c, o in zip(data['PX_LAST'], data['PX_OPEN'])]
+    
+    fig.add_trace(go.Bar(
+        x=data.index,
+        y=data['PX_VOLUME'],
+        marker_color=colors,
+        marker_opacity=0.7,
+        name='Volume',
+        hovertemplate='%{y:,.0f}<extra></extra>',
+    ))
+    
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        yaxis=dict(
+            **BASE_LAYOUT["yaxis"],
+            tickformat=".2s",
+            title_text="",
+        ),
+        margin=dict(l=10, r=60, t=5, b=30),
+    )
+    
+    return fig
+
+
+# =============================================================================
+# LINE CHART
+# =============================================================================
+
+def create_line_chart(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    title: str = "",
+    height: int = 300,
+    fill: bool = False,
+    show_markers: bool = True,
+) -> go.Figure:
+    """
+    Create a styled line chart.
+    
+    Args:
+        data: DataFrame with data
+        x: Column name for x-axis
+        y: Column name for y-axis
+        title: Chart title
+        height: Chart height
+        fill: Fill area under line
+        show_markers: Show data point markers
+        
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=data[x],
+        y=data[y],
+        mode='lines+markers' if show_markers else 'lines',
+        line=dict(color=CHART_COLORS["primary"], width=2.5),
+        marker=dict(
+            size=8,
+            color=CHART_COLORS["primary"],
+            line=dict(width=2, color='white'),
+        ) if show_markers else None,
+        fill='tozeroy' if fill else None,
+        fillcolor='rgba(0, 163, 224, 0.1)' if fill else None,
+        hovertemplate='%{x}<br>$%{y:.2f}<extra></extra>',
+    ))
+    
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        title=dict(
+            text=title,
+            font=dict(size=14, color=CHART_COLORS["text_primary"]),
+            x=0,
+            xanchor='left',
+        ) if title else None,
     )
     
     return fig
