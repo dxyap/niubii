@@ -2,26 +2,38 @@
 Shared State Module
 ===================
 Manages shared state across all dashboard pages.
+
+This module provides:
+- Centralized data loader access
+- Position management
+- Portfolio P&L calculations
+- Dashboard context caching
 """
 
-import streamlit as st
+from __future__ import annotations
+
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
-import os
+from typing import Dict, List, Optional, TYPE_CHECKING
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-# Load environment variables
+import streamlit as st
 from dotenv import load_dotenv
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 load_dotenv()
 
 from .dashboard_core import DashboardContext
 
+if TYPE_CHECKING:
+    from core.data import DataLoader
 
-def get_data_loader():
+
+def get_data_loader() -> "DataLoader":
     """Get or create the shared data loader."""
     if 'data_loader' not in st.session_state:
         from core.data import DataLoader
@@ -34,7 +46,7 @@ def get_data_loader():
     return st.session_state.data_loader
 
 
-def get_positions():
+def get_positions() -> List[Dict]:
     """Get current positions from session state."""
     if 'positions' not in st.session_state:
         # Start with empty positions - no demo data
@@ -42,7 +54,13 @@ def get_positions():
     return st.session_state.positions
 
 
-def add_position(symbol: str, ticker: str, qty: int, entry: float, strategy: str = None):
+def add_position(
+    symbol: str, 
+    ticker: str, 
+    qty: int, 
+    entry: float, 
+    strategy: Optional[str] = None
+) -> None:
     """Add a new position."""
     positions = get_positions()
     positions.append({
@@ -55,7 +73,7 @@ def add_position(symbol: str, ticker: str, qty: int, entry: float, strategy: str
     st.session_state.positions = positions
 
 
-def clear_positions():
+def clear_positions() -> None:
     """Clear all positions."""
     st.session_state.positions = []
 

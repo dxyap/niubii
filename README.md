@@ -4,7 +4,7 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![Tests](https://img.shields.io/badge/Tests-64%20passed-green.svg)
+![Tests](https://img.shields.io/badge/Tests-90%20passed-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## Features
@@ -124,7 +124,7 @@ Open in browser at `http://localhost:8501`
 │   ├── historical/         # Parquet files
 │   └── trades/             # Trade database
 │
-└── tests/                   # Test suite (64 tests)
+└── tests/                   # Test suite (90 tests)
 ```
 
 ## Bloomberg Integration
@@ -599,6 +599,7 @@ pytest tests/test_analytics.py -v
 | Analytics | 9 | 90% |
 | Risk Management | 11 | 92% |
 | Signals | 10 | 88% |
+| ML (Feature Engineering) | 25 | 90% |
 | Trading | 10 | 85% |
 
 ## Status & Roadmap

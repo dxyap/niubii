@@ -41,8 +41,10 @@ class TickerMapper:
     # Standard Bloomberg ticker formats
     TICKER_FORMATS = {
         # Crude Oil Futures
-        "wti": "CL{n} Comdty",        # WTI Crude (NYMEX)
+        "wti": "CL{n} Comdty",         # WTI Crude (NYMEX)
+        "wti_ice": "ENA{n} Comdty",    # WTI Crude (ICE)
         "brent": "CO{n} Comdty",       # Brent Crude (ICE)
+        "dubai": "DAT{n} Comdty",      # Dubai Crude Swap (ICE)
         
         # Refined Products
         "rbob": "XB{n} Comdty",        # RBOB Gasoline (NYMEX)
@@ -76,8 +78,10 @@ class TickerMapper:
     
     # Contract multipliers (for position sizing)
     CONTRACT_MULTIPLIERS = {
-        "CL": 1000,    # 1,000 barrels
-        "CO": 1000,    # 1,000 barrels
+        "CL": 1000,    # 1,000 barrels (WTI NYMEX)
+        "ENA": 1000,   # 1,000 barrels (WTI ICE)
+        "CO": 1000,    # 1,000 barrels (Brent ICE)
+        "DAT": 1000,   # 1,000 barrels (Dubai Crude Swap)
         "XB": 42000,   # 42,000 gallons
         "HO": 42000,   # 42,000 gallons
         "QS": 100,     # 100 metric tonnes
@@ -87,7 +91,9 @@ class TickerMapper:
     # Exchange mappings
     EXCHANGES = {
         "CL": "NYMEX",
+        "ENA": "ICE",    # WTI ICE
         "CO": "ICE",
+        "DAT": "ICE",    # Dubai Crude Swap
         "XB": "NYMEX",
         "HO": "NYMEX",
         "QS": "ICE",
@@ -132,15 +138,36 @@ class TickerMapper:
         # Generic format: CL + number (1-12)
         # Specific format: CL + month_code + year_digit (e.g., CLF5, CLZ25)
         
-        # First try to identify the commodity prefix (2 characters)
         if len(base) < 2:
             return {"ticker": ticker, "type": "unknown"}
         
-        commodity = base[:2]
-        remainder = base[2:]
+        # Check for special prefixes first (DAT for Dubai, T for ICE WTI)
+        commodity = None
+        remainder = None
+        
+        # Try 3-char prefix first (e.g., DAT)
+        if len(base) >= 4 and base[:3] in cls.SPECIAL_PREFIXES:
+            commodity = base[:3]
+            remainder = base[3:]
+        # Then try 1-char prefix (e.g., T for ICE WTI)
+        elif len(base) >= 2 and base[0] in cls.SPECIAL_PREFIXES:
+            commodity = base[0]
+            remainder = base[1:]
+        # Default: 2-char prefix
+        else:
+            commodity = base[:2]
+            remainder = base[2:]
         
         if not remainder:
             return {"ticker": ticker, "type": "unknown"}
+        
+        # Get exchange and multiplier from appropriate source
+        if commodity in cls.SPECIAL_PREFIXES:
+            exchange = cls.SPECIAL_PREFIXES[commodity]["exchange"]
+            multiplier = cls.SPECIAL_PREFIXES[commodity]["multiplier"]
+        else:
+            exchange = cls.EXCHANGES.get(commodity, "Unknown")
+            multiplier = cls.CONTRACT_MULTIPLIERS.get(commodity, 1000)
         
         # Check if remainder is purely numeric (generic ticker)
         if remainder.isdigit():
@@ -150,8 +177,8 @@ class TickerMapper:
                 "commodity": commodity,
                 "type": "generic",
                 "month_number": month_num,
-                "exchange": cls.EXCHANGES.get(commodity, "Unknown"),
-                "multiplier": cls.CONTRACT_MULTIPLIERS.get(commodity, 1000),
+                "exchange": exchange,
+                "multiplier": multiplier,
             }
         
         # Check if it's a specific contract (letter + digit(s))
@@ -175,8 +202,8 @@ class TickerMapper:
                     "month_code": month_code,
                     "month": month,
                     "year_digit": year_digit,
-                    "exchange": cls.EXCHANGES.get(commodity, "Unknown"),
-                    "multiplier": cls.CONTRACT_MULTIPLIERS.get(commodity, 1000),
+                    "exchange": exchange,
+                    "multiplier": multiplier,
                 }
         
         return {"ticker": ticker, "type": "unknown"}
@@ -184,8 +211,15 @@ class TickerMapper:
     # Known index tickers (non-standard format)
     # Dubai uses M2 swap to avoid BALMO (Balance of Month) contract
     INDEX_TICKERS = {
-        "PGCR2MOE Index": {"name": "Dubai Crude Swap M2", "multiplier": 1000},
-        "PGCR3MOE Index": {"name": "Dubai Crude Swap M3", "multiplier": 1000},
+        "PGCR2MOE Index": {"name": "Dubai Crude Swap M2 (Platts)", "multiplier": 1000},
+        "PGCR3MOE Index": {"name": "Dubai Crude Swap M3 (Platts)", "multiplier": 1000},
+    }
+    
+    # Special ticker patterns that don't follow standard 2-char prefix
+    # DAT = Dubai Average Crude, ENA = ICE WTI
+    SPECIAL_PREFIXES = {
+        "DAT": {"name": "Dubai Crude Swap", "multiplier": 1000, "exchange": "ICE"},
+        "ENA": {"name": "WTI Crude (ICE)", "multiplier": 1000, "exchange": "ICE"},
     }
     
     @classmethod
@@ -207,7 +241,8 @@ class TickerMapper:
             return False, "Unknown ticker format"
         
         commodity = parsed.get("commodity", "")
-        if commodity not in cls.CONTRACT_MULTIPLIERS:
+        # Check both regular commodities and special prefixes
+        if commodity not in cls.CONTRACT_MULTIPLIERS and commodity not in cls.SPECIAL_PREFIXES:
             return False, f"Unknown commodity: {commodity}"
         
         return True, "Valid"
@@ -237,11 +272,15 @@ class PriceSimulator:
     def __init__(self):
         # Base reference prices (as of market close)
         self._reference_prices = {
-            "CL1 Comdty": 72.50,   # WTI Front Month
-            "CL2 Comdty": 72.65,   # WTI 2nd Month
+            "CL1 Comdty": 72.50,   # WTI Front Month (NYMEX)
+            "CL2 Comdty": 72.65,   # WTI 2nd Month (NYMEX)
+            "ENA1 Comdty": 72.55,  # WTI Front Month (ICE)
+            "ENA2 Comdty": 72.70,  # WTI 2nd Month (ICE)
             "CO1 Comdty": 77.20,   # Brent Front Month
             "CO2 Comdty": 77.35,   # Brent 2nd Month
-            "PGCR2MOE Index": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
+            "DAT2 Comdty": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
+            "DAT3 Comdty": 76.95,  # Dubai Crude Swap M3
+            "PGCR2MOE Index": 76.80,  # Dubai Crude Swap M2 (Platts - legacy)
             "XB1 Comdty": 2.18,    # RBOB Gasoline ($/gal)
             "XB2 Comdty": 2.19,    # RBOB 2nd Month
             "HO1 Comdty": 2.52,    # Heating Oil ($/gal)
@@ -252,10 +291,14 @@ class PriceSimulator:
         
         # Generate curve prices with realistic term structure
         for i in range(3, 13):
-            # WTI: slight contango
+            # WTI NYMEX: slight contango
             self._reference_prices[f"CL{i} Comdty"] = 72.50 + (i - 1) * 0.12
+            # WTI ICE: slight contango (tracks NYMEX closely)
+            self._reference_prices[f"ENA{i} Comdty"] = 72.55 + (i - 1) * 0.12
             # Brent: slight contango
             self._reference_prices[f"CO{i} Comdty"] = 77.20 + (i - 1) * 0.10
+            # Dubai: slight contango (starts at M2)
+            self._reference_prices[f"DAT{i} Comdty"] = 76.80 + (i - 2) * 0.10
             # Products
             self._reference_prices[f"XB{i} Comdty"] = 2.18 + (i - 1) * 0.005
             self._reference_prices[f"HO{i} Comdty"] = 2.52 + (i - 1) * 0.005
@@ -345,10 +388,12 @@ class PriceSimulator:
         commodity = parsed.get("commodity", "CL")
         month_num = parsed.get("month_number", 1)
         
-        # Base prices by commodity
+        # Base prices by commodity (including ICE WTI and Dubai)
         base_prices = {
-            "CL": 72.50,
-            "CO": 77.20,
+            "CL": 72.50,   # WTI NYMEX
+            "ENA": 72.55,  # WTI ICE
+            "CO": 77.20,   # Brent
+            "DAT": 76.80,  # Dubai Crude Swap
             "XB": 2.18,
             "HO": 2.52,
             "QS": 680.50,

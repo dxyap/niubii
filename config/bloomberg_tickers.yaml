@@ -48,8 +48,8 @@ reference_fields:
 # =============================================================================
 
 # WTI Crude Oil (NYMEX)
-wti:
-  name: "WTI Crude Oil"
+wti_nymex:
+  name: "WTI Crude Oil (NYMEX)"
   exchange: "NYMEX"
   base_ticker: "CL"
   contract_size: 1000          # barrels
@@ -59,6 +59,20 @@ wti:
   trading_hours: "18:00-17:00 ET"
   front_month: "CL1 Comdty"
   second_month: "CL2 Comdty"
+
+# WTI Crude Oil (ICE) - preferred for trading
+wti:
+  name: "WTI Crude Oil (ICE)"
+  exchange: "ICE"
+  base_ticker: "ENA"
+  contract_size: 1000          # barrels
+  tick_size: 0.01              # $/bbl
+  tick_value: 10.00            # $
+  currency: "USD"
+  trading_hours: "20:00-18:00 ET"
+  front_month: "ENA1 Comdty"
+  second_month: "ENA2 Comdty"
+  notes: "ICE WTI - mirrors NYMEX WTI pricing"
   
 # Brent Crude Oil (ICE)
 brent:
@@ -169,18 +183,22 @@ month_codes:
 # FRONT MONTH TICKERS (QUICK REFERENCE)
 # =============================================================================
 front_month:
-  wti: "CL1 Comdty"
+  wti_nymex: "CL1 Comdty"     # WTI on NYMEX
+  wti_ice: "ENA1 Comdty"      # WTI on ICE (preferred)
+  wti: "ENA1 Comdty"          # Default WTI uses ICE
   brent: "CO1 Comdty"
-  dubai: "PGCR2MOE Index"    # M2 swap (avoid BALMO)
+  dubai: "DAT2 Comdty"        # M2 swap (avoid BALMO)
   rbob: "XB1 Comdty"
   heating_oil: "HO1 Comdty"
   gasoil: "QS1 Comdty"
   natgas: "NG1 Comdty"
 
 second_month:
-  wti: "CL2 Comdty"
+  wti_nymex: "CL2 Comdty"
+  wti_ice: "ENA2 Comdty"
+  wti: "ENA2 Comdty"          # Default WTI uses ICE
   brent: "CO2 Comdty"
-  dubai: "PGCR3MOE Index"    # M3 swap
+  dubai: "DAT3 Comdty"        # M3 swap
   rbob: "XB2 Comdty"
   heating_oil: "HO2 Comdty"
   gasoil: "QS2 Comdty"
@@ -241,8 +259,8 @@ spreads:
     
   dubai_brent:
     name: "Dubai-Brent Spread (EFS)"
-    calculation: "PGCR2MOE Index - CO1 Comdty"
-    leg1: "PGCR2MOE Index"
+    calculation: "DAT2 Comdty - CO1 Comdty"
+    leg1: "DAT2 Comdty"
     leg2: "CO1 Comdty"
     type: "inter_commodity"
     notes: "Exchange of Futures for Swaps (EFS) spread"
