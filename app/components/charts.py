@@ -613,14 +613,13 @@ def create_volume_chart(
         hovertemplate='%{y:,.0f}<extra></extra>',
     ))
     
+    volume_yaxis = dict(BASE_LAYOUT["yaxis"])
+    volume_yaxis.update({"tickformat": ".2s", "title_text": ""})
+
     fig = apply_base_layout(
         fig,
         height=height,
-        yaxis=dict(
-            **BASE_LAYOUT["yaxis"],
-            tickformat=".2s",
-            title_text="",
-        ),
+        yaxis=volume_yaxis,
         margin=dict(l=10, r=60, t=5, b=30),
     )
     
