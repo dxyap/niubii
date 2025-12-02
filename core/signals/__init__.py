@@ -6,6 +6,11 @@ Trading signal generation from technical, fundamental, and ML sources.
 
 from .technical import TechnicalSignals
 from .fundamental import FundamentalSignals
-from .aggregator import SignalAggregator
+from .aggregator import SignalAggregator, MLSignalGenerator
 
-__all__ = ["TechnicalSignals", "FundamentalSignals", "SignalAggregator"]
+__all__ = [
+    "TechnicalSignals",
+    "FundamentalSignals", 
+    "SignalAggregator",
+    "MLSignalGenerator",
+]
