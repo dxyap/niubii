@@ -1,4 +1,4 @@
-﻿"""
+"""
 Oil Trading Dashboard - Streamlit entry point.
 Streamlit dashboard structured with reusable services for clarity and performance.
 
@@ -125,7 +125,20 @@ class DashboardApp:
 
     def _render_header(self) -> None:
         st.title("Oil Trading Dashboard")
-        st.caption("Real-time quantitative analysis for oil markets")
+        
+        # Check Bloomberg connection
+        connection_status = self.data_loader.get_connection_status()
+        data_mode = connection_status.get("data_mode", "disconnected")
+        
+        if data_mode == "live":
+            st.caption("🟢 Live market data from Bloomberg")
+        elif data_mode == "disconnected":
+            st.error("🔴 Bloomberg Terminal not connected. Live data required.")
+            st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
+            st.info("Please ensure Bloomberg Terminal is running and BLPAPI is configured.")
+            st.stop()
+        else:
+            st.caption("Real-time quantitative analysis for oil markets")
 
     def _render_market_sections(self) -> None:
         left_col, right_col = st.columns([2, 1])

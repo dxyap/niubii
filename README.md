@@ -19,7 +19,8 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 ### 📡 Signal Generation
 - **Technical signals**: MA crossovers, RSI, Bollinger Bands, momentum
 - **Fundamental signals**: Inventory surprises, OPEC compliance, term structure
-- Signal aggregation with confidence scoring
+- **ML signals**: XGBoost/LightGBM models with 60+ engineered features
+- Signal aggregation with confidence scoring and configurable weights
 - Historical signal performance tracking
 
 ### 🛡️ Risk Management
@@ -76,7 +77,8 @@ Open in browser at `http://localhost:8501`
 │   │   ├── 3_🛡️_Risk.py
 │   │   ├── 4_💼_Trade_Entry.py
 │   │   ├── 5_📋_Blotter.py
-│   │   └── 6_📊_Analytics.py
+│   │   ├── 6_📊_Analytics.py
+│   │   └── 7_🤖_ML_Signals.py    # NEW: ML-powered signals
 │   ├── components/          # Reusable UI components
 │   └── shared_state.py      # Session state management
 │
@@ -92,20 +94,30 @@ Open in browser at `http://localhost:8501`
 │   ├── signals/            # Signal generation
 │   │   ├── technical.py    # Technical signals
 │   │   ├── fundamental.py  # Fundamental signals
-│   │   └── aggregator.py   # Signal combination
+│   │   └── aggregator.py   # Signal combination + MLSignalGenerator
 │   ├── risk/               # Risk management
 │   │   ├── var.py          # VaR calculations
 │   │   ├── limits.py       # Position limits
 │   │   └── monitor.py      # Risk monitoring
-│   └── trading/            # Trading operations
-│       ├── blotter.py      # Trade recording
-│       ├── positions.py    # Position management
-│       └── pnl.py          # P&L calculations
+│   ├── trading/            # Trading operations
+│   │   ├── blotter.py      # Trade recording
+│   │   ├── positions.py    # Position management
+│   │   └── pnl.py          # P&L calculations
+│   └── ml/                  # NEW: Machine Learning (Phase 4)
+│       ├── features.py      # Feature engineering pipeline
+│       ├── models/
+│       │   ├── gradient_boost.py  # XGBoost/LightGBM
+│       │   └── ensemble.py        # Model ensembling
+│       ├── training.py      # Training pipeline
+│       ├── prediction.py    # Inference service
+│       └── monitoring.py    # Model monitoring & drift detection
 │
 ├── config/                  # Configuration files
 │   ├── instruments.yaml    # Instrument definitions
 │   ├── risk_limits.yaml    # Risk parameters
 │   └── bloomberg_tickers.yaml  # Bloomberg ticker mappings
+│
+├── models/                  # Trained ML models (auto-created)
 │
 ├── data/                    # Data storage (auto-created)
 │   ├── cache/              # Cached data
@@ -478,6 +490,68 @@ TickerMapper.get_multiplier("CL1 Comdty")          # 1000 (barrels)
 TickerMapper.get_multiplier("XB1 Comdty")          # 42000 (gallons)
 ```
 
+### ML Module
+
+Machine learning for trading signals:
+
+```python
+from core.ml import FeatureEngineer, FeatureConfig
+from core.ml import ModelTrainer, TrainingConfig
+from core.ml import PredictionService
+from core.ml.models import GradientBoostModel, EnsembleModel
+
+# =============================================================================
+# FEATURE ENGINEERING
+# =============================================================================
+config = FeatureConfig(target_horizon=5)  # 5-day prediction
+engineer = FeatureEngineer(config)
+
+# Create 60+ features from OHLCV data
+features = engineer.create_features(historical_df)
+print(f"Created {len(engineer.feature_names)} features")
+
+# =============================================================================
+# MODEL TRAINING
+# =============================================================================
+trainer = ModelTrainer(TrainingConfig(use_ensemble=True))
+
+# Train with walk-forward validation
+results = trainer.walk_forward_train(historical_df)
+print(f"Test Accuracy: {results['avg_metrics']['accuracy']:.2%}")
+
+# Save model
+trainer.save_model("models/my_model.pkl")
+
+# =============================================================================
+# PREDICTIONS
+# =============================================================================
+service = PredictionService("models/my_model.pkl")
+
+# Generate ML signal
+signal = service.predict(recent_data)
+print(f"Signal: {signal['signal']} (Confidence: {signal['confidence']:.1%})")
+
+# =============================================================================
+# SIGNAL AGGREGATION (with ML)
+# =============================================================================
+from core.signals import SignalAggregator, MLSignalGenerator
+
+aggregator = SignalAggregator()
+ml_gen = MLSignalGenerator()
+
+# Get ML signal
+ml_signal = ml_gen.generate_signal(historical_data)
+
+# Aggregate with technical and fundamental signals
+composite = aggregator.aggregate_signals(
+    technical_signal={"signal": "LONG", "confidence": 70},
+    fundamental_signal={"signal": "LONG", "confidence": 60},
+    ml_signal=ml_signal,
+    current_price=77.50
+)
+print(f"Composite: {composite.direction} (Confidence: {composite.confidence}%)")
+```
+
 ### BloombergSubscriptionService
 
 Real-time data subscriptions:
@@ -546,7 +620,11 @@ pytest tests/test_analytics.py -v
 | Ticker Validation | ✅ Complete | 3 |
 | Live Data Mode | ✅ Complete | 3 |
 | Real-time Subscriptions | ✅ Complete | 3 |
-| ML Signal Models | 🔲 Planned | 4 |
+| Feature Engineering | ✅ Complete | 4 |
+| ML Models (XGBoost/LightGBM) | ✅ Complete | 4 |
+| Model Training Pipeline | ✅ Complete | 4 |
+| ML Signal Integration | ✅ Complete | 4 |
+| Model Monitoring | ✅ Complete | 4 |
 | Backtesting Engine | 🔲 Planned | 5 |
 | Execution & Automation | 🔲 Planned | 6 |
 | Multi-channel Alerts | 🔲 Planned | 7 |
@@ -602,43 +680,55 @@ pytest tests/test_analytics.py -v
 
 ## 🔮 Future Phases
 
-### 🔲 Phase 4: Machine Learning Integration
+### ✅ Phase 4: Machine Learning Integration (Complete)
 
 **ML-Powered Signal Generation**
 
-Build machine learning models to enhance signal quality and prediction accuracy.
+Machine learning models for enhanced signal quality and prediction accuracy.
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Feature Engineering | Create ML features from price, volume, and fundamental data | High |
-| XGBoost/LightGBM Models | Gradient boosting for direction and volatility prediction | High |
-| LSTM/Transformer Models | Deep learning for time-series forecasting | Medium |
-| Ensemble Methods | Combine multiple models with meta-learning | Medium |
-| Model Monitoring | Track model performance and detect drift | High |
-| AutoML Pipeline | Automated feature selection and hyperparameter tuning | Low |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Feature Engineering | 60+ ML features from price, volume, and fundamental data | ✅ Complete |
+| XGBoost/LightGBM Models | Gradient boosting for direction prediction | ✅ Complete |
+| Ensemble Methods | Combine multiple models with weighted averaging | ✅ Complete |
+| Model Training Pipeline | Walk-forward validation, hyperparameter config | ✅ Complete |
+| Prediction Service | Real-time ML signal generation | ✅ Complete |
+| Model Monitoring | Performance tracking and drift detection | ✅ Complete |
+| ML Dashboard Page | Training UI and signal visualization | ✅ Complete |
+| Signal Integration | ML signals in aggregator with configurable weights | ✅ Complete |
 
-**Implementation Plan:**
+**Implementation:**
 ```
 core/
 ├── ml/
-│   ├── __init__.py
-│   ├── features.py          # Feature engineering pipeline
+│   ├── __init__.py           # Module exports
+│   ├── features.py           # Feature engineering (60+ features)
 │   ├── models/
-│   │   ├── gradient_boost.py   # XGBoost/LightGBM models
-│   │   ├── time_series.py      # LSTM/Transformer models
-│   │   └── ensemble.py         # Model ensembling
-│   ├── training.py          # Training pipeline
-│   ├── prediction.py        # Inference service
-│   └── monitoring.py        # Model performance tracking
+│   │   ├── gradient_boost.py # XGBoost/LightGBM wrapper
+│   │   └── ensemble.py       # Model ensembling
+│   ├── training.py           # Training pipeline with walk-forward
+│   ├── prediction.py         # Inference service
+│   └── monitoring.py         # Performance & drift detection
+app/pages/
+├── 7_🤖_ML_Signals.py        # ML signals dashboard
 ```
 
-**New Dependencies:**
+**Features Include:**
+- **Price Features**: Lagged prices, overnight gaps, range position
+- **Return Features**: Multi-horizon returns with z-scores
+- **Moving Averages**: 5/10/20/50/100/200 MA ratios and crossovers
+- **Volatility**: Realized vol, Parkinson vol, ATR, vol ratios
+- **Momentum**: RSI, MACD, Stochastic, Williams %R, ROC
+- **Volume**: Volume MAs, OBV, volume-price trend
+- **Open Interest**: OI change, MA ratio, price divergence
+- **Bollinger Bands**: Position, width, distance from bands
+- **Calendar**: Day of week, month, quarter-end effects
+
+**ML Dependencies (Added to requirements.txt):**
 ```
 scikit-learn>=1.3.0
 xgboost>=2.0.0
 lightgbm>=4.1.0
-optuna>=3.4.0          # Hyperparameter optimization
-mlflow>=2.8.0          # Experiment tracking
 ```
 
 ---

@@ -181,11 +181,22 @@ class TickerMapper:
         
         return {"ticker": ticker, "type": "unknown"}
     
+    # Known index tickers (non-standard format)
+    # Dubai uses M2 swap to avoid BALMO (Balance of Month) contract
+    INDEX_TICKERS = {
+        "PGCR2MOE Index": {"name": "Dubai Crude Swap M2", "multiplier": 1000},
+        "PGCR3MOE Index": {"name": "Dubai Crude Swap M3", "multiplier": 1000},
+    }
+    
     @classmethod
     def validate_ticker(cls, ticker: str) -> Tuple[bool, str]:
         """Validate a Bloomberg ticker format."""
         if not ticker:
             return False, "Empty ticker"
+        
+        # Check for known index tickers
+        if ticker in cls.INDEX_TICKERS:
+            return True, "Valid (Index)"
         
         if not ticker.endswith(" Comdty"):
             return False, "Missing ' Comdty' suffix"
@@ -230,6 +241,7 @@ class PriceSimulator:
             "CL2 Comdty": 72.65,   # WTI 2nd Month
             "CO1 Comdty": 77.20,   # Brent Front Month
             "CO2 Comdty": 77.35,   # Brent 2nd Month
+            "PGCR2MOE Index": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
             "XB1 Comdty": 2.18,    # RBOB Gasoline ($/gal)
             "XB2 Comdty": 2.19,    # RBOB 2nd Month
             "HO1 Comdty": 2.52,    # Heating Oil ($/gal)
@@ -325,6 +337,10 @@ class PriceSimulator:
     
     def _infer_base_price(self, ticker: str) -> float:
         """Infer base price for unknown ticker from similar instruments."""
+        # Handle special tickers (non-standard format)
+        if "PGCR" in ticker or "Dubai" in ticker.upper():
+            return 76.80  # Dubai crude
+        
         parsed = TickerMapper.parse_ticker(ticker)
         commodity = parsed.get("commodity", "CL")
         month_num = parsed.get("month_number", 1)
@@ -747,7 +763,7 @@ class BloombergClient:
             DataUnavailableError: If historical data cannot be retrieved
         """
         if fields is None:
-            fields = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "PX_VOLUME"]
+            fields = ["PX_OPEN", "PX_HIGH", "PX_LOW", "PX_LAST", "PX_VOLUME", "OPEN_INT"]
         
         if isinstance(start_date, str):
             start_date = pd.to_datetime(start_date)
@@ -872,6 +888,12 @@ class BloombergClient:
         low_mult = 1 - np.abs(rng.normal(0.005, 0.003, n))
         open_noise = rng.normal(0, 0.003, n)
         
+        # Generate realistic open interest that builds up and declines around expiry
+        base_oi = self._simulator.get_open_interest(ticker) if self._simulator else 150000
+        oi_trend = np.linspace(0.7, 1.0, n) * base_oi  # Gradual build-up
+        oi_noise = rng.normal(0, 0.05, n) * base_oi
+        open_interest = np.maximum((oi_trend + oi_noise).astype(int), 1000)
+        
         data = {
             "date": dates,
             "PX_LAST": prices,
@@ -879,6 +901,7 @@ class BloombergClient:
             "PX_HIGH": prices * high_mult,
             "PX_LOW": prices * low_mult,
             "PX_VOLUME": rng.randint(50000, 200000, n),
+            "OPEN_INT": open_interest,
         }
         
         # Ensure OHLC consistency
