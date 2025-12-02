@@ -77,17 +77,17 @@ brent:
 # Note: Use M2 (second month) swap to avoid BALMO (Balance of Month)
 dubai:
   name: "Dubai Crude Swap"
-  exchange: "DME/OTC"
-  base_ticker: "PGCR"
+  exchange: "ICE"
+  base_ticker: "DAT"
   contract_size: 1000          # barrels
   tick_size: 0.01
   tick_value: 10.00
   currency: "USD"
   trading_hours: "OTC"
   # IMPORTANT: Use 2nd month to avoid BALMO
-  front_month: "PGCR2MOE Index"   # M2 swap (avoid BALMO)
-  second_month: "PGCR3MOE Index"  # M3 swap
-  notes: "Dubai uses M2 swap (PGCR2MOE) as front month to avoid BALMO exposure"
+  front_month: "DAT2 Comdty"   # M2 swap (avoid BALMO)
+  second_month: "DAT3 Comdty"  # M3 swap
+  notes: "Dubai uses M2 swap (DAT2 Comdty) as front month to avoid BALMO exposure"
 
 # =============================================================================
 # REFINED PRODUCTS
@@ -191,10 +191,10 @@ second_month:
 # =============================================================================
 eia_tickers:
   # Crude Oil Inventories
-  crude_inventory: "DOE WCRSTUS Index"           # Total US Crude Oil Stocks
-  crude_inventory_change: "DOE WCRSTCH Index"    # Weekly Change
-  cushing_stocks: "DOE WCSTOCUS Index"           # Cushing, OK Stocks
-  spr_stocks: "DOE WCSSTUS Index"                # Strategic Petroleum Reserve
+  crude_inventory: "DOESCRUD Index"           # Total US Crude Oil Stocks
+  crude_inventory_change: "DOEASCRD Index"    # Weekly Change
+  cushing_stocks: "DOESCROK Index"           # Cushing, OK Stocks
+  spr_stocks: "DOESSPR Index"                # Strategic Petroleum Reserve
   
   # Product Inventories
   gasoline_inventory: "DOE WGTSTUS Index"        # Total Gasoline Stocks
@@ -217,7 +217,7 @@ eia_tickers:
 # OPEC DATA TICKERS
 # =============================================================================
 opec_tickers:
-  reference_basket: "OPCRPUSD Index"             # OPEC Reference Basket Price
+  reference_basket: "OPCRTOTL Index"             # OPEC Reference Basket Price
 
 # =============================================================================
 # FINANCIAL INDICES

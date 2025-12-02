@@ -22,6 +22,7 @@ load_dotenv()
 
 from app import shared_state
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
+from core.data.bloomberg import DataUnavailableError
 from app.components.charts import (
     create_candlestick_chart,
     create_futures_curve_chart,
@@ -104,10 +105,19 @@ with tab1:
             st.markdown(chart_title)
             
             # Get historical data
-            hist_data = data_loader.get_historical(
-                ticker,
-                start_date=datetime.now() - timedelta(days=180)
-            )
+            hist_data = None
+            data_warning_shown = False
+            try:
+                hist_data = data_loader.get_historical(
+                    ticker,
+                    start_date=datetime.now() - timedelta(days=180)
+                )
+            except DataUnavailableError:
+                st.warning(f"No historical data available for {name}.")
+                data_warning_shown = True
+            except Exception as exc:
+                st.error(f"Failed to load history for {name}: {exc}")
+                data_warning_shown = True
             
             if hist_data is not None and not hist_data.empty:
                 # Candlestick chart
@@ -137,7 +147,8 @@ with tab1:
                         oi_fig = create_open_interest_chart(hist_data, height=120)
                         st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
             else:
-                st.info(f"Historical data unavailable for {name}.")
+                if not data_warning_shown:
+                    st.info(f"Historical data unavailable for {name}.")
                 hist_data = None
         
         with col2:
