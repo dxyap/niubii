@@ -182,9 +182,10 @@ class TickerMapper:
         return {"ticker": ticker, "type": "unknown"}
     
     # Known index tickers (non-standard format)
+    # Dubai uses M2 swap to avoid BALMO (Balance of Month) contract
     INDEX_TICKERS = {
-        "PGCR1MOE Index": {"name": "Dubai Crude", "multiplier": 1000},
-        "PGCR2MOE Index": {"name": "Dubai Crude M2", "multiplier": 1000},
+        "PGCR2MOE Index": {"name": "Dubai Crude Swap M2", "multiplier": 1000},
+        "PGCR3MOE Index": {"name": "Dubai Crude Swap M3", "multiplier": 1000},
     }
     
     @classmethod
@@ -240,7 +241,7 @@ class PriceSimulator:
             "CL2 Comdty": 72.65,   # WTI 2nd Month
             "CO1 Comdty": 77.20,   # Brent Front Month
             "CO2 Comdty": 77.35,   # Brent 2nd Month
-            "PGCR1MOE Index": 76.80,  # Dubai Crude (Platts)
+            "PGCR2MOE Index": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
             "XB1 Comdty": 2.18,    # RBOB Gasoline ($/gal)
             "XB2 Comdty": 2.19,    # RBOB 2nd Month
             "HO1 Comdty": 2.52,    # Heating Oil ($/gal)

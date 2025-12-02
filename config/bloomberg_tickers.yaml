@@ -73,6 +73,22 @@ brent:
   front_month: "CO1 Comdty"
   second_month: "CO2 Comdty"
 
+# Dubai Crude (Platts/DME)
+# Note: Use M2 (second month) swap to avoid BALMO (Balance of Month)
+dubai:
+  name: "Dubai Crude Swap"
+  exchange: "DME/OTC"
+  base_ticker: "PGCR"
+  contract_size: 1000          # barrels
+  tick_size: 0.01
+  tick_value: 10.00
+  currency: "USD"
+  trading_hours: "OTC"
+  # IMPORTANT: Use 2nd month to avoid BALMO
+  front_month: "PGCR2MOE Index"   # M2 swap (avoid BALMO)
+  second_month: "PGCR3MOE Index"  # M3 swap
+  notes: "Dubai uses M2 swap (PGCR2MOE) as front month to avoid BALMO exposure"
+
 # =============================================================================
 # REFINED PRODUCTS
 # =============================================================================
@@ -155,6 +171,7 @@ month_codes:
 front_month:
   wti: "CL1 Comdty"
   brent: "CO1 Comdty"
+  dubai: "PGCR2MOE Index"    # M2 swap (avoid BALMO)
   rbob: "XB1 Comdty"
   heating_oil: "HO1 Comdty"
   gasoil: "QS1 Comdty"
@@ -163,6 +180,7 @@ front_month:
 second_month:
   wti: "CL2 Comdty"
   brent: "CO2 Comdty"
+  dubai: "PGCR3MOE Index"    # M3 swap
   rbob: "XB2 Comdty"
   heating_oil: "HO2 Comdty"
   gasoil: "QS2 Comdty"
@@ -220,6 +238,14 @@ spreads:
     leg1: "CL1 Comdty"
     leg2: "CO1 Comdty"
     type: "inter_commodity"
+    
+  dubai_brent:
+    name: "Dubai-Brent Spread (EFS)"
+    calculation: "PGCR2MOE Index - CO1 Comdty"
+    leg1: "PGCR2MOE Index"
+    leg2: "CO1 Comdty"
+    type: "inter_commodity"
+    notes: "Exchange of Futures for Swaps (EFS) spread"
     
   crack_321:
     name: "3-2-1 Crack Spread"

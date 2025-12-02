@@ -51,12 +51,14 @@ connection_status = data_loader.get_connection_status()
 data_mode = connection_status.get("data_mode", "disconnected")
 
 st.title("📈 Market Insights")
-if data_mode == "mock":
-    st.caption("⚠️ Simulated data mode — Bloomberg not connected")
-elif data_mode == "live":
+if data_mode == "live":
     st.caption("🟢 Live market data from Bloomberg")
+elif data_mode == "disconnected":
+    st.error("🔴 Bloomberg Terminal not connected. Live data required.")
+    st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
+    st.stop()
 else:
-    st.caption("⚠️ Data source unavailable")
+    st.warning(f"⚠️ Data mode: {data_mode}")
 
 # Tabs for different analysis views
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -72,10 +74,11 @@ with tab1:
     st.subheader("Price Action & Structure")
     
     # Instrument definitions
+    # Note: Dubai uses 2nd month swap (PGCR2MOE) to avoid BALMO (Balance of Month)
     instruments = {
-        "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil", "icon": "🇬🇧"},
-        "WTI": {"ticker": "CL1 Comdty", "name": "WTI Crude Oil", "icon": "🇺🇸"},
-        "Dubai": {"ticker": "PGCR1MOE Index", "name": "Dubai Crude Oil", "icon": "🇦🇪"},
+        "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil (ICE)", "icon": "🇬🇧"},
+        "WTI": {"ticker": "CL1 Comdty", "name": "WTI Crude Oil (NYMEX)", "icon": "🇺🇸"},
+        "Dubai": {"ticker": "PGCR2MOE Index", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
     
     # Instrument tabs
