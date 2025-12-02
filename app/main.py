@@ -18,6 +18,7 @@ from pathlib import Path
 
 import altair as alt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -27,6 +28,12 @@ if str(project_root) not in sys.path:
 
 from app import shared_state
 from app.dashboard_core import DashboardContext, PortfolioAnalytics
+from app.components.charts import (
+    create_candlestick_chart,
+    create_futures_curve_chart,
+    CHART_COLORS,
+)
+from app.components.theme import get_chart_config
 
 
 # =============================================================================
@@ -416,71 +423,18 @@ class DashboardApp:
         if hist_data is None or hist_data.empty:
             st.info("Historical data unavailable.")
             return
-        price_df = hist_data[["PX_LAST", "PX_HIGH", "PX_LOW"]].reset_index()
-        date_column = price_df.columns[0]
-        if date_column != "Date":
-            price_df = price_df.rename(columns={date_column: "Date"})
-        price_df["Date"] = pd.to_datetime(price_df["Date"])
-        price_min = float(price_df["PX_LOW"].min())
-        price_max = float(price_df["PX_HIGH"].max())
-        padding = max((price_max - price_min) * 0.05, 0.5)
-        y_domain = [price_min - padding, price_max + padding]
 
-        base = alt.Chart(price_df).encode(
-            x=alt.X(
-                "Date:T",
-                title="",
-                axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8", grid=False),
-            ),
-            tooltip=[
-                alt.Tooltip("Date:T", title="Date"),
-                alt.Tooltip("PX_LAST:Q", title="Close", format="$.2f"),
-                alt.Tooltip("PX_HIGH:Q", title="High", format="$.2f"),
-                alt.Tooltip("PX_LOW:Q", title="Low", format="$.2f"),
-            ],
+        # Create professional candlestick chart with solid green/red fills
+        fig = create_candlestick_chart(
+            data=hist_data,
+            title="",
+            height=380,
+            show_volume=False,
+            show_ma=True,
+            ma_periods=[20, 50],
         )
-
-        area = base.mark_area(
-            line={"color": "#38bdf8", "size": 2},
-            color=alt.Gradient(
-                gradient="linear",
-                stops=[
-                    alt.GradientStop(color="rgba(14,165,233,0.45)", offset=0),
-                    alt.GradientStop(color="rgba(14,165,233,0.05)", offset=1),
-                ],
-                x1=0, x2=0, y1=1, y2=0,
-            ),
-            interpolate="monotone",
-        ).encode(
-            y=alt.Y(
-                "PX_LAST:Q",
-                title="USD/bbl",
-                scale=alt.Scale(domain=y_domain),
-                axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8"),
-            )
-        )
-
-        hover = alt.selection_point(fields=["Date"], nearest=True, on="mouseover", empty="none")
-        selectors = (
-            base.mark_point(opacity=0)
-            .encode(y="PX_LAST:Q")
-            .add_params(hover)
-        )
-        points = base.mark_point(filled=True, size=60, color="#38bdf8").encode(
-            y="PX_LAST:Q",
-            opacity=alt.condition(hover, alt.value(1), alt.value(0)),
-        )
-        text = base.mark_text(align="left", dx=5, dy=-5, color="#e2e8f0", font="IBM Plex Mono").encode(
-            y="PX_LAST:Q",
-            text=alt.condition(hover, alt.Text("PX_LAST:Q", format="$.2f"), alt.value("")),
-        )
-        rules = base.mark_rule(color="#475569").encode(x="Date:T").transform_filter(hover)
-        price_chart = (area + selectors + points + text + rules).properties(height=320).interactive()
-
-        st.altair_chart(
-            price_chart.configure_view(strokeOpacity=0).configure_axis(gridColor="#1e293b", gridDash=[2, 4]),
-            use_container_width=True,
-        )
+        
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         # Use LIVE price from oil_prices for "Current", historical data for stats
         prices = self.context.data.oil_prices
@@ -508,84 +462,17 @@ class DashboardApp:
             self._curve_structure = "Unknown"
             st.info("Futures curve unavailable.")
             return
-        curve = curve.copy()
-        if "expiry" in curve.columns:
-            curve["expiry"] = pd.to_datetime(curve["expiry"])
-            curve["contract_label"] = curve["expiry"].dt.strftime("%b %Y")
-        else:
-            curve["contract_label"] = "M" + curve["month"].astype(str)
-        if "open_interest" in curve.columns:
-            curve["open_interest"] = pd.to_numeric(curve["open_interest"], errors="coerce")
-        order = curve.sort_values("month")["contract_label"].tolist()
-        price_min = float(curve["price"].min())
-        price_max = float(curve["price"].max())
-        padding = max((price_max - price_min) * 0.1, 0.5)
-        y_domain = [price_min - padding, price_max + padding]
-        tooltip = [
-            alt.Tooltip("ticker:N", title="Ticker"),
-            alt.Tooltip("contract_label:N", title="Delivery"),
-            alt.Tooltip("price:Q", title="Price", format="$.2f"),
-            alt.Tooltip("change:Q", title="Delta vs Open", format="$.2f"),
-        ]
-        has_oi = "open_interest" in curve.columns and curve["open_interest"].notna().any()
-        if has_oi:
-            tooltip.append(alt.Tooltip("open_interest:Q", title="Open Interest", format=",d"))
         
-        base = alt.Chart(curve).encode(
-            x=alt.X(
-                "contract_label:N",
-                sort=order,
-                title="Contract",
-                axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8", labelAngle=-25),
-            ),
-            tooltip=tooltip,
-        )
-        area = base.mark_area(
-            color="rgba(56,189,248,0.15)",
-            line={"color": "#38bdf8", "size": 2},
-            interpolate="monotone",
-        ).encode(
-            y=alt.Y(
-                "price:Q",
-                title="USD/bbl",
-                scale=alt.Scale(domain=y_domain),
-                axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8"),
-            )
-        )
-        markers = base.mark_point(color="#38bdf8", size=60, filled=True).encode(y="price:Q")
-        hover = alt.selection_point(fields=["contract_label"], nearest=True, on="mouseover", empty="none")
-        selectors = base.mark_point(opacity=0).encode(y="price:Q").add_params(hover)
-        highlight = base.mark_point(color="#fbbf24", size=140, filled=True).encode(
-            y="price:Q",
-            opacity=alt.condition(hover, alt.value(0.35), alt.value(0)),
-        )
-        labels = base.mark_text(align="left", dx=6, dy=-6, color="#f8fafc", font="IBM Plex Mono").encode(
-            y="price:Q",
-            text=alt.condition(hover, alt.Text("price:Q", format="$.2f"), alt.value("")),
-        )
-        price_chart = (area + markers + selectors + highlight + labels).properties(height=320)
-        
-        if has_oi:
-            oi_chart = (
-                base.mark_bar(color="#f97316", cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
-                .encode(
-                    y=alt.Y(
-                        "open_interest:Q",
-                        title="Open Interest",
-                        axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8"),
-                    )
-                )
-                .properties(height=140)
-            )
-            combined_chart = alt.vconcat(price_chart, oi_chart).resolve_scale(x="shared")
-        else:
-            combined_chart = price_chart
-        
-        st.altair_chart(
-            combined_chart.configure_view(strokeOpacity=0).configure_axis(gridColor="#1e293b", gridDash=[2, 4]).interactive(),
-            use_container_width=True,
+        # Create elegant line chart for futures curve with proper y-axis
+        fig = create_futures_curve_chart(
+            curve_data=curve,
+            title="",
+            height=280,
         )
         
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+
+        # Calculate metrics from cached curve
         prices = curve["price"]
         slope = (prices.iloc[-1] - prices.iloc[0]) / max(len(prices) - 1, 1)
         

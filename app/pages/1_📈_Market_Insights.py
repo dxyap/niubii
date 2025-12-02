@@ -22,11 +22,19 @@ load_dotenv()
 
 from app import shared_state
 from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
+from app.components.charts import (
+    create_candlestick_chart,
+    create_futures_curve_chart,
+    create_volume_chart,
+    create_bar_chart,
+    CHART_COLORS,
+    BASE_LAYOUT,
+)
 
 st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈", layout="wide")
 
 # Apply shared theme
-from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT
+from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
 apply_theme(st)
 
 # Initialize components
@@ -78,70 +86,25 @@ with tab1:
         )
         
         if hist_data is not None and not hist_data.empty:
-            fig = go.Figure()
-            
-            # Candlestick chart
-            fig.add_trace(go.Candlestick(
-                x=hist_data.index,
-                open=hist_data['PX_OPEN'],
-                high=hist_data['PX_HIGH'],
-                low=hist_data['PX_LOW'],
-                close=hist_data['PX_LAST'],
-                name='Brent',
-                increasing_line_color='#22c55e',
-                decreasing_line_color='#ef4444'
-            ))
-            
-            # Add moving averages
-            hist_data['SMA20'] = hist_data['PX_LAST'].rolling(20).mean()
-            hist_data['SMA50'] = hist_data['PX_LAST'].rolling(50).mean()
-            
-            fig.add_trace(go.Scatter(
-                x=hist_data.index, y=hist_data['SMA20'],
-                name='SMA 20', line=dict(color='#f59e0b', width=1.5)
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=hist_data.index, y=hist_data['SMA50'],
-                name='SMA 50', line=dict(color='#8b5cf6', width=1.5)
-            ))
-            
-            fig.update_layout(
-                template='plotly_dark',
+            # Use enhanced candlestick chart with solid green/red fills
+            fig = create_candlestick_chart(
+                data=hist_data,
+                title="",
                 height=500,
-                xaxis_rangeslider_visible=False,
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
-                xaxis=dict(gridcolor='rgba(51, 65, 85, 0.5)'),
-                yaxis=dict(gridcolor='rgba(51, 65, 85, 0.5)', title='Price ($/bbl)'),
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                show_volume=False,
+                show_ma=True,
+                ma_periods=[20, 50],
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
         else:
             st.info("Historical data unavailable.")
         
         # Volume chart
         st.markdown("**Volume**")
         if hist_data is not None and not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
-            vol_fig = go.Figure()
-            vol_fig.add_trace(go.Bar(
-                x=hist_data.index,
-                y=hist_data['PX_VOLUME'],
-                marker_color='#0ea5e9',
-                name='Volume'
-            ))
-            vol_fig.update_layout(
-                template='plotly_dark',
-                height=150,
-                margin=dict(l=0, r=0, t=0, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
-                xaxis=dict(gridcolor='rgba(51, 65, 85, 0.3)'),
-                yaxis=dict(gridcolor='rgba(51, 65, 85, 0.3)'),
-            )
-            st.plotly_chart(vol_fig, use_container_width=True)
+            vol_fig = create_volume_chart(hist_data, height=130)
+            st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
     
     with col2:
         st.markdown("**Key Levels**")
@@ -201,30 +164,15 @@ with tab2:
         wti_curve = context.data.futures_curve
         brent_curve = context.data.brent_curve
         
-        fig = go.Figure()
-        
-        fig.add_trace(go.Scatter(
-            x=wti_curve['month'], y=wti_curve['price'],
-            name='WTI', mode='lines+markers',
-            line=dict(color='#00D26A', width=2)
-        ))
-        
-        fig.add_trace(go.Scatter(
-            x=brent_curve['month'], y=brent_curve['price'],
-            name='Brent', mode='lines+markers',
-            line=dict(color='#00A3E0', width=2)
-        ))
-        
-        fig.update_layout(
-            template='plotly_dark',
+        # Create enhanced futures curve chart with both WTI and Brent
+        fig = create_futures_curve_chart(
+            curve_data=brent_curve,
+            secondary_curve=wti_curve,
+            title="WTI vs Brent Futures Curve",
             height=400,
-            xaxis_title='Month',
-            yaxis_title='Price ($/bbl)',
-            legend=dict(orientation='h', yanchor='bottom', y=1.02),
-            margin=dict(l=0, r=0, t=30, b=0),
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
         
         # Calendar spreads
         st.markdown("**Calendar Spreads**")
@@ -300,21 +248,20 @@ with tab3:
             component_fig.add_trace(go.Bar(
                 x=['RBOB×2', 'HO×1', 'WTI×3', 'Crack'],
                 y=[rbob_bbl * 2, ho_bbl, -wti * 3, crack_321['crack_spread'] * 3],
-                marker_color=[COLORS['success'], COLORS['success'], COLORS['error'], COLORS['primary']],
+                marker_color=[CHART_COLORS['profit'], CHART_COLORS['profit'], CHART_COLORS['loss'], CHART_COLORS['primary']],
                 text=[f"${rbob_bbl*2:.2f}", f"${ho_bbl:.2f}", f"-${wti*3:.2f}", f"${crack_321['crack_spread']*3:.2f}"],
-                textposition='outside'
+                textposition='outside',
+                textfont=dict(size=12, color=CHART_COLORS['text_primary']),
+                marker_line_width=0,
             ))
             
             component_fig.update_layout(
-                template='plotly_dark',
+                **BASE_LAYOUT,
                 height=250,
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
-                yaxis_title='$/bbl equivalent'
+                yaxis_title='$/bbl equivalent',
             )
             
-            st.plotly_chart(component_fig, use_container_width=True)
+            st.plotly_chart(component_fig, use_container_width=True, config=get_chart_config())
             
             # Metrics
             m_col1, m_col2, m_col3 = st.columns(3)
@@ -372,29 +319,30 @@ with tab4:
             
             fig = go.Figure()
             
-            # Inventory level
+            # Inventory level with gradient fill
             fig.add_trace(go.Scatter(
                 x=eia_data.index,
                 y=eia_data['inventory_mmb'],
                 name='Inventory',
-                line=dict(color=COLORS['primary'], width=2)
+                line=dict(color=CHART_COLORS['primary'], width=2.5),
+                fill='tozeroy',
+                fillcolor='rgba(0, 163, 224, 0.1)',
+                hovertemplate='%{x}<br>%{y:.1f} MMbbl<extra></extra>',
             ))
             
             # 5-year range
             mean = eia_data['inventory_mmb'].mean()
-            fig.add_hline(y=mean, line_dash='dash', line_color='orange',
+            fig.add_hline(y=mean, line_dash='dash', line_color=CHART_COLORS['ma_fast'],
                          annotation_text='5-Year Avg')
             
             fig.update_layout(
-                template='plotly_dark',
+                **BASE_LAYOUT,
                 height=350,
                 yaxis_title='Inventory (MMbbl)',
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                yaxis_tickformat='.0f',
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
             
             # Weekly change
             st.markdown("**Weekly Change**")
@@ -403,19 +351,21 @@ with tab4:
             change_fig.add_trace(go.Bar(
                 x=eia_data.index,
                 y=eia_data['change_mmb'],
-                marker_color=[COLORS['success'] if x < 0 else COLORS['error'] for x in eia_data['change_mmb']],
-                name='Change'
+                marker_color=[CHART_COLORS['profit'] if x < 0 else CHART_COLORS['loss'] for x in eia_data['change_mmb']],
+                marker_line_width=0,
+                name='Change',
+                hovertemplate='%{x}<br>%{y:+.1f} MMbbl<extra></extra>',
             ))
             
+            fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
+            
             change_fig.update_layout(
-                template='plotly_dark',
+                **BASE_LAYOUT,
                 height=200,
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                yaxis_title='Change (MMbbl)',
             )
             
-            st.plotly_chart(change_fig, use_container_width=True)
+            st.plotly_chart(change_fig, use_container_width=True, config=get_chart_config())
         
         with col2:
             st.markdown("**Latest Report**")
@@ -473,27 +423,29 @@ with tab5:
                 name='Quota',
                 x=opec_data['country'],
                 y=opec_data['quota_mbpd'],
-                marker_color=COLORS['primary'],
+                marker_color=CHART_COLORS['primary'],
+                marker_line_width=0,
+                hovertemplate='Quota: %{y:.2f} mb/d<extra></extra>',
             ))
             
             fig.add_trace(go.Bar(
                 name='Actual',
                 x=opec_data['country'],
                 y=opec_data['actual_mbpd'],
-                marker_color=COLORS['success'],
+                marker_color=CHART_COLORS['profit'],
+                marker_line_width=0,
+                hovertemplate='Actual: %{y:.2f} mb/d<extra></extra>',
             ))
             
             fig.update_layout(
-                template='plotly_dark',
+                **BASE_LAYOUT,
                 height=400,
                 barmode='group',
                 yaxis_title='Production (mb/d)',
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(15, 23, 42, 0.6)',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
             
             # Compliance table
             st.markdown("**Compliance by Country**")
