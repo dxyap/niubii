@@ -627,6 +627,50 @@ def create_volume_chart(
 
 
 # =============================================================================
+# OPEN INTEREST CHART
+# =============================================================================
+
+def create_open_interest_chart(
+    data: pd.DataFrame,
+    height: int = 120,
+) -> go.Figure:
+    """
+    Create a standalone open interest area chart.
+    
+    Args:
+        data: DataFrame with OPEN_INT column
+        height: Chart height
+        
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data['OPEN_INT'],
+        mode='lines',
+        line=dict(color=CHART_COLORS["secondary"], width=1.5),
+        fill='tozeroy',
+        fillcolor='rgba(139, 92, 246, 0.15)',
+        name='Open Interest',
+        hovertemplate='%{y:,.0f}<extra></extra>',
+    ))
+    
+    oi_yaxis = dict(BASE_LAYOUT["yaxis"])
+    oi_yaxis.update({"tickformat": ".2s", "title_text": ""})
+
+    fig = apply_base_layout(
+        fig,
+        height=height,
+        yaxis=oi_yaxis,
+        margin=dict(l=10, r=60, t=5, b=30),
+    )
+    
+    return fig
+
+
+# =============================================================================
 # LINE CHART
 # =============================================================================
 

@@ -26,6 +26,7 @@ from app.components.charts import (
     create_candlestick_chart,
     create_futures_curve_chart,
     create_volume_chart,
+    create_open_interest_chart,
     create_bar_chart,
     CHART_COLORS,
     BASE_LAYOUT,
@@ -100,11 +101,20 @@ with tab1:
         else:
             st.info("Historical data unavailable.")
         
-        # Volume chart
-        st.markdown("**Volume**")
-        if hist_data is not None and not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
-            vol_fig = create_volume_chart(hist_data, height=130)
-            st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+        # Volume and Open Interest charts side by side
+        vol_col, oi_col = st.columns(2)
+        
+        with vol_col:
+            st.markdown("**Volume**")
+            if hist_data is not None and not hist_data.empty and 'PX_VOLUME' in hist_data.columns:
+                vol_fig = create_volume_chart(hist_data, height=130)
+                st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+        
+        with oi_col:
+            st.markdown("**Open Interest**")
+            if hist_data is not None and not hist_data.empty and 'OPEN_INT' in hist_data.columns:
+                oi_fig = create_open_interest_chart(hist_data, height=130)
+                st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
     
     with col2:
         st.markdown("**Key Levels**")
