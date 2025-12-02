@@ -75,11 +75,12 @@ with tab1:
     st.subheader("Price Action & Structure")
     
     # Instrument definitions
-    # Note: Dubai uses 2nd month swap (PGCR2MOE) to avoid BALMO (Balance of Month)
+    # Note: Dubai uses 2nd month swap (DAT2) to avoid BALMO (Balance of Month)
+    # Note: WTI uses ICE prices (T1 Comdty) not NYMEX (CL1)
     instruments = {
         "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil (ICE)", "icon": "🇬🇧"},
-        "WTI": {"ticker": "CL1 Comdty", "name": "WTI Crude Oil (NYMEX)", "icon": "🇺🇸"},
-        "Dubai": {"ticker": "PGCR2MOE Index", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
+        "WTI": {"ticker": "T1 Comdty", "name": "WTI Crude Oil (ICE)", "icon": "🇺🇸"},
+        "Dubai": {"ticker": "DAT2 Comdty", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
     
     # Instrument tabs
@@ -143,9 +144,11 @@ with tab1:
                 
                 with oi_col:
                     st.markdown("**Open Interest**")
-                    if 'OPEN_INT' in hist_data.columns:
+                    if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
                         oi_fig = create_open_interest_chart(hist_data, height=120)
                         st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+                    else:
+                        st.caption("Open interest data not available")
             else:
                 if not data_warning_shown:
                     st.info(f"Historical data unavailable for {name}.")
