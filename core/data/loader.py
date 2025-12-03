@@ -240,6 +240,7 @@ class DataLoader:
         Get historical OHLCV data.
         
         First checks local storage, then fetches from Bloomberg if needed.
+        Ensures data includes recent dates (today/yesterday) when applicable.
         """
         if start_date is None:
             start_date = datetime.now() - timedelta(days=365)
@@ -251,11 +252,22 @@ class DataLoader:
         if isinstance(end_date, str):
             end_date = pd.to_datetime(end_date)
         
+        today = pd.Timestamp.now().normalize()
+        
         # Try loading from storage first
         df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
         
         if df is not None and len(df) > 0:
-            return df
+            # Check if stored data is up-to-date (includes today if today is a business day)
+            # If today is a business day and the stored data is missing it, fetch fresh data
+            last_date = pd.Timestamp(df.index[-1]).normalize()
+            is_business_day = today.dayofweek < 5  # Mon=0, Fri=4
+            
+            # If data is stale (missing today for business days), fetch fresh data
+            if is_business_day and last_date < today:
+                logger.debug(f"Stored data for {ticker} is stale (last: {last_date}, today: {today}), fetching fresh data")
+            else:
+                return df
         
         # Fetch from Bloomberg
         df = self.bloomberg.get_historical(

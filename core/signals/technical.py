@@ -9,6 +9,16 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from core.indicators import (
+    calculate_rsi,
+    calculate_bollinger_bands,
+    calculate_sma,
+    calculate_ema,
+    calculate_macd,
+    calculate_atr,
+    get_crossover_signal,
+)
+
 
 class TechnicalSignals:
     """
@@ -96,30 +106,6 @@ class TechnicalSignals:
             "slow_period": slow_period,
         }
     
-    def calculate_rsi(
-        self,
-        prices: pd.Series,
-        period: int = 14
-    ) -> pd.Series:
-        """
-        Calculate Relative Strength Index.
-        
-        Args:
-            prices: Price series
-            period: RSI period
-            
-        Returns:
-            RSI series
-        """
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        return rsi
-    
     def rsi_signal(
         self,
         prices: pd.Series,
@@ -139,7 +125,7 @@ class TechnicalSignals:
         Returns:
             Signal dictionary
         """
-        rsi = self.calculate_rsi(prices, period)
+        rsi = calculate_rsi(prices, period)
         current_rsi = rsi.iloc[-1]
         prev_rsi = rsi.iloc[-2] if len(rsi) > 1 else current_rsi
         
@@ -189,11 +175,7 @@ class TechnicalSignals:
         Returns:
             Signal dictionary
         """
-        sma = prices.rolling(window=period).mean()
-        std = prices.rolling(window=period).std()
-        
-        upper_band = sma + (std * num_std)
-        lower_band = sma - (std * num_std)
+        sma, upper_band, lower_band = calculate_bollinger_bands(prices, period, num_std)
         
         current_price = prices.iloc[-1]
         current_upper = upper_band.iloc[-1]

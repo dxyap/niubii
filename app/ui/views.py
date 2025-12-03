@@ -269,7 +269,7 @@ class MarketOverviewView:
 
     def render_curve_section(self) -> str:
         st.subheader("Brent Futures Curve")
-        curve = self._curve_loader("brent", 12)
+        curve = self._curve_loader("brent", 18)
 
         if curve is None or curve.empty:
             st.info("Futures curve unavailable.")

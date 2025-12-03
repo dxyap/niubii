@@ -320,7 +320,7 @@ class DashboardData:
     def futures_curve(self) -> Optional[pd.DataFrame]:
         if self._futures_curve is self._NOT_LOADED:
             try:
-                self._futures_curve = self.data_loader.get_futures_curve("wti", 12)
+                self._futures_curve = self.data_loader.get_futures_curve("wti", 18)
             except Exception as e:
                 self._errors["futures_curve"] = str(e)
                 self._futures_curve = None
@@ -330,7 +330,7 @@ class DashboardData:
     def brent_curve(self) -> Optional[pd.DataFrame]:
         if self._brent_curve is self._NOT_LOADED:
             try:
-                self._brent_curve = self.data_loader.get_futures_curve("brent", 12)
+                self._brent_curve = self.data_loader.get_futures_curve("brent", 18)
             except Exception as e:
                 self._errors["brent_curve"] = str(e)
                 self._brent_curve = None
