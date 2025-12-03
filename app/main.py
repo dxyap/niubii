@@ -81,25 +81,15 @@ st.set_page_config(
 class DashboardApp:
     """Main dashboard orchestrator that wires views and shared state."""
 
-    NAV_LINKS = (
-        ("main.py", "Overview"),
-        ("pages/1_\U0001F4C8_Market_Insights.py", "Market Insights"),
-        ("pages/2_\U0001F4E1_Signals.py", "Signals"),
-        ("pages/3_\U0001F6E1\ufe0f_Risk.py", "Risk Management"),
-        ("pages/4_\U0001F4BC_Trade_Entry.py", "Trade Entry"),
-        ("pages/5_\U0001F4CB_Blotter.py", "Trade Blotter"),
-        ("pages/6_\U0001F4CA_Analytics.py", "Analytics"),
-    )
-
     def __init__(self):
         load_dotenv()
-        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "10"))
+        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "15"))
         self.refresh_controller = RefreshController(self.refresh_interval)
         self.data_loader = shared_state.get_data_loader()
         self._ensure_core_subscriptions()
 
         self.context = shared_state.get_dashboard_context()
-        self.sidebar_view = SidebarView(self.context, self.refresh_controller, self.NAV_LINKS)
+        self.sidebar_view = SidebarView(self.context, self.refresh_controller)
         self.key_metrics_view = KeyMetricsView(self.context)
         self.market_view = MarketOverviewView(
             self.context,

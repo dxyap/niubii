@@ -5,64 +5,36 @@ Manual trade entry with pre-trade risk checks.
 """
 
 import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime, date, time
-import sys
+from datetime import datetime
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
+from app.page_utils import init_page
 from app import shared_state
 from core.trading import TradeBlotter, PositionManager
 from core.risk import RiskLimits
 
-st.set_page_config(page_title="Trade Entry | Oil Trading", page_icon="💼", layout="wide")
+# Initialize page
+ctx = init_page(
+    title="💼 Trade Entry",
+    page_title="Trade Entry | Oil Trading",
+    icon="💼",
+)
 
-# Apply shared theme
-from app.components.theme import apply_theme, COLORS
-apply_theme(st)
+st.caption("Enter trades manually after execution | Pre-trade risk checks included")
 
-# Initialize components
+# Initialize trading components (cached)
+project_root = Path(__file__).parent.parent.parent
+
 @st.cache_resource
-def get_components():
+def get_trading_components():
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))
     return blotter, position_mgr, risk_limits
 
-blotter, position_mgr, risk_limits = get_components()
-context = shared_state.get_dashboard_context()
-data_loader = context.data_loader
-price_cache = context.price_cache
-portfolio_summary = context.portfolio.summary
-positions_df = context.portfolio.positions_dataframe
-
-st.title("💼 Trade Entry")
-
-# Show live prices at top
-oil_prices = context.data.oil_prices
-if oil_prices:
-    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-    with col_p1:
-        wti = oil_prices.get("WTI", {})
-        st.metric("WTI Live", f"${wti.get('current', 0):.2f}", f"{wti.get('change', 0):+.2f}")
-    with col_p2:
-        brent = oil_prices.get("Brent", {})
-        st.metric("Brent Live", f"${brent.get('current', 0):.2f}", f"{brent.get('change', 0):+.2f}")
-    with col_p3:
-        rbob = price_cache.get("XB1 Comdty")
-        if rbob:
-            st.metric("RBOB", f"${rbob:.4f}/gal")
-    with col_p4:
-        ho = price_cache.get("HO1 Comdty")
-        if ho:
-            st.metric("Heating Oil", f"${ho:.4f}/gal")
-    st.divider()
-
-st.caption("Enter trades manually after execution | Pre-trade risk checks included")
+blotter, position_mgr, risk_limits = get_trading_components()
+portfolio_summary = ctx.portfolio.summary
+positions_df = ctx.portfolio.positions_dataframe
 
 # Layout
 col1, col2 = st.columns([2, 1])
@@ -71,7 +43,6 @@ with col1:
     st.subheader("📝 New Trade Entry")
     
     with st.form("trade_entry_form"):
-        # Trade details
         form_col1, form_col2 = st.columns(2)
         
         with form_col1:
@@ -82,7 +53,6 @@ with col1:
                 options=[
                     "CLF5 Comdty - WTI Jan 2025",
                     "CLG5 Comdty - WTI Feb 2025",
-                    "CLH5 Comdty - WTI Mar 2025",
                     "COF5 Comdty - Brent Jan 2025",
                     "COG5 Comdty - Brent Feb 2025",
                     "XBF5 Comdty - RBOB Jan 2025",
@@ -97,16 +67,11 @@ with col1:
         with form_col2:
             trade_time = st.time_input("Trade Time", value=datetime.now().time())
             
-            account = st.selectbox(
-                "Account",
-                options=["MAIN", "HEDGE", "SPEC"],
-                index=0
-            )
+            account = st.selectbox("Account", options=["MAIN", "HEDGE", "SPEC"], index=0)
             
             quantity = st.number_input("Quantity (Contracts)", min_value=1, max_value=100, value=10)
             st.session_state.trade_entry_quantity = quantity
         
-        # Price and fees
         price_col1, price_col2 = st.columns(2)
         
         with price_col1:
@@ -115,25 +80,18 @@ with col1:
         with price_col2:
             commission = st.number_input("Commission/Fees ($)", min_value=0.0, value=25.0, format="%.2f")
         
-        # Strategy and notes
         strategy = st.selectbox(
             "Strategy Tag",
-            options=["Momentum", "Mean Reversion", "Term Structure", "Spread", "Signal-Based", "Discretionary", "Other"],
+            options=["Momentum", "Mean Reversion", "Term Structure", "Spread", "Signal-Based", "Discretionary"],
             index=0
         )
         
-        signal_ref = st.text_input("Signal Reference (optional)", placeholder="SIG-2024-1130-001")
+        notes = st.text_area("Notes", placeholder="Trade rationale...")
         
-        notes = st.text_area("Notes", placeholder="Trade rationale, market conditions, etc.")
-        
-        # Submit button
         submitted = st.form_submit_button("💾 Save Trade", use_container_width=True)
         
         if submitted:
-            # Extract ticker from selection
             ticker = instrument.split(" - ")[0]
-            
-            # Add trade to blotter
             trade_id = blotter.add_trade(
                 instrument=ticker,
                 side=side,
@@ -143,12 +101,10 @@ with col1:
                 trade_time=trade_time.strftime("%H:%M:%S"),
                 commission=commission,
                 strategy=strategy,
-                signal_ref=signal_ref if signal_ref else None,
                 notes=notes if notes else None,
                 account=account
             )
-            
-            st.success(f"✅ Trade saved successfully! Trade ID: {trade_id}")
+            st.success(f"✅ Trade saved! Trade ID: {trade_id}")
             st.balloons()
 
 with col2:
@@ -162,9 +118,8 @@ with col2:
         mask = positions_df["ticker"].str.startswith(ticker_prefix)
         current_position = int(positions_df.loc[mask, "qty"].sum())
     proposed_quantity = int(st.session_state.get("trade_entry_quantity", 10))
-    current_price = price_cache.get(selected_ticker)
+    current_price = ctx.price_cache.get(selected_ticker)
     
-    # Position limit check
     position_check = risk_limits.check_position_limit(
         ticker=selected_ticker,
         current_quantity=current_position,
@@ -177,67 +132,29 @@ with col2:
     if position_check['approved']:
         st.success(f"✅ Position: {position_check['new_quantity']} / {position_check['max_contracts']} contracts")
     else:
-        st.error(f"❌ Position limit breach: {position_check['new_quantity']} > {position_check['max_contracts']}")
+        st.error(f"❌ Position limit breach")
     
-    st.progress(
-        min(position_check['contract_utilization_pct'] / 100, 1.0),
-        text=f"Contract Utilization: {position_check['contract_utilization_pct']:.0f}%"
-    )
-    
-    st.divider()
-    
-    st.markdown("**Notional Exposure**")
-    
-    st.progress(
-        min(position_check['notional_utilization_pct'] / 100, 1.0),
-        text=f"Notional: ${position_check['new_notional']:,.0f} ({position_check['notional_utilization_pct']:.0f}%)"
-    )
+    st.progress(min(position_check['contract_utilization_pct'] / 100, 1.0))
     
     st.divider()
     
     st.markdown("**VaR Impact**")
     
-    multiplier = data_loader.get_multiplier(selected_ticker)
+    multiplier = ctx.data_loader.get_multiplier(selected_ticker)
     current_var = portfolio_summary['var_estimate']
     var_limit = portfolio_summary['var_limit']
-    var_impact = proposed_quantity * current_price * multiplier * 0.02 * 1.65
+    var_impact = proposed_quantity * (current_price or 72.5) * multiplier * 0.02 * 1.65
     new_var = current_var + var_impact
     var_util = new_var / var_limit * 100
     
     if var_util < 90:
         st.success(f"✅ VaR: ${new_var:,.0f} ({var_util:.0f}% of limit)")
-    elif var_util < 100:
-        st.warning(f"⚠️ VaR: ${new_var:,.0f} ({var_util:.0f}% of limit)")
     else:
-        st.error(f"❌ VaR breach: ${new_var:,.0f} > ${var_limit:,.0f}")
+        st.warning(f"⚠️ VaR: ${new_var:,.0f} ({var_util:.0f}% of limit)")
     
     st.progress(min(var_util / 100, 1.0))
-    
-    st.divider()
-    
-    st.markdown("**Concentration Check**")
-    
-    concentration = context.portfolio.concentration(ticker_prefix)
-    
-    if concentration <= 40:
-        st.success(f"✅ WTI concentration: {concentration}% (limit: 40%)")
-    else:
-        st.warning(f"⚠️ WTI concentration: {concentration}% (above 40% limit)")
-    
-    st.divider()
-    
-    # Override option
-    st.markdown("**Risk Override**")
-    
-    override = st.checkbox("Override risk warnings")
-    
-    if override:
-        override_reason = st.text_area(
-            "Override Reason (required)",
-            placeholder="Enter reason for overriding risk limits..."
-        )
 
-# Recent trades section
+# Recent trades
 st.divider()
 st.subheader("📋 Today's Trades")
 
@@ -260,27 +177,10 @@ if not todays_trades.empty:
             'strategy': 'Strategy',
         }
     )
-    
-    # Summary
-    buy_trades = len(todays_trades[todays_trades['side'] == 'BUY'])
-    sell_trades = len(todays_trades[todays_trades['side'] == 'SELL'])
-    total_volume = todays_trades['quantity'].sum()
-    total_commission = todays_trades['commission'].sum()
-    
-    sum_col1, sum_col2, sum_col3, sum_col4 = st.columns(4)
-    
-    with sum_col1:
-        st.metric("Total Trades", len(todays_trades))
-    with sum_col2:
-        st.metric("Buy / Sell", f"{buy_trades} / {sell_trades}")
-    with sum_col3:
-        st.metric("Total Volume", f"{total_volume} contracts")
-    with sum_col4:
-        st.metric("Commissions", f"${total_commission:.2f}")
 else:
     st.info("No trades entered today")
 
-# Quick entry shortcuts
+# Quick entry
 st.divider()
 st.subheader("⚡ Quick Trade Entry")
 
@@ -288,52 +188,28 @@ quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
 
 with quick_col1:
     if st.button("Buy 5 WTI", use_container_width=True):
-        price = round(price_cache.get("CL1 Comdty"), 2)
-        trade_id = blotter.add_trade(
-            instrument="CL1 Comdty",
-            side="BUY",
-            quantity=5,
-            price=price,
-            strategy="Quick Entry"
-        )
+        price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
+        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col2:
     if st.button("Sell 5 WTI", use_container_width=True):
-        price = round(price_cache.get("CL1 Comdty"), 2)
-        trade_id = blotter.add_trade(
-            instrument="CL1 Comdty",
-            side="SELL",
-            quantity=5,
-            price=price,
-            strategy="Quick Entry"
-        )
+        price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
+        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col3:
     if st.button("Buy 5 Brent", use_container_width=True):
-        price = round(price_cache.get("CO1 Comdty"), 2)
-        trade_id = blotter.add_trade(
-            instrument="CO1 Comdty",
-            side="BUY",
-            quantity=5,
-            price=price,
-            strategy="Quick Entry"
-        )
+        price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
+        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col4:
     if st.button("Sell 5 Brent", use_container_width=True):
-        price = round(price_cache.get("CO1 Comdty"), 2)
-        trade_id = blotter.add_trade(
-            instrument="CO1 Comdty",
-            side="SELL",
-            quantity=5,
-            price=price,
-            strategy="Quick Entry"
-        )
+        price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
+        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()

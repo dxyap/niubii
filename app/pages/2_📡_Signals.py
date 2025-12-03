@@ -8,70 +8,31 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import sys
-from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from dotenv import load_dotenv
-load_dotenv()
-
-from app import shared_state
+from app.page_utils import init_page, COLORS
 from core.signals import TechnicalSignals, FundamentalSignals, SignalAggregator
 
-st.set_page_config(page_title="Signals | Oil Trading", page_icon="📡", layout="wide")
+# Initialize page
+ctx = init_page(
+    title="📡 Trading Signals",
+    page_title="Signals | Oil Trading",
+    icon="📡",
+    lookback_days=120,
+)
 
-# Apply shared theme
-from app.components.theme import apply_theme, COLORS
-apply_theme(st)
-
-# Initialize components
-@st.cache_resource
-def get_components():
-    tech_signals = TechnicalSignals()
-    fund_signals = FundamentalSignals()
-    aggregator = SignalAggregator()
-    return tech_signals, fund_signals, aggregator
-
-tech_signals, fund_signals, aggregator = get_components()
-context = shared_state.get_dashboard_context(lookback_days=120)
-data_loader = context.data_loader
-
-st.title("📡 Trading Signals")
-
-# Show live prices at top
-price_cache = context.price_cache
-oil_prices = context.data.oil_prices
-
-col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-with col_p1:
-    wti_price = price_cache.get("CL1 Comdty")
-    wti_data = oil_prices.get("WTI", {}) if oil_prices else {}
-    if wti_price:
-        st.metric("WTI Live", f"${wti_price:.2f}", f"{wti_data.get('change', 0):+.2f}")
-with col_p2:
-    brent_price = price_cache.get("CO1 Comdty")
-    brent_data = oil_prices.get("Brent", {}) if oil_prices else {}
-    if brent_price:
-        st.metric("Brent Live", f"${brent_price:.2f}", f"{brent_data.get('change', 0):+.2f}")
-with col_p3:
-    spread_data = context.data.wti_brent_spread
-    if spread_data:
-        st.metric("WTI-Brent", f"${spread_data.get('spread', 0):.2f}", f"{spread_data.get('change', 0):+.2f}")
-with col_p4:
-    crack_data = context.data.crack_spread
-    if crack_data:
-        st.metric("3-2-1 Crack", f"${crack_data.get('crack', 0):.2f}", f"{crack_data.get('change', 0):+.2f}")
-
-st.divider()
 st.caption("AI-powered signal generation for oil markets | ⚠️ Signals are advisory only")
 
-# Generate signals
+# Initialize signal components (cached)
+@st.cache_resource
+def get_signal_components():
+    return TechnicalSignals(), FundamentalSignals(), SignalAggregator()
+
+tech_signals, fund_signals, aggregator = get_signal_components()
+
+
 def generate_signals():
-    # Get price data for WTI
-    hist_data = data_loader.get_historical(
+    """Generate composite trading signals using live data."""
+    hist_data = ctx.data_loader.get_historical(
         "CL1 Comdty",
         start_date=datetime.now() - timedelta(days=120)
     )
@@ -80,16 +41,16 @@ def generate_signals():
         return None, None, None
     
     prices = hist_data['PX_LAST']
-    current_price = price_cache.get("CL1 Comdty")  # LIVE price
+    current_price = ctx.price_cache.get("CL1 Comdty")
     
     # Technical signal
     tech_signal = tech_signals.generate_composite_signal(prices)
     
-    # Get real curve data for fundamental signal
-    curve_metrics = context.data.curve_metrics()
-    crack_spread = context.data.crack_spread
+    # Get curve data for fundamental signal
+    curve_metrics = ctx.context.data.curve_metrics()
+    crack_spread = ctx.context.data.crack_spread
     
-    # Fundamental signal with live data where available
+    # Fundamental signal
     fund_signal = fund_signals.generate_composite_fundamental_signal(
         inventory_data={"level": 430, "change": -2.1, "expectation": -1.5},
         opec_data={"compliance": 94, "deviation": 0.3},
@@ -102,7 +63,7 @@ def generate_signals():
         turnaround_data={"offline": 800, "upcoming": 600}
     )
     
-    # Aggregate
+    # Aggregate signals
     composite = aggregator.aggregate_signals(
         technical_signal=tech_signal,
         fundamental_signal=fund_signal,
@@ -111,6 +72,7 @@ def generate_signals():
     )
     
     return tech_signal, fund_signal, composite
+
 
 tech_signal, fund_signal, composite = generate_signals()
 
@@ -165,7 +127,6 @@ if composite:
     with col2:
         st.subheader("📈 Confidence Gauge")
         
-        # Confidence visualization
         confidence = composite.confidence
         confidence_color = COLORS["success"] if confidence > 70 else COLORS["warning"] if confidence > 50 else "#94a3b8"
         
@@ -190,7 +151,6 @@ if composite:
         
         st.divider()
         
-        # Action buttons
         st.markdown("**Actions**")
         
         if st.button("✅ Mark as Traded", use_container_width=True):
@@ -198,9 +158,6 @@ if composite:
         
         if st.button("❌ Dismiss Signal", use_container_width=True):
             st.info("Signal dismissed")
-        
-        if st.button("📋 View Full Analysis", use_container_width=True):
-            st.info("Opening detailed analysis...")
 
 st.divider()
 
@@ -314,7 +271,6 @@ with tab2:
 with tab3:
     st.markdown("**Recent Signal History**")
     
-    # Mock signal history
     signal_history = pd.DataFrame({
         'Time': ['14:32', '11:15', '09:30', 'Yesterday 15:45', 'Yesterday 10:00'],
         'Instrument': ['WTI', 'WTI-Brent', 'WTI', 'Brent', 'WTI'],
@@ -324,15 +280,10 @@ with tab3:
         'Result': ['--', '--', '--', '+$12,500', '-$4,200'],
     })
     
-    st.dataframe(
-        signal_history,
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.dataframe(signal_history, use_container_width=True, hide_index=True)
     
     st.divider()
     
-    # Performance stats
     st.markdown("**Signal Performance (Last 30 Days)**")
     
     perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)

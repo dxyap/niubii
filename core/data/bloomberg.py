@@ -898,20 +898,38 @@ class BloombergClient:
         # Get current price to anchor the series
         current_price = self._simulator.get_price(ticker)
         
-        # Generate date range
+        # Normalize dates to midnight for clean date indices
+        start_date_normalized = pd.Timestamp(start_date).normalize()
+        end_date_normalized = pd.Timestamp(end_date).normalize()
+        today = pd.Timestamp.now().normalize()
+        
+        # Ensure end_date includes today if it's within range
+        if end_date_normalized < today:
+            end_date_normalized = today
+        
+        # Generate date range - use 'B' for business days
         if frequency == "DAILY":
-            dates = pd.date_range(start=start_date, end=end_date, freq='B')
+            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='B')
         elif frequency == "WEEKLY":
-            dates = pd.date_range(start=start_date, end=end_date, freq='W')
+            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='W')
         else:
-            dates = pd.date_range(start=start_date, end=end_date, freq='M')
+            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='M')
+        
+        # If today is a business day and not in the range, add it
+        if frequency == "DAILY":
+            # Check if today is a weekday (business day)
+            if today.dayofweek < 5:  # Mon=0, Fri=4
+                if len(dates) == 0 or dates[-1] < today:
+                    dates = dates.append(pd.DatetimeIndex([today]))
         
         n = len(dates)
         if n == 0:
             return pd.DataFrame()
         
         # Use ticker hash for reproducible but unique series per ticker
-        seed = int(hashlib.md5(ticker.encode()).hexdigest()[:8], 16) % (2**32)
+        # Include today's date to ensure data changes day-to-day
+        seed_str = f"{ticker}_{datetime.now().strftime('%Y%m%d')}"
+        seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16) % (2**32)
         rng = np.random.RandomState(seed)
         
         # Generate returns working backwards from current price

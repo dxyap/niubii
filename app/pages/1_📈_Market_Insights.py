@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -39,8 +40,17 @@ st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈",
 from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
 apply_theme(st)
 
-# Initialize components
-context = shared_state.get_dashboard_context(lookback_days=180)
+# Auto-refresh configuration
+REFRESH_INTERVAL_SECONDS = 15  # Refresh every 15 seconds
+
+# Initialize last refresh time in session state
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = datetime.now()
+if 'auto_refresh' not in st.session_state:
+    st.session_state.auto_refresh = True
+
+# Force refresh on data context to get latest data
+context = shared_state.get_dashboard_context(lookback_days=180, force_refresh=True)
 data_loader = context.data_loader
 price_cache = context.price_cache
 curve_analyzer = CurveAnalyzer()
@@ -51,9 +61,46 @@ fundamental_analyzer = FundamentalAnalyzer()
 connection_status = data_loader.get_connection_status()
 data_mode = connection_status.get("data_mode", "disconnected")
 
-st.title("📈 Market Insights")
+# Header with live status and controls
+header_col1, header_col2, header_col3 = st.columns([3, 1, 1])
+
+with header_col1:
+    st.title("📈 Market Insights")
+
+with header_col2:
+    auto_refresh = st.toggle("Auto Refresh (15s)", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
+    st.session_state.auto_refresh = auto_refresh
+
+with header_col3:
+    if st.button("🔄 Refresh Now", use_container_width=True):
+        st.session_state.last_refresh = datetime.now()
+        shared_state.invalidate_context_cache()
+        st.rerun()
+
+# Live status bar
 if data_mode == "live":
-    st.caption("🟢 Live market data from Bloomberg")
+    time_since_update = (datetime.now() - st.session_state.last_refresh).seconds
+    st.markdown(
+        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; 
+        background: linear-gradient(90deg, rgba(0,210,130,0.15) 0%, rgba(0,210,130,0.05) 100%); 
+        border-left: 3px solid #00D282; border-radius: 4px; margin-bottom: 1rem;">
+        <span style="color: #00D282; font-weight: 600;">🟢 LIVE</span>
+        <span style="color: #94A3B8;">Bloomberg Connected</span>
+        <span style="color: #64748B; margin-left: auto;">Last update: {st.session_state.last_refresh.strftime('%H:%M:%S')} ({time_since_update}s ago)</span>
+        </div>""",
+        unsafe_allow_html=True
+    )
+elif data_mode == "mock":
+    st.markdown(
+        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; 
+        background: linear-gradient(90deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%); 
+        border-left: 3px solid #F59E0B; border-radius: 4px; margin-bottom: 1rem;">
+        <span style="color: #F59E0B; font-weight: 600;">🟡 SIMULATED</span>
+        <span style="color: #94A3B8;">Development Mode</span>
+        <span style="color: #64748B; margin-left: auto;">Last update: {st.session_state.last_refresh.strftime('%H:%M:%S')}</span>
+        </div>""",
+        unsafe_allow_html=True
+    )
 elif data_mode == "disconnected":
     st.error("🔴 Bloomberg Terminal not connected. Live data required.")
     st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
@@ -111,7 +158,8 @@ with tab1:
             try:
                 hist_data = data_loader.get_historical(
                     ticker,
-                    start_date=datetime.now() - timedelta(days=180)
+                    start_date=datetime.now() - timedelta(days=180),
+                    end_date=datetime.now()
                 )
             except DataUnavailableError:
                 st.warning(f"No historical data available for {name}.")
@@ -155,16 +203,63 @@ with tab1:
                 hist_data = None
         
         with col2:
+            # Get live price first
+            live_price = price_cache.get(ticker)
+            
+            # Display live price prominently at the top
+            if live_price:
+                # Calculate change from previous close
+                prev_close = None
+                daily_change = 0
+                daily_change_pct = 0
+                
+                if hist_data is not None and not hist_data.empty and len(hist_data) >= 2:
+                    prev_close = hist_data['PX_LAST'].iloc[-2]
+                    daily_change = live_price - prev_close
+                    daily_change_pct = (daily_change / prev_close * 100) if prev_close else 0
+                
+                # Live price with change
+                change_color = "#00DC82" if daily_change >= 0 else "#FF5252"
+                change_sign = "+" if daily_change >= 0 else ""
+                
+                st.markdown(
+                    f"""<div style="background: linear-gradient(135deg, rgba(0,163,224,0.1) 0%, rgba(0,163,224,0.05) 100%); 
+                    padding: 16px; border-radius: 8px; border-left: 4px solid #00A3E0; margin-bottom: 16px;">
+                    <div style="color: #94A3B8; font-size: 12px; margin-bottom: 4px;">LIVE PRICE</div>
+                    <div style="color: #E2E8F0; font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;">${live_price:.2f}</div>
+                    <div style="color: {change_color}; font-size: 14px; font-weight: 600;">{change_sign}{daily_change:.2f} ({change_sign}{daily_change_pct:.2f}%)</div>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+                
+                # Yesterday's close
+                if prev_close:
+                    st.markdown(
+                        f"""<div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <span style="color: #94A3B8;">Yesterday Close</span>
+                        <span style="color: #E2E8F0; font-family: 'IBM Plex Mono', monospace;">${prev_close:.2f}</span>
+                        </div>""",
+                        unsafe_allow_html=True
+                    )
+            
             st.markdown("**Key Levels**")
             
             if hist_data is not None and not hist_data.empty:
-                # Get live price
-                live_price = price_cache.get(ticker)
                 current_price = live_price if live_price else hist_data['PX_LAST'].iloc[-1]
                 high_range = hist_data['PX_HIGH'].max()
                 low_range = hist_data['PX_LOW'].min()
                 
-                st.metric("Current Price", f"${current_price:.2f}")
+                # Today's OHLC from last bar
+                today_open = hist_data['PX_OPEN'].iloc[-1]
+                today_high = hist_data['PX_HIGH'].iloc[-1]
+                today_low = hist_data['PX_LOW'].iloc[-1]
+                
+                st.metric("Today Open", f"${today_open:.2f}")
+                st.metric("Today High", f"${today_high:.2f}")
+                st.metric("Today Low", f"${today_low:.2f}")
+                
+                st.divider()
+                
                 st.metric("180D High", f"${high_range:.2f}")
                 st.metric("180D Low", f"${low_range:.2f}")
                 
@@ -552,3 +647,41 @@ with tab5:
             
             if opec_analysis['over_producers']:
                 st.warning(f"Over-producers: {', '.join(opec_analysis['over_producers'])}")
+
+# =============================================================================
+# AUTO-REFRESH MECHANISM
+# =============================================================================
+
+# Auto-refresh using JavaScript injection (works without additional packages)
+if st.session_state.auto_refresh:
+    # Calculate time until next refresh
+    time_since_last = (datetime.now() - st.session_state.last_refresh).total_seconds()
+    time_until_refresh = max(0, REFRESH_INTERVAL_SECONDS - time_since_last)
+    
+    if time_until_refresh <= 0:
+        st.session_state.last_refresh = datetime.now()
+        time.sleep(0.1)  # Small delay to prevent rapid refreshes
+        st.rerun()
+    else:
+        # Inject JavaScript for countdown and auto-refresh
+        st.markdown(
+            f"""
+            <script>
+                // Auto-refresh countdown
+                setTimeout(function() {{
+                    window.parent.postMessage({{isStreamlitMessage: true, type: "streamlit:rerun"}}, "*");
+                }}, {int(time_until_refresh * 1000)});
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
+
+# Footer with refresh info
+st.markdown("---")
+st.markdown(
+    f"""<div style="text-align: center; color: #64748B; font-size: 12px;">
+    Data refreshes every 15 seconds when auto-refresh is enabled | 
+    Charts show up to 180 days of historical data
+    </div>""",
+    unsafe_allow_html=True
+)

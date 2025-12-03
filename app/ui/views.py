@@ -123,17 +123,17 @@ class ConnectionIndicator:
 
 
 class SidebarView:
-    """Render sidebar content including connection status, quick prices, and nav links."""
+    """Render sidebar content including connection status and quick prices."""
 
     def __init__(
         self,
         context: DashboardContext,
         refresh_controller: RefreshController,
-        nav_links: Sequence[tuple[str, str]],
+        nav_links: Sequence[tuple[str, str]] = None,  # Kept for backward compatibility but not used
     ):
         self.context = context
         self.refresh_controller = refresh_controller
-        self.nav_links = nav_links
+        # nav_links no longer used - Streamlit auto-generates page navigation
 
     def render(self) -> None:
         data_bundle = self.context.data
@@ -167,10 +167,6 @@ class SidebarView:
 
             st.divider()
             self._render_quick_prices()
-            st.divider()
-
-            for path, label in self.nav_links:
-                st.page_link(path, label=label)
 
     def _render_quick_prices(self) -> None:
         prices = self.context.data.oil_prices
