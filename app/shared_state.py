@@ -206,8 +206,8 @@ def get_dashboard_context(lookback_days: int = 90, force_refresh: bool = False) 
         
         # Cache is valid if:
         # 1. Position signature hasn't changed
-        # 2. Cache is less than 30 seconds old (for live price data)
-        if cached_signature == signature and time_diff < 30:
+        # 2. Cache is less than 15 seconds old (for live price data)
+        if cached_signature == signature and time_diff < 15:
             return context
 
     # Create new context with prefetched data

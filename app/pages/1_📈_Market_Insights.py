@@ -41,7 +41,7 @@ from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_c
 apply_theme(st)
 
 # Auto-refresh configuration
-REFRESH_INTERVAL_SECONDS = 30  # Refresh every 30 seconds
+REFRESH_INTERVAL_SECONDS = 15  # Refresh every 15 seconds
 
 # Initialize last refresh time in session state
 if 'last_refresh' not in st.session_state:
@@ -68,7 +68,7 @@ with header_col1:
     st.title("📈 Market Insights")
 
 with header_col2:
-    auto_refresh = st.toggle("Auto-refresh", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
+    auto_refresh = st.toggle("Auto Refresh (15s)", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
@@ -680,7 +680,7 @@ if st.session_state.auto_refresh:
 st.markdown("---")
 st.markdown(
     f"""<div style="text-align: center; color: #64748B; font-size: 12px;">
-    Data refreshes every {REFRESH_INTERVAL_SECONDS} seconds when auto-refresh is enabled | 
+    Data refreshes every 15 seconds when auto-refresh is enabled | 
     Charts show up to 180 days of historical data
     </div>""",
     unsafe_allow_html=True
