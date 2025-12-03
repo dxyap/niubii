@@ -10,9 +10,12 @@ Submodules:
 - risk: VaR, limits, and risk monitoring
 - trading: Position management and P&L tracking
 - ml: Machine learning models and feature engineering
+- backtest: Strategy backtesting and optimization
+- indicators: Technical indicator calculations
 """
 
 from . import constants
+from . import indicators
 
 __version__ = "1.0.0"
-__all__ = ["constants"]
+__all__ = ["constants", "indicators"]

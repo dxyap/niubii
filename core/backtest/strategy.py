@@ -18,6 +18,8 @@ from typing import Dict, List, Optional, Tuple, Any, Callable
 from enum import Enum
 from datetime import datetime
 
+from core.indicators import calculate_rsi, calculate_bollinger_bands
+
 
 class Signal(Enum):
     """Trading signal enumeration."""
@@ -311,16 +313,6 @@ class RSIMeanReversionStrategy(Strategy):
         self.overbought = overbought_level
         self.name = f"RSIMeanReversion({rsi_period})"
     
-    def _calculate_rsi(self, prices: pd.Series) -> pd.Series:
-        """Calculate RSI."""
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
-        
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
-    
     def generate_signal(
         self,
         timestamp: datetime,
@@ -332,7 +324,7 @@ class RSIMeanReversionStrategy(Strategy):
             return Signal.HOLD
         
         prices = data["PX_LAST"] if "PX_LAST" in data.columns else data["close"]
-        rsi = self._calculate_rsi(prices)
+        rsi = calculate_rsi(prices, self.rsi_period)
         current_rsi = rsi.iloc[-1]
         
         if np.isnan(current_rsi):
@@ -380,16 +372,13 @@ class BollingerBandStrategy(Strategy):
         
         prices = data["PX_LAST"] if "PX_LAST" in data.columns else data["close"]
         
-        # Calculate bands
-        ma = prices.rolling(self.period).mean()
-        std = prices.rolling(self.period).std()
-        upper = ma + self.num_std * std
-        lower = ma - self.num_std * std
+        # Calculate bands using shared function
+        middle, upper, lower = calculate_bollinger_bands(prices, self.period, self.num_std)
         
         current_price = prices.iloc[-1]
         current_upper = upper.iloc[-1]
         current_lower = lower.iloc[-1]
-        current_ma = ma.iloc[-1]
+        current_ma = middle.iloc[-1]
         
         # Entry signals
         if current_price <= current_lower:
