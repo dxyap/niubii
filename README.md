@@ -78,7 +78,8 @@ Open in browser at `http://localhost:8501`
 │   │   ├── 4_💼_Trade_Entry.py
 │   │   ├── 5_📋_Blotter.py
 │   │   ├── 6_📊_Analytics.py
-│   │   └── 7_🤖_ML_Signals.py    # NEW: ML-powered signals
+│   │   ├── 7_🤖_ML_Signals.py    # ML-powered signals
+│   │   └── 8_🔬_Backtest.py      # Strategy backtesting
 │   ├── components/          # Reusable UI components
 │   └── shared_state.py      # Session state management
 │
@@ -103,14 +104,22 @@ Open in browser at `http://localhost:8501`
 │   │   ├── blotter.py      # Trade recording
 │   │   ├── positions.py    # Position management
 │   │   └── pnl.py          # P&L calculations
-│   └── ml/                  # NEW: Machine Learning (Phase 4)
-│       ├── features.py      # Feature engineering pipeline
-│       ├── models/
-│       │   ├── gradient_boost.py  # XGBoost/LightGBM
-│       │   └── ensemble.py        # Model ensembling
-│       ├── training.py      # Training pipeline
-│       ├── prediction.py    # Inference service
-│       └── monitoring.py    # Model monitoring & drift detection
+│   ├── ml/                  # Machine Learning (Phase 4)
+│   │   ├── features.py      # Feature engineering pipeline
+│   │   ├── models/
+│   │   │   ├── gradient_boost.py  # XGBoost/LightGBM
+│   │   │   └── ensemble.py        # Model ensembling
+│   │   ├── training.py      # Training pipeline
+│   │   ├── prediction.py    # Inference service
+│   │   └── monitoring.py    # Model monitoring & drift detection
+│   └── backtest/            # Backtesting Engine (Phase 5)
+│       ├── engine.py        # Main backtesting engine
+│       ├── strategy.py      # Strategy framework & examples
+│       ├── execution.py     # Order execution simulation
+│       ├── costs.py         # Transaction cost models
+│       ├── metrics.py       # Performance metrics
+│       ├── optimization.py  # Walk-forward optimization
+│       └── reporting.py     # Reports & visualization
 │
 ├── config/                  # Configuration files
 │   ├── instruments.yaml    # Instrument definitions
@@ -575,6 +584,107 @@ svc.unsubscribe("CL1 Comdty")
 svc.stop()  # Stop all subscriptions
 ```
 
+### Backtest Module
+
+Comprehensive strategy backtesting:
+
+```python
+from core.backtest import (
+    # Engine
+    BacktestEngine, BacktestConfig, run_backtest,
+    # Strategies
+    MACrossoverStrategy, RSIMeanReversionStrategy,
+    BollingerBandStrategy, MomentumStrategy,
+    BuyAndHoldStrategy, StrategyConfig,
+    # Costs
+    SimpleCostModel, CostModelConfig,
+    # Metrics
+    MetricsCalculator, PerformanceMetrics,
+    # Optimization
+    StrategyOptimizer, OptimizationConfig,
+    # Reporting
+    generate_summary_report, create_equity_chart,
+)
+
+# =============================================================================
+# SIMPLE BACKTEST
+# =============================================================================
+strategy = MACrossoverStrategy(fast_period=10, slow_period=30)
+result = run_backtest(strategy, historical_data, initial_capital=1_000_000)
+
+print(f"Sharpe: {result.metrics.sharpe_ratio:.2f}")
+print(f"Return: {result.metrics.total_return_pct:.2f}%")
+print(f"Max DD: {result.metrics.max_drawdown:.2f}%")
+
+# =============================================================================
+# CUSTOM STRATEGY
+# =============================================================================
+from core.backtest import Strategy, Signal, Position
+
+class MyStrategy(Strategy):
+    def generate_signal(self, timestamp, data, position):
+        prices = data["PX_LAST"]
+        ma = prices.rolling(20).mean().iloc[-1]
+        
+        if prices.iloc[-1] > ma:
+            return Signal.LONG
+        elif prices.iloc[-1] < ma:
+            return Signal.SHORT
+        return Signal.HOLD
+
+# =============================================================================
+# WITH TRANSACTION COSTS
+# =============================================================================
+cost_config = CostModelConfig(
+    commission_per_contract=2.50,
+    slippage_ticks=1.0,
+    contract_multiplier=1000,
+)
+cost_model = SimpleCostModel(cost_config)
+
+config = BacktestConfig(
+    initial_capital=1_000_000,
+    commission_per_contract=2.50,
+    slippage_pct=0.01,
+)
+
+engine = BacktestEngine(config, cost_model)
+result = engine.run(strategy, data, "CL1")
+
+# =============================================================================
+# WALK-FORWARD OPTIMIZATION
+# =============================================================================
+optimizer = StrategyOptimizer(
+    strategy_class=MACrossoverStrategy,
+    param_grid={
+        "fast_period": [5, 10, 15, 20],
+        "slow_period": [20, 30, 40, 50],
+    },
+    config=OptimizationConfig(
+        target_metric="sharpe_ratio",
+        num_folds=5,
+    )
+)
+
+opt_result = optimizer.walk_forward_optimize(data)
+print(f"Best params: {opt_result.best_params}")
+print(f"OOS Sharpe: {opt_result.oos_metrics.sharpe_ratio:.2f}")
+
+# =============================================================================
+# COMPARE STRATEGIES
+# =============================================================================
+strategies = [
+    BuyAndHoldStrategy(),
+    MACrossoverStrategy(10, 30),
+    RSIMeanReversionStrategy(14),
+]
+
+engine = BacktestEngine()
+results = engine.run_multiple(strategies, data)
+comparison = engine.compare_strategies(results)
+print(comparison)
+```
+
 ## Testing
 
 ```bash
@@ -601,6 +711,7 @@ pytest tests/test_analytics.py -v
 | Signals | 10 | 88% |
 | ML (Feature Engineering) | 25 | 90% |
 | Trading | 10 | 85% |
+| Backtesting | 25 | 90% |
 
 ## Status & Roadmap
 
@@ -614,7 +725,7 @@ pytest tests/test_analytics.py -v
 | Risk Management | ✅ Complete | 2 |
 | Trading Module | ✅ Complete | 2 |
 | Dashboard UI | ✅ Complete | 2 |
-| Test Suite | ✅ 64 tests | 2 |
+| Test Suite | ✅ 90+ tests | 2 |
 | Live Price Simulation | ✅ Complete | 3 |
 | Auto-Refresh (5s) | ✅ Complete | 3 |
 | Bloomberg Integration | ✅ Complete | 3 |
@@ -626,7 +737,10 @@ pytest tests/test_analytics.py -v
 | Model Training Pipeline | ✅ Complete | 4 |
 | ML Signal Integration | ✅ Complete | 4 |
 | Model Monitoring | ✅ Complete | 4 |
-| Backtesting Engine | 🔲 Planned | 5 |
+| Backtesting Engine | ✅ Complete | 5 |
+| Strategy Framework | ✅ Complete | 5 |
+| Walk-Forward Optimization | ✅ Complete | 5 |
+| Performance Metrics | ✅ Complete | 5 |
 | Execution & Automation | 🔲 Planned | 6 |
 | Multi-channel Alerts | 🔲 Planned | 7 |
 | Advanced Analytics & AI | 🔲 Planned | 8 |
@@ -734,44 +848,102 @@ lightgbm>=4.1.0
 
 ---
 
-### 🔲 Phase 5: Backtesting Engine
+### ✅ Phase 5: Backtesting Engine (Complete)
 
 **Historical Strategy Testing & Optimization**
 
-Build a robust backtesting framework for strategy development and validation.
+A comprehensive backtesting framework for strategy development and validation.
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Event-Driven Backtest | Tick-by-tick or bar-by-bar simulation engine | High |
-| Strategy Framework | Define strategies as composable classes | High |
-| Transaction Costs | Realistic slippage, commissions, and market impact | High |
-| Walk-Forward Optimization | Rolling window parameter optimization | Medium |
-| Performance Metrics | Sharpe, Sortino, Calmar, max drawdown, etc. | High |
-| Monte Carlo Analysis | Bootstrap resampling for robustness testing | Medium |
-| Strategy Comparison | Side-by-side strategy evaluation | Medium |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Event-Driven Backtest | Bar-by-bar simulation engine | ✅ Complete |
+| Strategy Framework | Define strategies as composable classes | ✅ Complete |
+| Transaction Costs | Realistic slippage, commissions, and market impact | ✅ Complete |
+| Walk-Forward Optimization | Rolling window parameter optimization | ✅ Complete |
+| Performance Metrics | Sharpe, Sortino, Calmar, max drawdown, etc. | ✅ Complete |
+| Monte Carlo Analysis | Bootstrap resampling for robustness testing | ✅ Complete |
+| Strategy Comparison | Side-by-side strategy evaluation | ✅ Complete |
+| Backtest Dashboard | Interactive UI for running backtests | ✅ Complete |
 
-**Implementation Plan:**
+**Implementation:**
 ```
 core/
 ├── backtest/
-│   ├── __init__.py
-│   ├── engine.py            # Main backtesting engine
-│   ├── strategy.py          # Strategy base class and examples
-│   ├── execution.py         # Order execution simulation
-│   ├── costs.py             # Transaction cost models
-│   ├── metrics.py           # Performance metrics
-│   ├── optimization.py      # Parameter optimization
-│   └── reporting.py         # Backtest reports
+│   ├── __init__.py           # Module exports
+│   ├── engine.py             # Main backtesting engine
+│   ├── strategy.py           # Strategy base class and examples
+│   ├── execution.py          # Order execution simulation
+│   ├── costs.py              # Transaction cost models
+│   ├── metrics.py            # Performance metrics (20+ metrics)
+│   ├── optimization.py       # Parameter & walk-forward optimization
+│   └── reporting.py          # Charts and reports
 app/pages/
-├── 7_🔬_Backtest.py        # Backtest configuration UI
-├── 8_📈_Strategy_Builder.py # Visual strategy builder
+├── 8_🔬_Backtest.py          # Backtest configuration UI
 ```
 
-**New Dependencies:**
+**Built-in Strategies:**
+- **BuyAndHoldStrategy**: Simple benchmark
+- **MACrossoverStrategy**: Moving average crossover
+- **RSIMeanReversionStrategy**: RSI-based mean reversion
+- **BollingerBandStrategy**: Bollinger Band breakouts
+- **MomentumStrategy**: Price momentum/breakout
+- **CalendarSpreadStrategy**: Spread trading
+- **CompositeStrategy**: Combine multiple strategies
+
+**Cost Models:**
+- **SimpleCostModel**: Fixed commissions and slippage
+- **VolatilityAdjustedCostModel**: Vol-scaled slippage
+- **MarketImpactCostModel**: Square-root impact model
+- **TieredCommissionModel**: Volume-based tiers
+
+**Usage Example:**
+```python
+from core.backtest import (
+    BacktestEngine, BacktestConfig,
+    MACrossoverStrategy, StrategyConfig,
+    run_backtest, generate_summary_report
+)
+
+# Create strategy
+strategy = MACrossoverStrategy(fast_period=10, slow_period=30)
+
+# Run backtest
+result = run_backtest(
+    strategy, 
+    historical_data,
+    initial_capital=1_000_000
+)
+
+# View results
+print(f"Sharpe: {result.metrics.sharpe_ratio:.2f}")
+print(f"Return: {result.metrics.total_return_pct:.2f}%")
+print(f"Max DD: {result.metrics.max_drawdown:.2f}%")
+
+# Generate report
+report = generate_summary_report(result)
+print(report)
 ```
-vectorbt>=0.26.0       # Vectorized backtesting
-empyrical>=0.5.5       # Performance metrics
-pyfolio>=0.9.2         # Portfolio analysis
+
+**Walk-Forward Optimization:**
+```python
+from core.backtest import StrategyOptimizer, OptimizationConfig
+
+optimizer = StrategyOptimizer(
+    strategy_class=MACrossoverStrategy,
+    param_grid={
+        "fast_period": [5, 10, 15, 20],
+        "slow_period": [20, 30, 40, 50],
+    },
+    config=OptimizationConfig(
+        target_metric="sharpe_ratio",
+        num_folds=5,
+        in_sample_pct=0.7,
+    )
+)
+
+result = optimizer.walk_forward_optimize(historical_data)
+print(f"Best params: {result.best_params}")
+print(f"OOS Sharpe: {result.oos_metrics.sharpe_ratio:.2f}")
 ```
 
 ---
@@ -971,25 +1143,25 @@ prometheus-client>=0.18.0
 ## Prioritized Roadmap
 
 ```
-Q1 2025: Phase 4 - ML Integration
+✅ Q1 2025: Phase 4 - ML Integration (COMPLETE)
 ├── Feature engineering pipeline
 ├── XGBoost/LightGBM models for direction prediction
 ├── Model monitoring and drift detection
 └── Integration with signal aggregator
 
-Q2 2025: Phase 5 - Backtesting Engine
+✅ Q1 2025: Phase 5 - Backtesting Engine (COMPLETE)
 ├── Event-driven backtest framework
-├── Strategy definition DSL
+├── Strategy framework with built-in strategies
 ├── Walk-forward optimization
-└── Performance reporting
+└── Performance reporting & visualization
 
-Q3 2025: Phase 6 & 7 - Execution & Alerts
+🔄 Q2 2025: Phase 6 & 7 - Execution & Alerts
 ├── Paper trading mode
 ├── Position sizing algorithms
 ├── Multi-channel alert system
 ├── Scheduled reporting
 
-Q4 2025: Phase 8 & 9 - Advanced Analytics & Production
+📅 Q3-Q4 2025: Phase 8 & 9 - Advanced Analytics & Production
 ├── LLM news analysis
 ├── Cross-asset correlations
 ├── Docker deployment
