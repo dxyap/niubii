@@ -282,7 +282,7 @@ st.rerun()
 
 # After: Non-blocking with streamlit-autorefresh
 from streamlit_autorefresh import st_autorefresh
-st_autorefresh(interval=5000)  # Milliseconds
+st_autorefresh(interval=15000)  # Milliseconds
 ```
 
 ### Lazy Loading
@@ -350,7 +350,7 @@ MAX_CRUDE_GROUP_CONCENTRATION=60
 # =============================================================================
 # DASHBOARD SETTINGS
 # =============================================================================
-AUTO_REFRESH_INTERVAL=5           # Auto-refresh interval (seconds)
+AUTO_REFRESH_INTERVAL=15          # Auto-refresh interval (seconds)
 DASHBOARD_THEME=dark              # dark or light
 ```
 

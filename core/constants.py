@@ -84,7 +84,7 @@ SIMPLIFIED_VAR_FACTOR: Final[float] = 0.02  # 2%
 # CACHE SETTINGS
 # =============================================================================
 
-CACHE_TTL_REALTIME: Final[int] = 5  # seconds
+CACHE_TTL_REALTIME: Final[int] = 15  # seconds
 CACHE_TTL_INTRADAY: Final[int] = 60  # seconds
 CACHE_TTL_HISTORICAL: Final[int] = 86400  # 24 hours
 CACHE_TTL_REFERENCE: Final[int] = 604800  # 7 days
