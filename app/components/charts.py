@@ -239,7 +239,7 @@ def create_futures_curve_chart(
     Create an elegant futures curve line chart with proper y-axis scaling.
     
     Args:
-        curve_data: Primary curve DataFrame with 'month' and 'price' columns
+        curve_data: Primary curve DataFrame with 'contract_month' (or 'month') and 'price' columns
         secondary_curve: Optional second curve for comparison
         title: Chart title
         height: Chart height in pixels
@@ -249,6 +249,9 @@ def create_futures_curve_chart(
         Plotly figure with professional styling
     """
     fig = go.Figure()
+    
+    # Use contract_month labels if available, otherwise fall back to month numbers
+    x_column = 'contract_month' if 'contract_month' in curve_data.columns else 'month'
     
     # Determine y-axis range with padding for readability
     all_prices = list(curve_data['price'])
@@ -271,13 +274,13 @@ def create_futures_curve_chart(
     
     # Primary curve with area fill for depth
     fig.add_trace(go.Scatter(
-        x=curve_data['month'],
+        x=curve_data[x_column],
         y=curve_data['price'],
         name='Brent',
         mode='lines+markers',
         line=dict(color=CHART_COLORS["primary"], width=3, shape='spline'),
         marker=dict(
-            size=10,
+            size=8,
             color=CHART_COLORS["primary"],
             line=dict(width=2, color='white'),
             symbol='circle',
@@ -289,14 +292,15 @@ def create_futures_curve_chart(
     
     # Secondary curve if provided
     if secondary_curve is not None:
+        secondary_x_column = 'contract_month' if 'contract_month' in secondary_curve.columns else 'month'
         fig.add_trace(go.Scatter(
-            x=secondary_curve['month'],
+            x=secondary_curve[secondary_x_column],
             y=secondary_curve['price'],
             name='WTI',
             mode='lines+markers',
             line=dict(color=CHART_COLORS["tertiary"], width=3, shape='spline'),
             marker=dict(
-                size=10,
+                size=8,
                 color=CHART_COLORS["tertiary"],
                 line=dict(width=2, color='white'),
                 symbol='diamond',
@@ -323,6 +327,7 @@ def create_futures_curve_chart(
         xaxis=dict(
             **BASE_LAYOUT["xaxis"],
             title_text="Contract Month",
+            tickangle=-45 if len(curve_data) > 12 else 0,  # Angle labels if many months
         ),
     )
     

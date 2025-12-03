@@ -289,8 +289,8 @@ class PriceSimulator:
             "NG1 Comdty": 3.25,    # Natural Gas
         }
         
-        # Generate curve prices with realistic term structure
-        for i in range(3, 13):
+        # Generate curve prices with realistic term structure (up to 18 months)
+        for i in range(3, 19):
             # WTI NYMEX: slight contango
             self._reference_prices[f"CL{i} Comdty"] = 72.50 + (i - 1) * 0.12
             # WTI ICE: slight contango (tracks NYMEX closely)
@@ -903,24 +903,23 @@ class BloombergClient:
         end_date_normalized = pd.Timestamp(end_date).normalize()
         today = pd.Timestamp.now().normalize()
         
-        # Ensure end_date includes today if it's within range
-        if end_date_normalized < today:
+        # Always ensure we include up to and including today for daily data
+        # This fixes the issue where the last 1-2 days might be missing
+        if end_date_normalized >= today - pd.Timedelta(days=2):
             end_date_normalized = today
         
         # Generate date range - use 'B' for business days
         if frequency == "DAILY":
             dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='B')
+            
+            # Explicitly ensure today is included if it's a business day
+            if today.dayofweek < 5:  # Mon=0, Fri=4
+                if len(dates) == 0 or dates[-1] < today:
+                    dates = dates.append(pd.DatetimeIndex([today]))
         elif frequency == "WEEKLY":
             dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='W')
         else:
             dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='M')
-        
-        # If today is a business day and not in the range, add it
-        if frequency == "DAILY":
-            # Check if today is a weekday (business day)
-            if today.dayofweek < 5:  # Mon=0, Fri=4
-                if len(dates) == 0 or dates[-1] < today:
-                    dates = dates.append(pd.DatetimeIndex([today]))
         
         n = len(dates)
         if n == 0:
@@ -982,6 +981,7 @@ class BloombergClient:
         Get futures curve data (batch optimized).
         
         Fetches all curve points in a single batch API call for efficiency.
+        Includes absolute contract month labels in MMM-YY format (e.g., "Jan-25").
         
         Raises:
             DataUnavailableError: If curve data cannot be retrieved
@@ -1005,6 +1005,27 @@ class BloombergClient:
         data = []
         today = datetime.now()
         
+        # Calculate the front month contract month
+        # Oil futures typically expire around the 20th of the month before delivery
+        # So if today is Dec 3, front month is likely January delivery
+        current_month = today.month
+        current_year = today.year
+        
+        # Front month is typically 1-2 months ahead depending on where we are in the month
+        # If we're in the first half of the month, front month is next month
+        # If we're in the second half, front month is the month after next
+        if today.day <= 20:
+            front_month = current_month + 1
+            front_year = current_year
+        else:
+            front_month = current_month + 2
+            front_year = current_year
+        
+        # Adjust for year rollover
+        if front_month > 12:
+            front_month -= 12
+            front_year += 1
+        
         for i, ticker in enumerate(tickers, 1):
             if ticker not in prices_df.index:
                 continue
@@ -1018,19 +1039,36 @@ class BloombergClient:
             
             change = current - open_price if current and open_price else 0
             change_pct = (change / open_price * 100) if open_price else 0
-            expiry = today + timedelta(days=30 * i)
+            
+            # Calculate contract month (i-1 months ahead of front month)
+            contract_month = front_month + (i - 1)
+            contract_year = front_year
+            while contract_month > 12:
+                contract_month -= 12
+                contract_year += 1
+            
+            # Format as MMM-YY (e.g., "Jan-25")
+            contract_date = datetime(contract_year, contract_month, 1)
+            contract_label = contract_date.strftime("%b-%y")
+            
+            # Approximate expiry date (around 20th of prior month)
+            expiry_month = contract_month - 1 if contract_month > 1 else 12
+            expiry_year = contract_year if contract_month > 1 else contract_year - 1
+            expiry = datetime(expiry_year, expiry_month, 20)
+            
             open_interest = row.get("OPEN_INT")
             if pd.isna(open_interest):
                 open_interest = None
             
             data.append({
                 "month": i,
+                "contract_month": contract_label,
                 "ticker": ticker,
                 "price": current,
                 "change": round(change, 4),
                 "change_pct": round(change_pct, 4),
                 "expiry": expiry,
-                "days_to_expiry": (expiry - today).days,
+                "days_to_expiry": max(0, (expiry - today).days),
                 "open_interest": open_interest
             })
         

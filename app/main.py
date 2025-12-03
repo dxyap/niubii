@@ -56,10 +56,11 @@ def get_historical_data_cached(ticker: str = "CO1 Comdty", lookback_days: int = 
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def get_futures_curve_cached(commodity: str = "brent", num_months: int = 12):
+def get_futures_curve_cached(commodity: str = "brent", num_months: int = 18):
     """
     Cache futures curve with 1-minute TTL.
     Curve data changes throughout the day but not every second.
+    Default to 18 months ahead of front month.
     """
     data_loader = shared_state.get_data_loader()
     try:
