@@ -441,8 +441,12 @@ with tab2:
                         y_min = mid - 2
                         y_max = mid + 2
                 
+                base_layout_without_axes = {
+                    key: value for key, value in BASE_LAYOUT.items()
+                    if key not in {"yaxis", "xaxis"}
+                }
                 fig.update_layout(
-                    **BASE_LAYOUT,
+                    **base_layout_without_axes,
                     height=400,
                     title=dict(
                         text="Dubai Swap Curve (vs Brent)",
