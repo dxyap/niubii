@@ -1,0 +1,203 @@
+# =============================================================================
+# EXECUTION & AUTOMATION CONFIGURATION
+# =============================================================================
+# Phase 6: Order management, execution algorithms, and automated trading
+
+# =============================================================================
+# ORDER MANAGEMENT SYSTEM
+# =============================================================================
+oms:
+  # Database path for order storage
+  database_path: "data/orders/orders.db"
+  
+  # Order defaults
+  default_account: "MAIN"
+  default_time_in_force: "DAY"
+  
+  # Order validation
+  require_risk_check: true
+  max_order_size: 100
+  
+  # Order expiry
+  cancel_eod_orders: true
+  expire_gtc_after_days: 90
+
+# =============================================================================
+# POSITION SIZING
+# =============================================================================
+sizing:
+  # Default sizing method
+  default_method: "VOLATILITY_TARGET"  # FIXED, FIXED_FRACTIONAL, KELLY, VOLATILITY_TARGET, RISK_PARITY
+  
+  # Account parameters
+  initial_capital: 1000000
+  max_position_pct: 0.25
+  max_position_contracts: 50
+  
+  # Risk parameters
+  risk_per_trade_pct: 0.02
+  target_volatility: 0.15
+  
+  # Kelly criterion
+  kelly_fraction: 0.25  # Use 25% of full Kelly
+  
+  # Contract specifications
+  default_multiplier: 1000
+  default_tick_size: 0.01
+  min_contracts: 1
+
+# =============================================================================
+# EXECUTION ALGORITHMS
+# =============================================================================
+algorithms:
+  # TWAP configuration
+  twap:
+    default_duration_minutes: 60
+    default_num_slices: 12
+    randomize_timing: true
+    randomize_size: true
+    variance_pct: 0.20
+  
+  # VWAP configuration
+  vwap:
+    default_duration_minutes: 120
+    use_historical_profile: true
+    volume_profile_hours:
+      - 0.15  # Opening
+      - 0.12
+      - 0.09
+      - 0.08
+      - 0.10
+      - 0.12
+      - 0.18  # Closing
+      - 0.16
+  
+  # POV configuration
+  pov:
+    default_participation_rate: 0.10
+    max_participation_rate: 0.25
+    min_participation_rate: 0.05
+  
+  # Implementation Shortfall configuration
+  implementation_shortfall:
+    default_urgency: 0.5
+    aggressive_urgency: 0.8
+    passive_urgency: 0.2
+  
+  # Order handling
+  use_limit_orders: true
+  limit_offset_ticks: 1.0
+  max_market_order_pct: 0.30
+
+# =============================================================================
+# PAPER TRADING
+# =============================================================================
+paper_trading:
+  # Initial settings
+  initial_capital: 1000000
+  
+  # Simulation parameters
+  slippage_bps: 1.0
+  commission_per_contract: 2.50
+  fill_latency_ms: 50.0
+  
+  # Risk limits
+  max_position_per_symbol: 50
+  max_gross_exposure: 5000000
+  max_loss_pct: 0.05
+  
+  # Reporting
+  track_history: true
+  history_days: 30
+
+# =============================================================================
+# BROKER CONFIGURATION
+# =============================================================================
+broker:
+  # Active broker
+  active: "simulator"  # simulator, interactive_brokers
+  
+  # Simulator settings
+  simulator:
+    slippage_bps: 1.0
+    fill_latency_ms: 50.0
+    partial_fill_prob: 0.0
+    reject_prob: 0.0
+    use_realistic_fills: true
+    volatility_impact: true
+    size_impact: true
+  
+  # Interactive Brokers settings (future)
+  interactive_brokers:
+    host: "127.0.0.1"
+    port: 7496
+    client_id: 1
+    account: ""
+    timeout: 30
+    route: "SMART"
+
+# =============================================================================
+# AUTOMATION RULES
+# =============================================================================
+automation:
+  # Engine settings
+  enabled: true
+  evaluation_interval_seconds: 10
+  
+  # Rule defaults
+  default_cooldown_minutes: 5
+  max_triggers_per_day: 10
+  
+  # Trading windows (UTC)
+  trading_windows:
+    oil_futures:
+      start: "09:00"
+      end: "16:30"
+      days: [0, 1, 2, 3, 4]  # Monday-Friday
+  
+  # Signal thresholds
+  signal_thresholds:
+    min_confidence_entry: 65
+    min_confidence_exit: 50
+    
+  # Position management
+  auto_stop_loss: true
+  default_stop_pct: 0.02
+  
+  auto_take_profit: false
+  default_target_pct: 0.04
+  
+  # Risk controls
+  max_daily_loss: 50000
+  pause_on_max_loss: true
+
+# =============================================================================
+# ALERTS & NOTIFICATIONS (Future - Phase 7)
+# =============================================================================
+alerts:
+  enabled: false
+  
+  channels:
+    email:
+      enabled: false
+      smtp_server: ""
+      recipients: []
+    
+    telegram:
+      enabled: false
+      bot_token: ""
+      chat_id: ""
+    
+    slack:
+      enabled: false
+      webhook_url: ""
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  execution_log_path: "logs/execution.log"
+  log_level: "INFO"
+  log_orders: true
+  log_fills: true
+  log_rule_triggers: true

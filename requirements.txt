@@ -52,3 +52,6 @@ scipy>=1.11.0
 scikit-learn>=1.3.0
 xgboost>=2.0.0
 lightgbm>=4.1.0
+
+# Execution & Automation (Phase 6)
+# Core dependencies already included above (pandas, numpy, sqlite3 built-in)
