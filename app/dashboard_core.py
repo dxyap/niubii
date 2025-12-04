@@ -247,6 +247,7 @@ class DashboardData:
         # Curve data
         self._futures_curve = self._NOT_LOADED
         self._brent_curve = self._NOT_LOADED
+        self._dubai_curve = self._NOT_LOADED
         
         # Historical data (expensive - loaded lazily)
         self._wti_history = self._NOT_LOADED
@@ -335,6 +336,16 @@ class DashboardData:
                 self._errors["brent_curve"] = str(e)
                 self._brent_curve = None
         return self._brent_curve
+
+    @property
+    def dubai_curve(self) -> Optional[pd.DataFrame]:
+        if self._dubai_curve is self._NOT_LOADED:
+            try:
+                self._dubai_curve = self.data_loader.get_futures_curve("dubai", 18)
+            except Exception as e:
+                self._errors["dubai_curve"] = str(e)
+                self._dubai_curve = None
+        return self._dubai_curve
 
     @property
     def wti_history(self) -> Optional[pd.DataFrame]:

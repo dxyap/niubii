@@ -983,13 +983,44 @@ class BloombergClient:
         Fetches all curve points in a single batch API call for efficiency.
         Includes absolute contract month labels in MMM-YY format (e.g., "Jan-25").
         
+        Contract Month Conventions:
+        - WTI (CL/ENA): Front month is approximately 1 month ahead of current date
+        - Brent (CO): Front month is approximately 2 months ahead (cash-settled contract)
+        - Dubai (DAT): Uses M2 swap to avoid BALMO, so starts 2 months ahead
+        
         Raises:
             DataUnavailableError: If curve data cannot be retrieved
         """
-        ticker_prefix = "CL" if commodity.lower() == "wti" else "CO" if commodity.lower() == "brent" else commodity.upper()[:2]
+        commodity_lower = commodity.lower()
+        
+        # Determine ticker prefix and starting month index based on commodity
+        if commodity_lower == "wti":
+            ticker_prefix = "CL"
+            start_month_index = 1
+            # WTI front month offset: 1 month ahead (or 2 if past expiry)
+            front_month_offset = 1
+        elif commodity_lower == "wti_ice":
+            ticker_prefix = "ENA"
+            start_month_index = 1
+            front_month_offset = 1
+        elif commodity_lower == "brent":
+            ticker_prefix = "CO"
+            start_month_index = 1
+            # Brent front month offset: 2 months ahead (cash-settled contract)
+            front_month_offset = 2
+        elif commodity_lower == "dubai":
+            ticker_prefix = "DAT"
+            # Dubai uses M2 swap to avoid BALMO, so start at index 2
+            start_month_index = 2
+            # Dubai front month offset: 2 months ahead (same as Brent)
+            front_month_offset = 2
+        else:
+            ticker_prefix = commodity.upper()[:2]
+            start_month_index = 1
+            front_month_offset = 1
         
         # Build list of tickers for the curve
-        tickers = [f"{ticker_prefix}{i} Comdty" for i in range(1, num_months + 1)]
+        tickers = [f"{ticker_prefix}{i} Comdty" for i in range(start_month_index, start_month_index + num_months)]
         
         # Batch fetch all curve prices in a single API call
         fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW", "OPEN_INT"]
@@ -1005,28 +1036,27 @@ class BloombergClient:
         data = []
         today = datetime.now()
         
-        # Calculate the front month contract month
+        # Calculate the front month contract month based on commodity-specific conventions
         # Oil futures typically expire around the 20th of the month before delivery
-        # So if today is Dec 3, front month is likely January delivery
         current_month = today.month
         current_year = today.year
         
-        # Front month is typically 1-2 months ahead depending on where we are in the month
-        # If we're in the first half of the month, front month is next month
-        # If we're in the second half, front month is the month after next
+        # Calculate front month based on:
+        # 1. Commodity-specific offset (Brent/Dubai = 2 months, WTI = 1 month)
+        # 2. Position within the month (if past ~20th, add 1 more month)
         if today.day <= 20:
-            front_month = current_month + 1
+            front_month = current_month + front_month_offset
             front_year = current_year
         else:
-            front_month = current_month + 2
+            front_month = current_month + front_month_offset + 1
             front_year = current_year
         
         # Adjust for year rollover
-        if front_month > 12:
+        while front_month > 12:
             front_month -= 12
             front_year += 1
         
-        for i, ticker in enumerate(tickers, 1):
+        for i, ticker in enumerate(tickers):
             if ticker not in prices_df.index:
                 continue
             
@@ -1040,8 +1070,9 @@ class BloombergClient:
             change = current - open_price if current and open_price else 0
             change_pct = (change / open_price * 100) if open_price else 0
             
-            # Calculate contract month (i-1 months ahead of front month)
-            contract_month = front_month + (i - 1)
+            # Calculate contract month (i months ahead of front month)
+            # For Dubai, i=0 corresponds to M2 which is the front month equivalent
+            contract_month = front_month + i
             contract_year = front_year
             while contract_month > 12:
                 contract_month -= 12
@@ -1060,8 +1091,11 @@ class BloombergClient:
             if pd.isna(open_interest):
                 open_interest = None
             
+            # Month number in the curve (1-indexed for display)
+            month_number = i + 1
+            
             data.append({
-                "month": i,
+                "month": month_number,
                 "contract_month": contract_label,
                 "ticker": ticker,
                 "price": current,
