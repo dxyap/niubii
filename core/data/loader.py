@@ -263,8 +263,15 @@ class DataLoader:
         
         today = pd.Timestamp.now().normalize()
         
-        # Try loading from storage first
-        df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
+        # Try loading from storage first (if parquet/pyarrow is available)
+        df = None
+        try:
+            df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
+        except ImportError as e:
+            # pyarrow not installed - skip storage, fetch directly from Bloomberg
+            logger.debug(f"Parquet storage unavailable ({e}), fetching from Bloomberg")
+        except Exception as e:
+            logger.debug(f"Storage load failed for {ticker}: {e}")
         
         if df is not None and len(df) > 0:
             # Check if stored data is up-to-date (includes today if today is a business day)
@@ -286,9 +293,14 @@ class DataLoader:
             frequency=frequency.upper()
         )
         
-        # Save to storage for future use
+        # Save to storage for future use (if parquet/pyarrow is available)
         if df is not None and len(df) > 0:
-            self.storage.save_ohlcv(ticker, df, frequency)
+            try:
+                self.storage.save_ohlcv(ticker, df, frequency)
+            except ImportError:
+                pass  # pyarrow not installed - skip saving
+            except Exception as e:
+                logger.debug(f"Could not save to storage: {e}")
         
         return df
     
