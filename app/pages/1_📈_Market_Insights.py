@@ -309,59 +309,237 @@ with tab2:
     # Term Structure Tab
     st.subheader("Futures Curve Analysis")
     
-    col1, col2 = st.columns([2, 1])
+    # Create sub-tabs for different curve views
+    curve_tab1, curve_tab2 = st.tabs(["🛢️ WTI vs Brent", "🇦🇪 Dubai Swap Curve"])
     
-    with col1:
-        # WTI vs Brent curves via shared context cache
-        wti_curve = context.data.futures_curve
-        brent_curve = context.data.brent_curve
+    with curve_tab1:
+        col1, col2 = st.columns([2, 1])
         
-        # Create enhanced futures curve chart with both WTI and Brent
-        fig = create_futures_curve_chart(
-            curve_data=brent_curve,
-            secondary_curve=wti_curve,
-            title="WTI vs Brent Futures Curve",
-            height=400,
-        )
+        with col1:
+            # WTI vs Brent curves via shared context cache
+            wti_curve = context.data.futures_curve
+            brent_curve = context.data.brent_curve
+            
+            # Create enhanced futures curve chart with both WTI and Brent
+            fig = create_futures_curve_chart(
+                curve_data=brent_curve,
+                secondary_curve=wti_curve,
+                title="WTI vs Brent Futures Curve",
+                height=400,
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            
+            # Calendar spreads
+            st.markdown("**Calendar Spreads (WTI)**")
+            spreads = curve_analyzer.calculate_calendar_spreads(wti_curve)
+            
+            st.dataframe(
+                spreads,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'spread_name': 'Spread',
+                    'spread_value': st.column_config.NumberColumn('Value', format='$%.2f'),
+                    'front_price': st.column_config.NumberColumn('Front', format='$%.2f'),
+                    'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
+                }
+            )
         
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        
-        # Calendar spreads
-        st.markdown("**Calendar Spreads**")
-        spreads = curve_analyzer.calculate_calendar_spreads(wti_curve)
-        
-        st.dataframe(
-            spreads,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'spread_name': 'Spread',
-                'spread_value': st.column_config.NumberColumn('Value', format='$%.2f'),
-                'front_price': st.column_config.NumberColumn('Front', format='$%.2f'),
-                'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
-            }
-        )
+        with col2:
+            st.markdown("**WTI Curve Analysis**")
+            
+            curve_metrics = curve_analyzer.analyze_curve(wti_curve)
+            
+            st.metric("Structure", curve_metrics['structure'])
+            st.metric("M1-M2 Spread", f"${curve_metrics['m1_m2_spread']:.2f}")
+            st.metric("Roll Yield (Ann.)", f"{curve_metrics['roll_yield_annual_pct']:.1f}%")
+            st.metric("Curve Slope", f"{curve_metrics['overall_slope']:.4f}")
+            
+            st.divider()
+            
+            # Roll yield
+            roll_yield = curve_analyzer.calculate_roll_yield(wti_curve)
+            
+            st.markdown("**Roll Yield Analysis**")
+            st.text(f"Roll Cost: ${roll_yield['roll_cost']:.2f}")
+            st.text(f"Roll Yield: ${roll_yield['roll_yield']:.2f}")
+            st.text(f"Annual Roll Yield: {roll_yield['roll_yield_annual_pct']:.1f}%")
+            st.text(f"Curve Carry: {roll_yield['curve_carry']}")
     
-    with col2:
-        st.markdown("**Curve Analysis**")
+    with curve_tab2:
+        col1, col2 = st.columns([2, 1])
         
-        curve_metrics = curve_analyzer.analyze_curve(wti_curve)
+        with col1:
+            # Dubai swap curve via shared context cache
+            dubai_curve = context.data.dubai_curve
+            
+            # Create Dubai swap curve chart
+            if dubai_curve is not None and not dubai_curve.empty:
+                # Use contract_month labels for x-axis
+                x_column = 'contract_month' if 'contract_month' in dubai_curve.columns else 'month'
+                
+                # Get price range for proper y-axis scaling
+                price_min = dubai_curve['price'].min()
+                price_max = dubai_curve['price'].max()
+                price_range = price_max - price_min
+                y_min = price_min - (price_range * 0.15)
+                y_max = price_max + (price_range * 0.15)
+                
+                if price_range < 2:
+                    mid = (price_min + price_max) / 2
+                    y_min = mid - 2
+                    y_max = mid + 2
+                
+                fig = go.Figure()
+                
+                # Dubai curve with distinct styling (green for UAE)
+                fig.add_trace(go.Scatter(
+                    x=dubai_curve[x_column],
+                    y=dubai_curve['price'],
+                    name='Dubai',
+                    mode='lines+markers',
+                    line=dict(color='#00DC82', width=3, shape='spline'),  # Green for Dubai/UAE
+                    marker=dict(
+                        size=8,
+                        color='#00DC82',
+                        line=dict(width=2, color='white'),
+                        symbol='circle',
+                    ),
+                    fill='tozeroy',
+                    fillcolor='rgba(0, 220, 130, 0.1)',
+                    hovertemplate='%{x}<br>$%{y:.2f}<extra>Dubai</extra>',
+                ))
+                
+                # Also show Brent for comparison (EFS spread context)
+                if brent_curve is not None and not brent_curve.empty:
+                    brent_x_column = 'contract_month' if 'contract_month' in brent_curve.columns else 'month'
+                    fig.add_trace(go.Scatter(
+                        x=brent_curve[brent_x_column],
+                        y=brent_curve['price'],
+                        name='Brent',
+                        mode='lines+markers',
+                        line=dict(color=CHART_COLORS["primary"], width=2, dash='dot'),
+                        marker=dict(
+                            size=6,
+                            color=CHART_COLORS["primary"],
+                            line=dict(width=1, color='white'),
+                            symbol='diamond',
+                        ),
+                        hovertemplate='%{x}<br>$%{y:.2f}<extra>Brent</extra>',
+                    ))
+                    
+                    # Update y-axis range to include both curves
+                    all_prices = list(dubai_curve['price']) + list(brent_curve['price'])
+                    price_min = min(all_prices)
+                    price_max = max(all_prices)
+                    price_range = price_max - price_min
+                    y_min = price_min - (price_range * 0.15)
+                    y_max = price_max + (price_range * 0.15)
+                    if price_range < 2:
+                        mid = (price_min + price_max) / 2
+                        y_min = mid - 2
+                        y_max = mid + 2
+                
+                fig.update_layout(
+                    **BASE_LAYOUT,
+                    height=400,
+                    title=dict(
+                        text="Dubai Swap Curve (vs Brent)",
+                        font=dict(size=14, color=CHART_COLORS["text_primary"]),
+                        x=0,
+                        xanchor='left',
+                    ),
+                    yaxis=dict(
+                        **BASE_LAYOUT["yaxis"],
+                        range=[y_min, y_max],
+                        title_text="Price ($/bbl)",
+                        dtick=max(1, round(price_range / 5)),
+                    ),
+                    xaxis=dict(
+                        **BASE_LAYOUT["xaxis"],
+                        title_text="Contract Month",
+                        tickangle=-45 if len(dubai_curve) > 12 else 0,
+                    ),
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                
+                # Dubai Calendar spreads
+                st.markdown("**Calendar Spreads (Dubai)**")
+                dubai_spreads = curve_analyzer.calculate_calendar_spreads(dubai_curve)
+                
+                st.dataframe(
+                    dubai_spreads,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'spread_name': 'Spread',
+                        'spread_value': st.column_config.NumberColumn('Value', format='$%.2f'),
+                        'front_price': st.column_config.NumberColumn('Front', format='$%.2f'),
+                        'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
+                    }
+                )
+            else:
+                st.warning("Dubai swap curve data not available")
         
-        st.metric("Structure", curve_metrics['structure'])
-        st.metric("M1-M2 Spread", f"${curve_metrics['m1_m2_spread']:.2f}")
-        st.metric("Roll Yield (Ann.)", f"{curve_metrics['roll_yield_annual_pct']:.1f}%")
-        st.metric("Curve Slope", f"{curve_metrics['overall_slope']:.4f}")
-        
-        st.divider()
-        
-        # Roll yield
-        roll_yield = curve_analyzer.calculate_roll_yield(wti_curve)
-        
-        st.markdown("**Roll Yield Analysis**")
-        st.text(f"Roll Cost: ${roll_yield['roll_cost']:.2f}")
-        st.text(f"Roll Yield: ${roll_yield['roll_yield']:.2f}")
-        st.text(f"Annual Roll Yield: {roll_yield['roll_yield_annual_pct']:.1f}%")
-        st.text(f"Curve Carry: {roll_yield['curve_carry']}")
+        with col2:
+            st.markdown("**Dubai Curve Analysis**")
+            
+            if dubai_curve is not None and not dubai_curve.empty:
+                dubai_metrics = curve_analyzer.analyze_curve(dubai_curve)
+                
+                st.metric("Structure", dubai_metrics['structure'])
+                st.metric("M1-M2 Spread", f"${dubai_metrics['m1_m2_spread']:.2f}")
+                st.metric("Roll Yield (Ann.)", f"{dubai_metrics['roll_yield_annual_pct']:.1f}%")
+                st.metric("Curve Slope", f"{dubai_metrics['overall_slope']:.4f}")
+                
+                st.divider()
+                
+                # Dubai-Brent EFS (Exchange for Swaps) spread
+                st.markdown("**Dubai-Brent EFS Spread**")
+                
+                if brent_curve is not None and not brent_curve.empty:
+                    # Front month EFS spread (Dubai - Brent)
+                    dubai_front = dubai_curve['price'].iloc[0]
+                    brent_front = brent_curve['price'].iloc[0]
+                    efs_spread = dubai_front - brent_front
+                    
+                    st.metric(
+                        "EFS Spread (M1)", 
+                        f"${efs_spread:.2f}",
+                        help="Dubai minus Brent. Negative = Dubai discount"
+                    )
+                    
+                    # M6 EFS spread
+                    if len(dubai_curve) >= 6 and len(brent_curve) >= 6:
+                        dubai_m6 = dubai_curve['price'].iloc[5]
+                        brent_m6 = brent_curve['price'].iloc[5]
+                        efs_m6 = dubai_m6 - brent_m6
+                        st.metric("EFS Spread (M6)", f"${efs_m6:.2f}")
+                    
+                    # Market interpretation
+                    if efs_spread < -1.0:
+                        st.info("📉 Wide Dubai discount - bullish for Asian refiners")
+                    elif efs_spread > -0.5:
+                        st.warning("📈 Narrow Dubai discount - bearish for Asian refiners")
+                    else:
+                        st.caption("EFS spread within normal range")
+                else:
+                    st.caption("Brent data required for EFS calculation")
+                
+                st.divider()
+                
+                # Roll yield
+                dubai_roll = curve_analyzer.calculate_roll_yield(dubai_curve)
+                
+                st.markdown("**Roll Yield Analysis**")
+                st.text(f"Roll Cost: ${dubai_roll['roll_cost']:.2f}")
+                st.text(f"Roll Yield: ${dubai_roll['roll_yield']:.2f}")
+                st.text(f"Annual Roll Yield: {dubai_roll['roll_yield_annual_pct']:.1f}%")
+                st.text(f"Curve Carry: {dubai_roll['curve_carry']}")
+            else:
+                st.caption("Dubai curve data not available")
 
 with tab3:
     # Crack Spreads Tab
