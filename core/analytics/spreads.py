@@ -20,9 +20,22 @@ class SpreadAnalyzer:
     - Crack spread calculations (3-2-1, 2-1-1, etc.)
     - Regional differentials
     - Historical percentile rankings
+    
+    Unit Reference:
+    - Crude oil (WTI, Brent): Quoted in $/barrel
+    - RBOB Gasoline: Quoted in $/gallon (42 gallons per barrel)
+    - Heating Oil: Quoted in $/gallon (42 gallons per barrel)
+    - Gasoil (ICE): Quoted in $/metric tonne (~7.45 barrels per tonne)
     """
     
+    # Standard conversion: gallons per barrel
+    GALLONS_PER_BARREL = 42
+    
+    # Approximate barrels per metric tonne for gasoil
+    BARRELS_PER_TONNE_GASOIL = 7.45
+    
     # Contract specifications for spread calculations
+    # Maps Bloomberg ticker prefix to conversion factor to get $/barrel
     BARREL_CONVERSION = {
         "CL": 1,      # WTI - already in $/bbl
         "CO": 1,      # Brent - already in $/bbl
@@ -34,6 +47,27 @@ class SpreadAnalyzer:
     def __init__(self):
         """Initialize spread analyzer."""
         pass
+    
+    @classmethod
+    def convert_to_barrel(cls, price: float, unit: str) -> float:
+        """
+        Convert a price to $/barrel.
+        
+        Args:
+            price: Price in the given unit
+            unit: Unit of the price - 'gallon', 'barrel', or 'tonne'
+            
+        Returns:
+            Price in $/barrel
+        """
+        if unit == 'barrel':
+            return price
+        elif unit == 'gallon':
+            return price * cls.GALLONS_PER_BARREL
+        elif unit == 'tonne':
+            return price * cls.BARRELS_PER_TONNE_GASOIL
+        else:
+            raise ValueError(f"Unknown unit: {unit}. Expected 'gallon', 'barrel', or 'tonne'")
     
     def calculate_wti_brent_spread(
         self,
@@ -74,30 +108,42 @@ class SpreadAnalyzer:
         crude_price: float,
         gasoline_price: float,
         distillate_price: float,
-        crack_type: str = "3-2-1"
+        crack_type: str = "3-2-1",
+        gasoline_unit: str = "gallon",
+        distillate_unit: str = "gallon"
     ) -> Dict:
         """
         Calculate crack spread.
         
+        The crack spread represents the refining margin - the difference between
+        the value of refined products and the cost of crude oil input.
+        
+        Standard unit conventions:
+        - Crude oil (WTI/Brent): Always quoted in $/barrel
+        - RBOB Gasoline: Quoted in $/gallon (multiply by 42 to get $/barrel)
+        - Heating Oil: Quoted in $/gallon (multiply by 42 to get $/barrel)
+        
         Args:
-            crude_price: Crude oil price ($/bbl)
-            gasoline_price: Gasoline price ($/gal or $/bbl)
-            distillate_price: Distillate price ($/gal or $/bbl)
-            crack_type: Type of crack spread
+            crude_price: Crude oil price in $/barrel
+            gasoline_price: Gasoline price (default: $/gallon from Bloomberg XB1)
+            distillate_price: Distillate/heating oil price (default: $/gallon from Bloomberg HO1)
+            crack_type: Type of crack spread ('3-2-1', '2-1-1', 'gasoline', 'heating_oil')
+            gasoline_unit: Unit of gasoline price - 'gallon' or 'barrel' (default: 'gallon')
+            distillate_unit: Unit of distillate price - 'gallon' or 'barrel' (default: 'gallon')
             
         Returns:
-            Crack spread analysis
+            Dict containing crack spread analysis with keys:
+            - crack_spread: The crack spread value in $/barrel
+            - crack_type: Type of crack spread calculated
+            - description: Human-readable description
+            - crude_price: Input crude price
+            - gasoline_bbl: Gasoline price converted to $/barrel
+            - distillate_bbl: Distillate price converted to $/barrel
+            - margin_pct: Refining margin as percentage of crude price
         """
-        # Convert to $/bbl if needed (assuming inputs are $/gal for products)
-        if gasoline_price < 10:  # Likely in $/gal
-            gasoline_bbl = gasoline_price * 42
-        else:
-            gasoline_bbl = gasoline_price
-            
-        if distillate_price < 10:
-            distillate_bbl = distillate_price * 42
-        else:
-            distillate_bbl = distillate_price
+        # Convert product prices to $/barrel using explicit units
+        gasoline_bbl = self.convert_to_barrel(gasoline_price, gasoline_unit)
+        distillate_bbl = self.convert_to_barrel(distillate_price, distillate_unit)
         
         # Calculate crack based on type
         if crack_type == "3-2-1":

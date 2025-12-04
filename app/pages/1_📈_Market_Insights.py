@@ -379,7 +379,16 @@ with tab3:
         brent = price_cache.get("CO1 Comdty")
         
         if wti and rbob and ho:
-            crack_321 = spread_analyzer.calculate_crack_spread(wti, rbob, ho, "3-2-1")
+            # Calculate crack spread with explicit unit specification
+            # WTI (CL1) is in $/barrel, RBOB (XB1) and HO (HO1) are in $/gallon
+            crack_321 = spread_analyzer.calculate_crack_spread(
+                crude_price=wti,
+                gasoline_price=rbob,
+                distillate_price=ho,
+                crack_type="3-2-1",
+                gasoline_unit="gallon",
+                distillate_unit="gallon"
+            )
             
             # Get crack spread change from context
             crack_data = context.data.crack_spread

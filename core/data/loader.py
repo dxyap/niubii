@@ -37,7 +37,16 @@ class DataLoader:
     - Ticker validation and mapping
     
     Raises DataUnavailableError when data cannot be retrieved.
+    
+    Unit Reference for Oil Products:
+    - Crude oil (CL1, CO1): Quoted in $/barrel
+    - RBOB Gasoline (XB1): Quoted in $/gallon (42 gallons per barrel)
+    - Heating Oil (HO1): Quoted in $/gallon (42 gallons per barrel)
+    - Gasoil (QS1): Quoted in $/metric tonne (~7.45 barrels per tonne)
     """
+    
+    # Standard conversion factor: gallons per barrel
+    GALLONS_PER_BARREL = 42
     
     def __init__(
         self,
@@ -254,8 +263,15 @@ class DataLoader:
         
         today = pd.Timestamp.now().normalize()
         
-        # Try loading from storage first
-        df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
+        # Try loading from storage first (if parquet/pyarrow is available)
+        df = None
+        try:
+            df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
+        except ImportError as e:
+            # pyarrow not installed - skip storage, fetch directly from Bloomberg
+            logger.debug(f"Parquet storage unavailable ({e}), fetching from Bloomberg")
+        except Exception as e:
+            logger.debug(f"Storage load failed for {ticker}: {e}")
         
         if df is not None and len(df) > 0:
             # Check if stored data is up-to-date (includes today if today is a business day)
@@ -277,9 +293,14 @@ class DataLoader:
             frequency=frequency.upper()
         )
         
-        # Save to storage for future use
+        # Save to storage for future use (if parquet/pyarrow is available)
         if df is not None and len(df) > 0:
-            self.storage.save_ohlcv(ticker, df, frequency)
+            try:
+                self.storage.save_ohlcv(ticker, df, frequency)
+            except ImportError:
+                pass  # pyarrow not installed - skip saving
+            except Exception as e:
+                logger.debug(f"Could not save to storage: {e}")
         
         return df
     
@@ -461,8 +482,23 @@ class DataLoader:
         """
         Calculate 3-2-1 crack spread (batch optimized).
         
-        3-2-1 = (2 * RBOB + 1 * HO - 3 * WTI) / 3
-        Converted to $/barrel
+        The 3-2-1 crack spread represents the refining margin for converting
+        3 barrels of crude oil into 2 barrels of gasoline and 1 barrel of heating oil.
+        
+        Formula: (2 × RBOB_$/bbl + 1 × HO_$/bbl - 3 × WTI_$/bbl) / 3
+        
+        Unit conversions applied:
+        - WTI (CL1): Already in $/barrel, no conversion needed
+        - RBOB (XB1): Quoted in $/gallon, multiply by 42 to get $/barrel
+        - Heating Oil (HO1): Quoted in $/gallon, multiply by 42 to get $/barrel
+        
+        Returns:
+            Dict with keys:
+            - crack: The 3-2-1 crack spread in $/barrel
+            - change: Change from session open in $/barrel
+            - wti: WTI price in $/barrel
+            - rbob_bbl: RBOB price converted to $/barrel
+            - ho_bbl: Heating oil price converted to $/barrel
         """
         # Batch fetch all 3 tickers in one call (was 6 separate calls before!)
         batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
@@ -471,16 +507,20 @@ class DataLoader:
         rbob_data = batch.get("XB1 Comdty", {})
         ho_data = batch.get("HO1 Comdty", {})
         
+        # WTI is already in $/barrel
         wti = wti_data.get("current", 0)
-        rbob = rbob_data.get("current", 0) * 42  # Convert $/gal to $/bbl
-        ho = ho_data.get("current", 0) * 42
         
+        # Convert RBOB and HO from $/gallon to $/barrel (42 gallons per barrel)
+        rbob = rbob_data.get("current", 0) * self.GALLONS_PER_BARREL
+        ho = ho_data.get("current", 0) * self.GALLONS_PER_BARREL
+        
+        # 3-2-1 crack spread: margin per barrel of crude processed
         crack = (2 * rbob + ho - 3 * wti) / 3
         
         # Calculate change using data already fetched
         wti_open = wti_data.get("open", wti)
-        rbob_open = rbob_data.get("open", rbob_data.get("current", 0)) * 42
-        ho_open = ho_data.get("open", ho_data.get("current", 0)) * 42
+        rbob_open = rbob_data.get("open", rbob_data.get("current", 0)) * self.GALLONS_PER_BARREL
+        ho_open = ho_data.get("open", ho_data.get("current", 0)) * self.GALLONS_PER_BARREL
         
         crack_open = (2 * rbob_open + ho_open - 3 * wti_open) / 3
         
@@ -493,14 +533,37 @@ class DataLoader:
         }
     
     def get_crack_spread_211(self) -> Dict[str, float]:
-        """Calculate 2-1-1 crack spread (batch optimized)."""
+        """
+        Calculate 2-1-1 crack spread (batch optimized).
+        
+        The 2-1-1 crack spread represents the refining margin for converting
+        2 barrels of crude oil into 1 barrel of gasoline and 1 barrel of heating oil.
+        
+        Formula: (1 × RBOB_$/bbl + 1 × HO_$/bbl - 2 × WTI_$/bbl) / 2
+        
+        Unit conversions applied:
+        - WTI (CL1): Already in $/barrel, no conversion needed
+        - RBOB (XB1): Quoted in $/gallon, multiply by 42 to get $/barrel
+        - Heating Oil (HO1): Quoted in $/gallon, multiply by 42 to get $/barrel
+        
+        Returns:
+            Dict with keys:
+            - crack: The 2-1-1 crack spread in $/barrel
+            - wti: WTI price in $/barrel
+            - rbob_bbl: RBOB price converted to $/barrel
+            - ho_bbl: Heating oil price converted to $/barrel
+        """
         # Batch fetch all 3 tickers in one call
         batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
         
+        # WTI is already in $/barrel
         wti = batch.get("CL1 Comdty", {}).get("current", 0)
-        rbob = batch.get("XB1 Comdty", {}).get("current", 0) * 42
-        ho = batch.get("HO1 Comdty", {}).get("current", 0) * 42
         
+        # Convert RBOB and HO from $/gallon to $/barrel
+        rbob = batch.get("XB1 Comdty", {}).get("current", 0) * self.GALLONS_PER_BARREL
+        ho = batch.get("HO1 Comdty", {}).get("current", 0) * self.GALLONS_PER_BARREL
+        
+        # 2-1-1 crack spread: margin per barrel of crude processed
         crack = (rbob + ho - 2 * wti) / 2
         
         return {
@@ -534,11 +597,11 @@ class DataLoader:
         wti_brent_spread = wti_current - brent_current
         wti_brent_spread_open = wti_open - brent_open
         
-        # Crack spreads
-        rbob_bbl = rbob_data.get("current", 0) * 42
-        ho_bbl = ho_data.get("current", 0) * 42
-        rbob_open_bbl = rbob_data.get("open", 0) * 42
-        ho_open_bbl = ho_data.get("open", 0) * 42
+        # Crack spreads - convert product prices from $/gallon to $/barrel
+        rbob_bbl = rbob_data.get("current", 0) * self.GALLONS_PER_BARREL
+        ho_bbl = ho_data.get("current", 0) * self.GALLONS_PER_BARREL
+        rbob_open_bbl = rbob_data.get("open", 0) * self.GALLONS_PER_BARREL
+        ho_open_bbl = ho_data.get("open", 0) * self.GALLONS_PER_BARREL
         
         crack_321 = (2 * rbob_bbl + ho_bbl - 3 * wti_current) / 3
         crack_321_open = (2 * rbob_open_bbl + ho_open_bbl - 3 * wti_open) / 3
