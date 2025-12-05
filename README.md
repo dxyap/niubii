@@ -1,11 +1,14 @@
 # 🛢️ Quantitative Oil Trading Dashboard
 
-A lightweight, local-first quantitative trading dashboard for oil markets. Built with Python and Streamlit, featuring real-time market analysis, signal generation, risk management, and trade tracking.
+A lightweight, **local-first** quantitative trading dashboard for oil markets. Built with Python and Streamlit, featuring real-time market analysis, signal generation, risk management, and trade tracking.
+
+> ⚠️ **Important**: This is a **simulation and analysis tool only**. There is **no automatic execution of trades** and **no direct connection to any broker or exchange**. All trading operations are paper trading simulations for strategy testing and educational purposes.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![Tests](https://img.shields.io/badge/Tests-200%2B%20passed-green.svg)
+![Tests](https://img.shields.io/badge/Tests-255%20passed-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Local Only](https://img.shields.io/badge/Runs-Locally-brightgreen.svg)
 
 ## Features
 
@@ -36,13 +39,15 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 - Trade blotter with history and statistics
 - Strategy tagging and performance attribution
 
-### 🤖 Execution & Automation (NEW - Phase 6)
+### 🤖 Execution & Automation (Simulation Only)
 - **Order Management System**: Full order lifecycle tracking (created→submitted→filled)
-- **Paper Trading Mode**: Simulated execution for strategy testing
+- **Paper Trading Mode**: Simulated execution for strategy testing - **no real trades**
 - **Position Sizing**: Kelly criterion, volatility targeting, risk parity, ATR/VaR-based
-- **Execution Algorithms**: TWAP, VWAP, POV, Implementation Shortfall
-- **Broker Integration**: Simulated broker with realistic fills and slippage
-- **Automation Rules**: Signal-to-order conversion with configurable conditions
+- **Execution Algorithms**: TWAP, VWAP, POV, Implementation Shortfall (simulation)
+- **Simulated Broker**: Realistic fills and slippage for testing purposes
+- **Automation Rules**: Signal-to-order conversion for paper trading only
+
+> 🔒 **No Live Trading**: All execution is simulated. There is no connection to real brokers or exchanges.
 
 ## Quick Start
 
@@ -129,15 +134,15 @@ Open in browser at `http://localhost:8501`
 │   │   ├── metrics.py       # Performance metrics
 │   │   ├── optimization.py  # Walk-forward optimization
 │   │   └── reporting.py     # Reports & visualization
-│   ├── execution/            # Execution & Automation (Phase 6)
+│   ├── execution/            # Execution & Automation (Simulation Only)
 │   │   ├── oms.py            # Order Management System
 │   │   ├── sizing.py         # Position sizing algorithms
 │   │   ├── algorithms.py     # TWAP, VWAP, POV, IS algorithms
-│   │   ├── paper_trading.py  # Paper trading engine
-│   │   ├── automation.py     # Automation rules engine
-│   │   └── brokers/          # Broker integrations
-│   │       ├── base.py       # Broker interface
-│   │       └── simulator.py  # Simulated broker
+│   │   ├── paper_trading.py  # Paper trading engine (no real execution)
+│   │   ├── automation.py     # Automation rules engine (simulation only)
+│   │   └── brokers/          # Simulated broker only
+│   │       ├── base.py       # Broker interface (abstract)
+│   │       └── simulator.py  # Simulated broker (no real connections)
 │   ├── alerts/               # Alerts & Notifications (Phase 7)
 │   │   ├── rules.py          # Alert rule definitions
 │   │   ├── engine.py         # Alert evaluation engine
@@ -169,26 +174,12 @@ Open in browser at `http://localhost:8501`
 │   ├── instruments.yaml    # Instrument definitions
 │   ├── risk_limits.yaml    # Risk parameters
 │   ├── execution.yaml      # Execution & automation config
-│   ├── alerts.yaml         # Alert configurations (Phase 7)
+│   ├── alerts.yaml         # Alert configurations
 │   └── bloomberg_tickers.yaml  # Bloomberg ticker mappings
 │
-├── deploy/                   # Deployment files (Phase 9)
-│   ├── k8s/                 # Kubernetes manifests
-│   │   ├── namespace.yaml
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── ingress.yaml
-│   │   └── hpa.yaml
-│   ├── prometheus.yml       # Prometheus configuration
-│   ├── nginx.conf           # Nginx reverse proxy
-│   └── grafana/             # Grafana provisioning
-│
-├── migrations/               # Database migrations (Phase 9)
+├── migrations/               # Database migrations
 │   └── versions/            # Alembic migration files
 │
-├── Dockerfile               # Multi-stage Docker build
-├── docker-compose.yml       # Production deployment
-├── docker-compose.dev.yml   # Development environment
 ├── alembic.ini              # Alembic configuration
 │
 ├── models/                  # Trained ML models (auto-created)
@@ -814,10 +805,10 @@ pytest tests/test_analytics.py -v
 | Walk-Forward Optimization | ✅ Complete | 5 |
 | Performance Metrics | ✅ Complete | 5 |
 | Order Management System | ✅ Complete | 6 |
-| Paper Trading | ✅ Complete | 6 |
+| Paper Trading (Simulation) | ✅ Complete | 6 |
 | Position Sizing Algorithms | ✅ Complete | 6 |
-| Execution Algorithms | ✅ Complete | 6 |
-| Automation Rules Engine | ✅ Complete | 6 |
+| Execution Algorithms (Simulated) | ✅ Complete | 6 |
+| Automation Rules (Paper Trading) | ✅ Complete | 6 |
 | Multi-channel Alerts | ✅ Complete | 7 |
 | Advanced Analytics & AI | ✅ Complete | 8 |
 | Production Hardening | ✅ Complete | 9 |
@@ -1024,20 +1015,22 @@ print(f"OOS Sharpe: {result.oos_metrics.sharpe_ratio:.2f}")
 
 ---
 
-### ✅ Phase 6: Execution & Automation (Complete)
+### ✅ Phase 6: Execution & Automation (Complete - Simulation Only)
 
-**Order Management & Automated Trading**
+**Order Management & Paper Trading**
 
-Full execution infrastructure for signal-to-order conversion and automated trading.
+> ⚠️ **No Live Trading**: All execution is **simulated**. There is **no connection to real brokers or exchanges**. This is for strategy testing and educational purposes only.
+
+Full execution infrastructure for signal-to-order conversion and **paper trading simulation**.
 
 | Feature | Description | Status |
 |---------|-------------|--------|
 | Order Management System | Complete order lifecycle with SQLite persistence | ✅ Complete |
 | Paper Trading Mode | Simulated execution with realistic fills | ✅ Complete |
 | Position Sizing | Kelly, volatility targeting, risk parity, ATR, VaR | ✅ Complete |
-| Execution Algorithms | TWAP, VWAP, POV, Implementation Shortfall | ✅ Complete |
-| Broker Interface | Abstract broker with simulated implementation | ✅ Complete |
-| Automation Rules | Signal-based rules with multi-condition logic | ✅ Complete |
+| Execution Algorithms | TWAP, VWAP, POV, Implementation Shortfall (simulated) | ✅ Complete |
+| Simulated Broker | Abstract broker with simulation implementation only | ✅ Complete |
+| Automation Rules | Signal-based rules for paper trading only | ✅ Complete |
 | Dashboard Page | Full automation UI with paper trading | ✅ Complete |
 
 **Implementation:**
@@ -1342,24 +1335,20 @@ aggregate = alt_data.get_aggregate_signal()
 
 ---
 
-### ✅ Phase 9: Production Hardening (Complete)
+### ✅ Phase 9: Infrastructure & Security (Complete)
 
-**Enterprise-Ready Deployment**
+**Security & Monitoring for Local Deployment**
 
-Production deployment infrastructure with security, reliability, and compliance.
+Infrastructure components for secure local operation with monitoring and compliance.
 
 | Feature | Description | Status |
 |---------|-------------|--------|
 | Authentication | User authentication with session management | ✅ Complete |
 | Role-Based Access | 5 roles with 20+ permissions | ✅ Complete |
 | Audit Logging | Complete audit trail (SQLite) | ✅ Complete |
-| Database Migrations | Alembic migrations for PostgreSQL | ✅ Complete |
+| Database Migrations | Alembic migrations | ✅ Complete |
 | Health Checks | Component health monitoring | ✅ Complete |
 | Prometheus Metrics | Application and system metrics | ✅ Complete |
-| Docker | Multi-stage Dockerfile | ✅ Complete |
-| Docker Compose | Full stack with PostgreSQL, Redis, Prometheus, Grafana | ✅ Complete |
-| Kubernetes | Complete K8s manifests (deployment, services, ingress, HPA) | ✅ Complete |
-| Network Policies | K8s network security | ✅ Complete |
 
 **Implementation:**
 ```
@@ -1370,28 +1359,6 @@ core/
 │   ├── rbac.py               # Role-Based Access Control (5 roles, 20+ permissions)
 │   ├── audit.py              # Audit logging (SQLite with retention)
 │   └── monitoring.py         # Health checks, Prometheus metrics
-
-# Docker deployment
-├── Dockerfile                # Multi-stage build (production + development)
-├── docker-compose.yml        # Full stack (app, postgres, redis, prometheus, grafana)
-├── docker-compose.dev.yml    # Development environment
-
-# Kubernetes
-├── deploy/
-│   ├── k8s/
-│   │   ├── namespace.yaml
-│   │   ├── configmap.yaml
-│   │   ├── secrets.yaml
-│   │   ├── deployment.yaml   # App + PostgreSQL + Redis
-│   │   ├── service.yaml
-│   │   ├── ingress.yaml
-│   │   ├── pvc.yaml
-│   │   ├── hpa.yaml          # Horizontal Pod Autoscaler
-│   │   └── networkpolicy.yaml
-│   ├── prometheus.yml
-│   ├── nginx.conf
-│   ├── init-db.sql           # PostgreSQL initialization
-│   └── grafana/              # Grafana provisioning
 
 # Database migrations
 ├── alembic.ini
@@ -1440,31 +1407,6 @@ metrics.set("trading_pnl", 50000)
 output = metrics.get_prometheus_output()
 ```
 
-**Docker Deployment:**
-```bash
-# Development
-docker-compose -f docker-compose.dev.yml up
-
-# Production
-docker-compose up -d
-
-# With Nginx reverse proxy
-docker-compose --profile with-nginx up -d
-```
-
-**Kubernetes Deployment:**
-```bash
-# Create namespace
-kubectl apply -f deploy/k8s/namespace.yaml
-
-# Deploy all resources
-kubectl apply -f deploy/k8s/
-
-# Check status
-kubectl get pods -n oil-trading
-kubectl get services -n oil-trading
-```
-
 ---
 
 ## Prioritized Roadmap
@@ -1505,12 +1447,10 @@ kubectl get services -n oil-trading
 ├── Factor decomposition (10+ risk factors)
 └── Alternative data (satellite, shipping, positioning)
 
-✅ Q4 2025: Phase 9 - Production Hardening (COMPLETE)
+✅ Q4 2025: Phase 9 - Infrastructure & Security (COMPLETE)
 ├── Authentication & session management
 ├── Role-based access control (5 roles, 20+ permissions)
 ├── Audit logging (SQLite with retention)
-├── Docker + Docker Compose deployment
-├── Kubernetes manifests (deployment, HPA, ingress)
 ├── Health checks & Prometheus metrics
 └── Database migrations with Alembic
 ```
@@ -1553,7 +1493,13 @@ streamlit run app/main.py
 - Everything runs on a single machine
 - SQLite for transactions, Parquet for analytics
 - In-memory caching for real-time data
-- Scale to cloud only when needed
+- No external infrastructure required
+
+**Simulation Only - No Live Trading:**
+- All execution is paper trading simulation
+- No connection to real brokers or exchanges
+- Safe environment for strategy testing
+- Educational and research purposes
 
 **Bloomberg Fallback:**
 - Seamless simulation mode when Bloomberg unavailable

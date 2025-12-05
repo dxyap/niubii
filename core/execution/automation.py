@@ -3,9 +3,13 @@ Automation Rules Engine
 =======================
 Automated trading based on signals and conditions.
 
+⚠️ SIMULATION ONLY: All trading operations are paper trading simulations.
+There is NO connection to real brokers or exchanges. No real trades are executed.
+This module is for strategy testing and educational purposes only.
+
 Features:
-- Rule-based order generation
-- Signal-to-order conversion
+- Rule-based order generation (paper trading)
+- Signal-to-order conversion (simulated)
 - Multi-condition logic
 - Scheduling and timing
 - Risk integration

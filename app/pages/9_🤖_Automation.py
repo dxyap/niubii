@@ -2,6 +2,10 @@
 Automation Page
 ===============
 Execution automation and paper trading interface.
+
+⚠️ SIMULATION ONLY: All trading operations on this page are paper trading
+simulations. There is NO connection to real brokers or exchanges.
+No real trades are executed.
 """
 
 import sys

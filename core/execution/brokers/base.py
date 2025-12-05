@@ -3,6 +3,10 @@ Broker Base Interface
 =====================
 Abstract base class for broker integrations.
 
+⚠️ SIMULATION ONLY: This is an abstract interface for educational purposes.
+The only implementation is SimulatedBroker. There is NO connection to real
+brokers or exchanges. All order execution is simulated.
+
 Provides:
 - Unified broker interface
 - Common order handling
