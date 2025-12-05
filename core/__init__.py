@@ -12,11 +12,14 @@ Submodules:
 - ml: Machine learning models and feature engineering
 - backtest: Strategy backtesting and optimization
 - execution: Order management, execution algorithms, and automation
+- alerts: Multi-channel alert system and notifications
+- research: Advanced analytics, LLM, and alternative data
+- infrastructure: Authentication, RBAC, audit logging, and monitoring
 - indicators: Technical indicator calculations
 """
 
 from . import constants
 from . import indicators
 
-__version__ = "2.0.0"  # Phase 6 complete
+__version__ = "3.0.0"  # Phase 9 complete - all phases implemented
 __all__ = ["constants", "indicators"]

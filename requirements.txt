@@ -15,6 +15,8 @@ pyarrow>=14.0.0
 # Database
 duckdb>=0.9.0
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9  # PostgreSQL (Phase 9)
+alembic>=1.12.0  # Database migrations (Phase 9)
 
 # Visualization
 plotly>=5.18.0
@@ -24,11 +26,13 @@ altair>=5.1.0
 
 # Caching & Storage
 diskcache>=5.6.0
+redis>=5.0.0  # High availability caching (Phase 9)
 python-dateutil>=2.8.2
 pytz>=2023.3
 
 # API & Networking
 requests>=2.31.0
+urllib3>=2.0.0
 
 # Configuration
 pyyaml>=6.0
@@ -44,6 +48,7 @@ tqdm>=4.66.0
 # Testing
 pytest>=7.4.0
 pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
 
 # Financial Calculations
 scipy>=1.11.0
@@ -53,5 +58,28 @@ scikit-learn>=1.3.0
 xgboost>=2.0.0
 lightgbm>=4.1.0
 
-# Execution & Automation (Phase 6)
-# Core dependencies already included above (pandas, numpy, sqlite3 built-in)
+# Statistical Models (Phase 8)
+statsmodels>=0.14.0
+hmmlearn>=0.3.0  # Hidden Markov Models for regime detection
+
+# LLM Integration (Phase 8)
+openai>=1.3.0
+anthropic>=0.7.0
+# langchain>=0.0.340  # Optional - for advanced LLM orchestration
+
+# Alerts & Notifications (Phase 7)
+python-telegram-bot>=20.6
+slack-sdk>=3.23.0
+twilio>=8.10.0
+jinja2>=3.1.2  # Report templates
+
+# Authentication & Security (Phase 9)
+python-jose>=3.3.0  # JWT handling
+passlib>=1.7.4  # Password hashing
+
+# Monitoring (Phase 9)
+prometheus-client>=0.18.0
+psutil>=5.9.0  # System metrics
+
+# Type Checking (optional)
+mypy>=1.6.0

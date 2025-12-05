@@ -1,0 +1,11 @@
+# =============================================================================
+# Kubernetes Namespace
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oil-trading
+  labels:
+    app.kubernetes.io/name: oil-trading
+    app.kubernetes.io/part-of: oil-trading-dashboard
