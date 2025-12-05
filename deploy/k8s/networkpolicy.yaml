@@ -1,0 +1,85 @@
+# =============================================================================
+# Network Policies
+# =============================================================================
+
+# Default deny all ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: oil-trading
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Allow ingress to app from ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-app
+  namespace: oil-trading
+spec:
+  podSelector:
+    matchLabels:
+      app: oil-trading
+      component: app
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8501
+
+---
+# Allow app to connect to postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-postgres
+  namespace: oil-trading
+spec:
+  podSelector:
+    matchLabels:
+      app: oil-trading
+      component: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: oil-trading
+              component: app
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow app to connect to redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-redis
+  namespace: oil-trading
+spec:
+  podSelector:
+    matchLabels:
+      app: oil-trading
+      component: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: oil-trading
+              component: app
+      ports:
+        - protocol: TCP
+          port: 6379

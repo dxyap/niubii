@@ -1,0 +1,62 @@
+# =============================================================================
+# Kubernetes Services
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: oil-trading-service
+  namespace: oil-trading
+  labels:
+    app: oil-trading
+    component: app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8501
+      protocol: TCP
+      name: http
+  selector:
+    app: oil-trading
+    component: app
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: oil-trading
+  labels:
+    app: oil-trading
+    component: postgres
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: oil-trading
+    component: postgres
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: oil-trading
+  labels:
+    app: oil-trading
+    component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    app: oil-trading
+    component: redis

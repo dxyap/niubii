@@ -1,0 +1,93 @@
+# =============================================================================
+# Oil Trading Dashboard - Development Docker Compose
+# =============================================================================
+# Development environment with hot-reload and debugging
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Development Application
+  # ===========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: oil-trading-dev
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+      - "5678:5678"  # Debug port
+    environment:
+      - PYTHONPATH=/app
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+    volumes:
+      # Mount source code for hot-reload
+      - .:/app:cached
+      - dev-data:/app/data
+      - dev-logs:/app/logs
+      - dev-models:/app/models
+    networks:
+      - dev-network
+
+  # ===========================================================================
+  # PostgreSQL (Development)
+  # ===========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: oil-trading-postgres-dev
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=trading
+      - POSTGRES_PASSWORD=trading
+      - POSTGRES_DB=trading
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dev-network
+
+  # ===========================================================================
+  # Redis (Development)
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: oil-trading-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - dev-network
+
+  # ===========================================================================
+  # Test Runner
+  # ===========================================================================
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: oil-trading-tests
+    profiles:
+      - test
+    command: pytest tests/ -v --cov=core --cov-report=html
+    volumes:
+      - .:/app:cached
+      - test-coverage:/app/htmlcov
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    driver: bridge
+
+volumes:
+  dev-data:
+  dev-logs:
+  dev-models:
+  postgres-dev-data:
+  test-coverage:

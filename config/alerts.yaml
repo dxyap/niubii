@@ -1,0 +1,281 @@
+# =============================================================================
+# ALERTS & NOTIFICATIONS CONFIGURATION
+# =============================================================================
+# Phase 7: Multi-channel alert system for trading signals, risk, and events
+
+# =============================================================================
+# ALERT ENGINE SETTINGS
+# =============================================================================
+engine:
+  # Enable/disable the alert system
+  enabled: true
+  
+  # Evaluation interval (how often to check for alerts)
+  evaluation_interval_seconds: 10
+  
+  # Escalation settings
+  auto_escalate: true
+  escalation_check_interval_seconds: 60
+  
+  # Storage settings
+  storage_path: "data/alerts"
+  alert_retention_days: 30
+  
+  # Global rate limits
+  default_max_alerts_per_hour: 20
+  default_max_alerts_per_day: 100
+  default_cooldown_minutes: 5
+
+# =============================================================================
+# NOTIFICATION CHANNELS
+# =============================================================================
+channels:
+  # Email channel
+  email:
+    enabled: false
+    smtp_server: ""
+    smtp_port: 587
+    use_tls: true
+    use_ssl: false
+    username: ""
+    password: ""
+    from_address: "alerts@your-domain.com"
+    from_name: "Oil Trading Alerts"
+    recipients: []
+    cc_recipients: []
+    escalation_recipients: []
+    use_html: true
+    subject_prefix: "[OIL TRADING]"
+    
+    # Rate limiting
+    max_per_minute: 10
+    max_per_hour: 100
+    
+    # Filtering
+    min_severity: "LOW"
+    categories: []  # Empty = all categories
+  
+  # Telegram channel
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_ids: []
+    escalation_chat_ids: []
+    parse_mode: "HTML"  # HTML or Markdown
+    disable_web_preview: true
+    disable_notification: false
+    escalation_disable_notification: false
+    
+    # Rate limiting
+    max_per_minute: 20
+    max_per_hour: 200
+    
+    # Filtering
+    min_severity: "LOW"
+    categories: []
+  
+  # Slack channel
+  slack:
+    enabled: false
+    webhook_url: ""
+    escalation_webhook_url: ""
+    default_channel: ""
+    username: "Oil Trading Bot"
+    icon_emoji: ":chart_with_upwards_trend:"
+    include_footer: true
+    include_context: true
+    
+    # Rate limiting
+    max_per_minute: 10
+    max_per_hour: 100
+    
+    # Filtering
+    min_severity: "LOW"
+    categories: []
+  
+  # SMS channel (Twilio)
+  sms:
+    enabled: false
+    account_sid: ""
+    auth_token: ""
+    from_number: ""
+    to_numbers: []
+    escalation_numbers: []
+    max_message_length: 160
+    include_alert_id: false
+    
+    # Rate limiting (SMS is expensive, limit carefully)
+    max_per_minute: 5
+    max_per_hour: 20
+    
+    # Filtering (SMS only for critical alerts)
+    min_severity: "HIGH"
+    categories: ["RISK", "PNL", "SYSTEM"]
+
+# =============================================================================
+# PREDEFINED ALERT RULES
+# =============================================================================
+rules:
+  # Price alerts
+  price_alerts:
+    enabled: true
+    
+    # WTI price thresholds
+    wti_high_threshold: 100.0
+    wti_low_threshold: 50.0
+    
+    # Brent price thresholds
+    brent_high_threshold: 105.0
+    brent_low_threshold: 55.0
+    
+    # Spread alerts
+    wti_brent_spread_threshold: 10.0  # Alert if spread > $10
+  
+  # Signal alerts
+  signal_alerts:
+    enabled: true
+    min_confidence_long: 70
+    min_confidence_short: 70
+    alert_on_signal_change: true
+  
+  # Risk alerts
+  risk_alerts:
+    enabled: true
+    
+    # VaR thresholds
+    var_warning_pct: 0.75  # Warn at 75% of limit
+    var_critical_pct: 0.90  # Critical at 90% of limit
+    
+    # Drawdown thresholds
+    drawdown_warning: 0.03  # 3% warning
+    drawdown_critical: 0.05  # 5% critical
+    
+    # Exposure thresholds
+    exposure_warning_pct: 0.80
+    exposure_critical_pct: 0.95
+  
+  # P&L alerts
+  pnl_alerts:
+    enabled: true
+    
+    # Daily P&L thresholds
+    daily_loss_warning: -25000
+    daily_loss_critical: -50000
+    daily_profit_target: 100000
+    
+    # Position P&L
+    position_loss_threshold: -10000
+  
+  # Execution alerts
+  execution_alerts:
+    enabled: true
+    
+    # Slippage thresholds
+    slippage_warning_bps: 5
+    slippage_critical_bps: 10
+    
+    # Order status
+    alert_on_fill: true
+    alert_on_reject: true
+  
+  # System alerts
+  system_alerts:
+    enabled: true
+    alert_on_connection_loss: true
+    alert_on_high_latency: true
+    latency_threshold_ms: 1000
+
+# =============================================================================
+# SCHEDULED REPORTS
+# =============================================================================
+reports:
+  # Daily P&L report
+  daily_pnl:
+    enabled: true
+    schedule_time: "18:00"  # 6 PM
+    schedule_days: [0, 1, 2, 3, 4]  # Monday-Friday
+    channels: ["email"]
+    include_charts: true
+    include_positions: true
+    include_trades: true
+  
+  # Daily risk report
+  daily_risk:
+    enabled: true
+    schedule_time: "08:00"  # 8 AM
+    schedule_days: [0, 1, 2, 3, 4]
+    channels: ["email"]
+    include_var: true
+    include_exposure: true
+    include_limits: true
+  
+  # Weekly performance report
+  weekly_performance:
+    enabled: true
+    schedule_time: "18:00"
+    schedule_days: [4]  # Friday only
+    channels: ["email"]
+    include_weekly_pnl: true
+    include_signals: true
+    include_trades: true
+  
+  # Monthly summary
+  monthly_summary:
+    enabled: true
+    schedule_day: 1  # First of month
+    schedule_time: "09:00"
+    channels: ["email"]
+
+# =============================================================================
+# ESCALATION SETTINGS
+# =============================================================================
+escalation:
+  # Time before escalation (minutes)
+  escalate_after_minutes: 30
+  
+  # Severity upgrade on escalation
+  escalate_to_severity: "HIGH"
+  
+  # Escalation channels
+  escalation_channels:
+    email: true
+    telegram: true
+    slack: true
+    sms: true  # SMS only for escalations
+
+# =============================================================================
+# ALERT TEMPLATES
+# =============================================================================
+templates:
+  # Title templates
+  titles:
+    price_alert: "Price Alert: {symbol}"
+    signal_alert: "Signal Alert: {direction}"
+    risk_alert: "Risk Alert: {risk_type}"
+    pnl_alert: "P&L Alert: {alert_type}"
+    execution_alert: "Execution Alert: {event_type}"
+    system_alert: "System Alert: {system_event}"
+  
+  # Message templates
+  messages:
+    price_alert: "{symbol} price is {price:.2f}, {direction} threshold of {threshold:.2f}"
+    signal_alert: "New {direction} signal with {confidence:.0f}% confidence for {symbol}"
+    risk_alert: "Current {risk_type} is {value:.2f}, exceeding limit of {limit:.2f}"
+    pnl_alert: "Portfolio P&L is ${pnl:,.0f}, {comparison} ${threshold:,.0f} threshold"
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  # Log file for alert system
+  log_path: "logs/alerts.log"
+  log_level: "INFO"
+  
+  # Audit logging
+  audit_enabled: true
+  audit_path: "data/alerts/audit.log"
+  
+  # Log alert details
+  log_triggers: true
+  log_notifications: true
+  log_escalations: true
