@@ -14,48 +14,44 @@ This module provides:
 Phase 6 Implementation - Execution & Automation
 """
 
-from .oms import (
-    Order,
-    OrderStatus,
-    OrderType,
-    OrderSide,
-    TimeInForce,
-    OrderManager,
-    OrderEvent,
-    OrderUpdate,
-)
-
-from .sizing import (
-    PositionSizer,
-    SizingMethod,
-    KellyCriterion,
-    VolatilityTargeting,
-    RiskParity,
-    FixedFractional,
-    SizingConfig,
-)
-
 from .algorithms import (
+    AlgorithmConfig,
     ExecutionAlgorithm,
+    ExecutionSlice,
     TWAPAlgorithm,
     VWAPAlgorithm,
-    AlgorithmConfig,
-    ExecutionSlice,
 )
-
-from .paper_trading import (
-    PaperTradingEngine,
-    PaperTradingConfig,
-    SimulatedFill,
-)
-
 from .automation import (
-    AutomationRule,
-    RuleCondition,
-    RuleAction,
     AutomationEngine,
+    AutomationRule,
+    RuleAction,
+    RuleCondition,
     RuleConfig,
     RuleStatus,
+)
+from .oms import (
+    Order,
+    OrderEvent,
+    OrderManager,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    OrderUpdate,
+    TimeInForce,
+)
+from .paper_trading import (
+    PaperTradingConfig,
+    PaperTradingEngine,
+    SimulatedFill,
+)
+from .sizing import (
+    FixedFractional,
+    KellyCriterion,
+    PositionSizer,
+    RiskParity,
+    SizingConfig,
+    SizingMethod,
+    VolatilityTargeting,
 )
 
 __all__ = [

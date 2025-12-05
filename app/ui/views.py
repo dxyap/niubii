@@ -4,10 +4,11 @@ Reusable view/controller classes for the Streamlit dashboard.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, Optional, Sequence
 
+import pandas as pd
 import streamlit as st
 
 from app.components.charts import create_candlestick_chart, create_futures_curve_chart
@@ -15,7 +16,7 @@ from app.components.theme import get_chart_config
 from app.dashboard_core import DashboardContext, PortfolioAnalytics
 
 
-def _render_price_metric(label: str, values: Optional[Dict[str, float]]) -> None:
+def _render_price_metric(label: str, values: dict[str, float] | None) -> None:
     """Render a Streamlit metric for price-oriented data."""
     if not values or values.get("current") is None:
         st.metric(label, "N/A", "No data")
@@ -30,7 +31,7 @@ def _render_price_metric(label: str, values: Optional[Dict[str, float]]) -> None
     st.metric(label, f"${current:.2f}", delta, delta_color=delta_color)
 
 
-def _render_spread_metric(label: str, data: Optional[Dict[str, float]]) -> None:
+def _render_spread_metric(label: str, data: dict[str, float] | None) -> None:
     """Render a Streamlit metric for spread data."""
     if not data:
         st.metric(label, "N/A", "No data")
@@ -71,7 +72,7 @@ class RefreshController:
         st.session_state.refresh_count += 1
         st.rerun()
 
-    def schedule_auto_refresh(self, on_cycle: Optional[Callable[[], None]] = None) -> None:
+    def schedule_auto_refresh(self, on_cycle: Callable[[], None] | None = None) -> None:
         """
         Schedule non-blocking auto-refresh. Clears caches via callback when tick fires.
         """
@@ -112,7 +113,7 @@ class ConnectionIndicator:
     text: str
 
     @classmethod
-    def from_mode(cls, data_mode: str) -> "ConnectionIndicator":
+    def from_mode(cls, data_mode: str) -> ConnectionIndicator:
         palette = {
             "live": ("#00D26A", "Live Data"),
             "mock": ("#FFA500", "Mock Data (Dev)"),
@@ -229,8 +230,8 @@ class MarketOverviewView:
     def __init__(
         self,
         context: DashboardContext,
-        historical_loader: Callable[[str, int], Optional["pd.DataFrame"]],
-        curve_loader: Callable[[str, int], Optional["pd.DataFrame"]],
+        historical_loader: Callable[[str, int], pd.DataFrame | None],
+        curve_loader: Callable[[str, int], pd.DataFrame | None],
     ):
         self.context = context
         self._historical_loader = historical_loader

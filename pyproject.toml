@@ -67,6 +67,8 @@ include = ["core*", "app*"]
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+
+[tool.ruff.lint]
 select = [
     "E",      # pycodestyle errors
     "W",      # pycodestyle warnings
@@ -80,16 +82,24 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "E402",   # module level import not at top of file (intentional for path setup)
     "B008",   # do not perform function calls in argument defaults
+    "B904",   # raise from err (common in wrapper exceptions)
     "B905",   # zip without explicit strict
+    "SIM102", # nested if statements (sometimes clearer)
     "SIM108", # use ternary operator
+    "ARG001", # unused function argument (common in interfaces/abstract classes)
+    "ARG002", # unused method argument (common in interfaces/abstract classes)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ARG"]
-"app/pages/*" = ["ARG"]
+"app/pages/*" = ["ARG", "E402"]
+"core/backtest/strategy.py" = ["ARG", "B027"]
+"core/backtest/costs.py" = ["ARG"]
+"core/execution/*" = ["ARG"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["core", "app"]
 
 # =============================================================================

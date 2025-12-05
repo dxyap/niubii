@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from core.data import DataLoader
 
 
-def get_data_loader() -> "DataLoader":
+def get_data_loader() -> DataLoader:
     """Get or create the shared data loader."""
     if 'data_loader' not in st.session_state:
         from core.data import DataLoader
@@ -46,7 +46,7 @@ def get_data_loader() -> "DataLoader":
     return st.session_state.data_loader
 
 
-def get_positions() -> List[Dict]:
+def get_positions() -> list[dict]:
     """Get current positions from session state."""
     if 'positions' not in st.session_state:
         # Start with empty positions - no demo data
@@ -55,11 +55,11 @@ def get_positions() -> List[Dict]:
 
 
 def add_position(
-    symbol: str, 
-    ticker: str, 
-    qty: int, 
-    entry: float, 
-    strategy: Optional[str] = None
+    symbol: str,
+    ticker: str,
+    qty: int,
+    entry: float,
+    strategy: str | None = None
 ) -> None:
     """Add a new position."""
     positions = get_positions()
@@ -82,29 +82,29 @@ def calculate_position_pnl(data_loader=None):
     """Calculate P&L for all positions using current prices."""
     if data_loader is None:
         data_loader = get_data_loader()
-    
+
     positions = get_positions()
     results = []
-    
+
     for pos in positions:
         current_price = data_loader.get_price(pos["ticker"])
         entry_price = pos["entry"]
         qty = pos["qty"]
-        
+
         # Contract multiplier
         if pos["ticker"].startswith("XB") or pos["ticker"].startswith("HO"):
             multiplier = 42000  # 42,000 gallons per contract
         else:
             multiplier = 1000  # 1,000 barrels per contract
-        
+
         # Calculate P&L
         price_change = current_price - entry_price
         pnl = price_change * qty * multiplier
         pnl_pct = (price_change / entry_price * 100) if entry_price != 0 else 0
-        
+
         # Calculate notional
         notional = abs(qty) * current_price * multiplier
-        
+
         results.append({
             "symbol": pos["symbol"],
             "ticker": pos["ticker"],
@@ -117,7 +117,7 @@ def calculate_position_pnl(data_loader=None):
             "strategy": pos["strategy"],
             "multiplier": multiplier,
         })
-    
+
     return results
 
 
@@ -125,21 +125,21 @@ def get_portfolio_summary(data_loader=None):
     """Get portfolio-level summary metrics."""
     if data_loader is None:
         data_loader = get_data_loader()
-    
+
     position_pnl = calculate_position_pnl(data_loader)
-    
+
     total_pnl = sum(p['pnl'] for p in position_pnl)
     gross_exposure = sum(p['notional'] for p in position_pnl)
-    
+
     # Net exposure (long - short)
     long_exposure = sum(p['notional'] for p in position_pnl if p['qty'] > 0)
     short_exposure = sum(p['notional'] for p in position_pnl if p['qty'] < 0)
     net_exposure = long_exposure - short_exposure
-    
+
     # VaR estimate (simplified: 2% of gross exposure)
     var_estimate = gross_exposure * 0.02
     var_limit = 375000
-    
+
     return {
         "total_pnl": total_pnl,
         "gross_exposure": gross_exposure,
@@ -185,25 +185,25 @@ def _positions_signature(positions):
 def get_dashboard_context(lookback_days: int = 90, force_refresh: bool = False) -> DashboardContext:
     """
     Return a cached DashboardContext shared across pages.
-    
+
     The context is cached based on:
     - Lookback days
     - Position signature (changes when positions are modified)
     - Time-based refresh (max 30 second cache for price data)
-    
+
     This reduces redundant data fetching while ensuring data freshness.
     """
     positions = get_positions()
     signature = _positions_signature(positions)
     current_time = datetime.now()
-    
+
     store = st.session_state.setdefault("_dashboard_context_store", {})
     entry = store.get(lookback_days)
 
     if entry and not force_refresh:
         context, cached_time, cached_signature = entry
         time_diff = (current_time - cached_time).total_seconds()
-        
+
         # Cache is valid if:
         # 1. Position signature hasn't changed
         # 2. Cache is less than 15 seconds old (for live price data)

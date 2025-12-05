@@ -10,14 +10,15 @@ Features:
 - Custom report scheduling
 """
 
+import json
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
-import json
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,77 +51,73 @@ class ReportConfig:
     report_id: str
     name: str
     report_type: ReportType
-    
+
     # Scheduling
     frequency: ReportFrequency = ReportFrequency.DAILY
     schedule_time: time = time(18, 0)  # 6 PM
-    schedule_days: List[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Mon-Fri
-    
+    schedule_days: list[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Mon-Fri
+
     # For monthly reports
     schedule_day_of_month: int = 1
-    
+
     # Delivery
-    channels: List[str] = field(default_factory=lambda: ["email"])
-    recipients: List[str] = field(default_factory=list)
-    
+    channels: list[str] = field(default_factory=lambda: ["email"])
+    recipients: list[str] = field(default_factory=list)
+
     # Content settings
     include_charts: bool = True
     include_details: bool = True
     date_range_days: int = 1  # For daily, 7 for weekly, etc.
-    
+
     # Custom report generator
-    generator_function: Optional[Callable[[], Dict]] = None
-    
+    generator_function: Callable[[], dict] | None = None
+
     # Status
     enabled: bool = True
-    last_run: Optional[datetime] = None
-    next_run: Optional[datetime] = None
+    last_run: datetime | None = None
+    next_run: datetime | None = None
     run_count: int = 0
-    
+
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ScheduledReport:
     """A scheduled report instance."""
     config: ReportConfig
-    
-    def should_run(self, now: Optional[datetime] = None) -> bool:
+
+    def should_run(self, now: datetime | None = None) -> bool:
         """Check if report should run now."""
         if not self.config.enabled:
             return False
-        
+
         now = now or datetime.now()
         current_time = now.time()
         current_day = now.weekday()
-        
+
         # Check day
         if self.config.frequency == ReportFrequency.MONTHLY:
             if now.day != self.config.schedule_day_of_month:
                 return False
         elif current_day not in self.config.schedule_days:
             return False
-        
+
         # Check time (within 1 minute window)
         schedule_minutes = self.config.schedule_time.hour * 60 + self.config.schedule_time.minute
         current_minutes = current_time.hour * 60 + current_time.minute
-        
+
         if abs(current_minutes - schedule_minutes) > 1:
             return False
-        
+
         # Check if already run today
-        if self.config.last_run:
-            if self.config.last_run.date() == now.date():
-                return False
-        
-        return True
-    
+        return not (self.config.last_run and self.config.last_run.date() == now.date())
+
     def calculate_next_run(self) -> datetime:
         """Calculate next run time."""
         now = datetime.now()
-        
+
         if self.config.frequency == ReportFrequency.DAILY:
             # Find next scheduled day
             for days_ahead in range(7):
@@ -129,10 +126,10 @@ class ScheduledReport:
                     next_run = datetime.combine(next_date, self.config.schedule_time)
                     if next_run > now:
                         return next_run
-            
+
             # Default to tomorrow
             return datetime.combine(now.date() + timedelta(days=1), self.config.schedule_time)
-        
+
         elif self.config.frequency == ReportFrequency.WEEKLY:
             # Find next scheduled day (assuming first day in list is the report day)
             target_day = self.config.schedule_days[0] if self.config.schedule_days else 0
@@ -141,7 +138,7 @@ class ScheduledReport:
                 days_ahead = 7
             next_date = now.date() + timedelta(days=days_ahead)
             return datetime.combine(next_date, self.config.schedule_time)
-        
+
         elif self.config.frequency == ReportFrequency.MONTHLY:
             # Next month on schedule_day_of_month
             if now.day < self.config.schedule_day_of_month:
@@ -153,11 +150,11 @@ class ScheduledReport:
                 else:
                     next_date = now.replace(month=now.month + 1, day=self.config.schedule_day_of_month)
             return datetime.combine(next_date.date(), self.config.schedule_time)
-        
+
         # Default
         return datetime.combine(now.date() + timedelta(days=1), self.config.schedule_time)
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
             "report_id": self.config.report_id,
@@ -176,33 +173,33 @@ class ScheduledReport:
 class ReportScheduler:
     """
     Scheduler for automated report generation and delivery.
-    
+
     Manages report schedules, generates content, and dispatches to channels.
     """
-    
+
     def __init__(
         self,
         storage_path: str = "data/reports",
-        report_generators: Optional[Dict[ReportType, Callable]] = None,
+        report_generators: dict[ReportType, Callable] | None = None,
     ):
-        self._reports: Dict[str, ScheduledReport] = {}
+        self._reports: dict[str, ScheduledReport] = {}
         self._generators = report_generators or {}
-        self._channels: Dict[str, Any] = {}
-        
+        self._channels: dict[str, Any] = {}
+
         self._storage_path = Path(storage_path)
         self._storage_path.mkdir(parents=True, exist_ok=True)
-        
+
         self._is_running = False
         self._lock = threading.Lock()
-        self._last_check: Optional[datetime] = None
-        
+        self._last_check: datetime | None = None
+
         # Load saved schedules
         self._load_schedules()
-    
+
     # =========================================================================
     # Report Management
     # =========================================================================
-    
+
     def add_report(self, config: ReportConfig) -> ScheduledReport:
         """Add a scheduled report."""
         with self._lock:
@@ -210,10 +207,10 @@ class ReportScheduler:
             report.config.next_run = report.calculate_next_run()
             self._reports[config.report_id] = report
             self._save_schedules()
-            
+
             logger.info(f"Added scheduled report: {config.name} ({config.report_id})")
             return report
-    
+
     def remove_report(self, report_id: str) -> bool:
         """Remove a scheduled report."""
         with self._lock:
@@ -223,108 +220,108 @@ class ReportScheduler:
                 logger.info(f"Removed scheduled report: {report_id}")
                 return True
             return False
-    
-    def update_report(self, report_id: str, updates: Dict) -> Optional[ScheduledReport]:
+
+    def update_report(self, report_id: str, updates: dict) -> ScheduledReport | None:
         """Update a scheduled report."""
         with self._lock:
             if report_id not in self._reports:
                 return None
-            
+
             report = self._reports[report_id]
             config = report.config
-            
+
             if "enabled" in updates:
                 config.enabled = updates["enabled"]
             if "schedule_time" in updates:
                 config.schedule_time = updates["schedule_time"]
             if "channels" in updates:
                 config.channels = updates["channels"]
-            
+
             report.config.next_run = report.calculate_next_run()
             self._save_schedules()
-            
+
             return report
-    
-    def get_report(self, report_id: str) -> Optional[ScheduledReport]:
+
+    def get_report(self, report_id: str) -> ScheduledReport | None:
         """Get a report by ID."""
         return self._reports.get(report_id)
-    
+
     def get_reports(
         self,
-        enabled: Optional[bool] = None,
-        report_type: Optional[ReportType] = None,
-    ) -> List[ScheduledReport]:
+        enabled: bool | None = None,
+        report_type: ReportType | None = None,
+    ) -> list[ScheduledReport]:
         """Get reports matching filters."""
         reports = list(self._reports.values())
-        
+
         if enabled is not None:
             reports = [r for r in reports if r.config.enabled == enabled]
-        
+
         if report_type:
             reports = [r for r in reports if r.config.report_type == report_type]
-        
+
         return reports
-    
+
     # =========================================================================
     # Execution
     # =========================================================================
-    
-    def check_and_run(self) -> List[str]:
+
+    def check_and_run(self) -> list[str]:
         """Check for due reports and run them."""
         now = datetime.now()
         executed = []
-        
+
         with self._lock:
             for report_id, report in self._reports.items():
                 if report.should_run(now):
                     try:
                         self._run_report(report)
                         executed.append(report_id)
-                        
+
                         # Update state
                         report.config.last_run = now
                         report.config.run_count += 1
                         report.config.next_run = report.calculate_next_run()
-                        
+
                     except Exception as e:
                         logger.error(f"Failed to run report {report_id}: {e}")
-        
+
         self._last_check = now
-        
+
         if executed:
             self._save_schedules()
             logger.info(f"Executed {len(executed)} scheduled reports")
-        
+
         return executed
-    
+
     def run_report_now(self, report_id: str) -> bool:
         """Run a specific report immediately."""
         with self._lock:
             if report_id not in self._reports:
                 return False
-            
+
             report = self._reports[report_id]
-            
+
             try:
                 self._run_report(report)
                 report.config.last_run = datetime.now()
                 report.config.run_count += 1
                 self._save_schedules()
-                
+
                 logger.info(f"Manually ran report: {report_id}")
                 return True
-                
+
             except Exception as e:
                 logger.error(f"Failed to run report {report_id}: {e}")
                 return False
-    
+
     def _run_report(self, report: ScheduledReport):
         """Execute a report."""
         config = report.config
-        
+
         # Generate report content
         content = self._generate_content(report)
-        
+
         # Send to channels
         for channel_name in config.channels:
             if channel_name in self._channels:
@@ -332,28 +329,28 @@ class ReportScheduler:
                     self._channels[channel_name].send_report(content)
                 except Exception as e:
                     logger.error(f"Failed to send report to {channel_name}: {e}")
-    
-    def _generate_content(self, report: ScheduledReport) -> Dict:
+
+    def _generate_content(self, report: ScheduledReport) -> dict:
         """Generate report content."""
         config = report.config
         report_type = config.report_type
-        
+
         # Check for custom generator
         if config.generator_function:
             return config.generator_function()
-        
+
         # Check for registered generator
         if report_type in self._generators:
             return self._generators[report_type]()
-        
+
         # Default content
         return self._generate_default_content(report)
-    
-    def _generate_default_content(self, report: ScheduledReport) -> Dict:
+
+    def _generate_default_content(self, report: ScheduledReport) -> dict:
         """Generate default report content."""
         config = report.config
         now = datetime.now()
-        
+
         return {
             "title": config.name,
             "report_type": config.report_type.value,
@@ -365,30 +362,30 @@ class ReportScheduler:
                 "type": config.report_type.value,
             },
         }
-    
+
     # =========================================================================
     # Report Generators
     # =========================================================================
-    
-    def register_generator(self, report_type: ReportType, generator: Callable[[], Dict]):
+
+    def register_generator(self, report_type: ReportType, generator: Callable[[], dict]):
         """Register a report generator."""
         self._generators[report_type] = generator
         logger.info(f"Registered generator for {report_type.value}")
-    
+
     def register_channel(self, name: str, channel: Any):
         """Register a notification channel."""
         self._channels[name] = channel
         logger.info(f"Registered channel for reports: {name}")
-    
+
     # =========================================================================
     # Built-in Generators
     # =========================================================================
-    
+
     @staticmethod
-    def generate_daily_pnl_report() -> Dict:
+    def generate_daily_pnl_report() -> dict:
         """Generate daily P&L report content."""
         now = datetime.now()
-        
+
         return {
             "title": "Daily P&L Report",
             "report_type": "DAILY_PNL",
@@ -408,12 +405,12 @@ class ReportScheduler:
                 },
             ],
         }
-    
+
     @staticmethod
-    def generate_risk_report() -> Dict:
+    def generate_risk_report() -> dict:
         """Generate risk report content."""
         now = datetime.now()
-        
+
         return {
             "title": "Risk Report",
             "report_type": "DAILY_RISK",
@@ -433,24 +430,24 @@ class ReportScheduler:
                 },
             ],
         }
-    
+
     # =========================================================================
     # Statistics
     # =========================================================================
-    
-    def get_statistics(self) -> Dict:
+
+    def get_statistics(self) -> dict:
         """Get scheduler statistics."""
         total = len(self._reports)
         enabled = len([r for r in self._reports.values() if r.config.enabled])
-        
+
         # Next scheduled
         upcoming = sorted(
             [r for r in self._reports.values() if r.config.enabled and r.config.next_run],
             key=lambda r: r.config.next_run,
         )
-        
+
         next_report = upcoming[0] if upcoming else None
-        
+
         return {
             "total_reports": total,
             "enabled_reports": enabled,
@@ -458,48 +455,48 @@ class ReportScheduler:
             "next_scheduled": next_report.to_dict() if next_report else None,
             "last_check": self._last_check.isoformat() if self._last_check else None,
         }
-    
+
     # =========================================================================
     # Persistence
     # =========================================================================
-    
+
     def _load_schedules(self):
         """Load saved schedules."""
         schedule_path = self._storage_path / "schedules.json"
-        
+
         if schedule_path.exists():
             try:
                 with open(schedule_path) as f:
                     data = json.load(f)
-                
+
                 for report_data in data.get("reports", []):
                     config = self._deserialize_config(report_data)
                     report = ScheduledReport(config=config)
                     report.config.next_run = report.calculate_next_run()
                     self._reports[config.report_id] = report
-                
+
                 logger.info(f"Loaded {len(self._reports)} scheduled reports")
-                
+
             except Exception as e:
                 logger.error(f"Failed to load schedules: {e}")
-    
+
     def _save_schedules(self):
         """Save schedules."""
         schedule_path = self._storage_path / "schedules.json"
-        
+
         try:
             reports_data = [
                 self._serialize_config(r.config)
                 for r in self._reports.values()
             ]
-            
+
             with open(schedule_path, "w") as f:
                 json.dump({"reports": reports_data}, f, indent=2)
-                
+
         except Exception as e:
             logger.error(f"Failed to save schedules: {e}")
-    
-    def _serialize_config(self, config: ReportConfig) -> Dict:
+
+    def _serialize_config(self, config: ReportConfig) -> dict:
         """Serialize report configuration."""
         return {
             "report_id": config.report_id,
@@ -519,14 +516,14 @@ class ReportScheduler:
             "run_count": config.run_count,
             "tags": config.tags,
         }
-    
-    def _deserialize_config(self, data: Dict) -> ReportConfig:
+
+    def _deserialize_config(self, data: dict) -> ReportConfig:
         """Deserialize report configuration."""
         schedule_time = time.fromisoformat(data["schedule_time"])
         last_run = data.get("last_run")
         if last_run:
             last_run = datetime.fromisoformat(last_run)
-        
+
         return ReportConfig(
             report_id=data["report_id"],
             name=data["name"],

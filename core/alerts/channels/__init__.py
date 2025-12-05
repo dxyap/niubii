@@ -10,11 +10,11 @@ Supported Channels:
 - SMS: SMS via Twilio
 """
 
-from .base import NotificationChannel, ChannelConfig, ChannelStatus
+from .base import ChannelConfig, ChannelStatus, NotificationChannel
 from .email import EmailChannel, EmailConfig
-from .telegram import TelegramChannel, TelegramConfig
 from .slack import SlackChannel, SlackConfig
 from .sms import SMSChannel, SMSConfig
+from .telegram import TelegramChannel, TelegramConfig
 
 __all__ = [
     # Base

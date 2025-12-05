@@ -5,10 +5,10 @@ Tanker tracking and maritime shipping analysis.
 """
 
 import logging
+import random
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-import random
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class ShippingConfig:
     """Configuration for shipping data."""
     provider: str = "mock"  # kpler, vortexa, marinetraffic
-    api_key: Optional[str] = None
-    vessel_types: List[str] = field(default_factory=lambda: ["VLCC", "Suezmax", "Aframax"])
+    api_key: str | None = None
+    vessel_types: list[str] = field(default_factory=lambda: ["VLCC", "Suezmax", "Aframax"])
     refresh_hours: int = 6
 
 
@@ -29,17 +29,17 @@ class TankerData:
     imo: str
     vessel_type: str
     status: str  # loading, discharging, at_sea, anchored
-    cargo_type: Optional[str]
-    cargo_volume_barrels: Optional[int]
-    origin: Optional[str]
-    destination: Optional[str]
-    eta: Optional[datetime]
+    cargo_type: str | None
+    cargo_volume_barrels: int | None
+    origin: str | None
+    destination: str | None
+    eta: datetime | None
     latitude: float
     longitude: float
     speed_knots: float
     last_update: datetime
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         return {
             "vessel_name": self.vessel_name,
             "imo": self.imo,
@@ -59,10 +59,10 @@ class TankerData:
 class ShippingData:
     """
     Shipping/tanker data provider.
-    
+
     Monitors tanker movements and oil trade flows.
     """
-    
+
     # Major trade routes
     TRADE_ROUTES = {
         "middle_east_asia": {
@@ -91,48 +91,48 @@ class ShippingData:
             "vessel_types": ["VLCC", "Aframax"],
         },
     }
-    
+
     # Freight rate benchmarks
     FREIGHT_ROUTES = {
         "TD3": "VLCC Middle East - China",
         "TD20": "Suezmax West Africa - Europe",
         "TD7": "Aframax North Sea - Europe",
     }
-    
-    def __init__(self, config: Optional[ShippingConfig] = None):
+
+    def __init__(self, config: ShippingConfig | None = None):
         self.config = config or ShippingConfig()
-        
+
         # Data cache
-        self._vessel_data: List[TankerData] = []
-        self._last_update: Optional[datetime] = None
-    
-    def get_fleet_overview(self) -> Dict[str, Any]:
+        self._vessel_data: list[TankerData] = []
+        self._last_update: datetime | None = None
+
+    def get_fleet_overview(self) -> dict[str, Any]:
         """
         Get overview of tanker fleet activity.
-        
+
         Returns:
             Fleet activity summary
         """
         if self.config.provider == "mock":
             return self._generate_mock_fleet_data()
-        
+
         return self._generate_mock_fleet_data()
-    
-    def get_trade_flows(self) -> Dict[str, Any]:
+
+    def get_trade_flows(self) -> dict[str, Any]:
         """
         Get current oil trade flows.
-        
+
         Returns:
             Trade flow estimates
         """
         flows = {}
-        
+
         for route_id, route_info in self.TRADE_ROUTES.items():
             typical = route_info["typical_mb_d"]
             # Add random variation
             current = typical * random.uniform(0.8, 1.2)
             change = random.uniform(-15, 15)
-            
+
             flows[route_id] = {
                 "name": route_info["name"],
                 "current_mb_d": round(current, 2),
@@ -140,38 +140,38 @@ class ShippingData:
                 "change_pct": round(change, 1),
                 "vessel_types": route_info["vessel_types"],
             }
-        
+
         return {
             "timestamp": datetime.now().isoformat(),
             "source": "shipping",
             "flows": flows,
             "total_observed_mb_d": round(sum(f["current_mb_d"] for f in flows.values()), 1),
         }
-    
-    def get_freight_rates(self) -> Dict[str, Any]:
+
+    def get_freight_rates(self) -> dict[str, Any]:
         """
         Get current freight rates.
-        
+
         Returns:
             Freight rate data
         """
         rates = {}
-        
+
         base_rates = {
             "VLCC": 45000,  # $/day
             "Suezmax": 30000,
             "Aframax": 20000,
         }
-        
+
         for vessel_type, base_rate in base_rates.items():
             current = base_rate * random.uniform(0.7, 1.5)
             change_week = random.uniform(-20, 20)
-            
+
             rates[vessel_type] = {
                 "rate_usd_day": round(current),
                 "change_week_pct": round(change_week, 1),
             }
-        
+
         # TCE (Time Charter Equivalent) benchmarks
         tce_benchmarks = {}
         for route_id, route_name in self.FREIGHT_ROUTES.items():
@@ -180,17 +180,17 @@ class ShippingData:
                 "tce_usd_day": round(random.uniform(15000, 80000)),
                 "ws_points": round(random.uniform(40, 120), 1),
             }
-        
+
         return {
             "timestamp": datetime.now().isoformat(),
             "spot_rates": rates,
             "tce_benchmarks": tce_benchmarks,
         }
-    
-    def get_port_congestion(self) -> Dict[str, Any]:
+
+    def get_port_congestion(self) -> dict[str, Any]:
         """
         Get port congestion data.
-        
+
         Returns:
             Port congestion metrics
         """
@@ -202,13 +202,13 @@ class ShippingData:
             "ningbo": {"name": "Ningbo", "region": "Asia"},
             "fujairah": {"name": "Fujairah", "region": "Middle East"},
         }
-        
+
         congestion = {}
-        
+
         for port_id, port_info in ports.items():
             vessels_waiting = random.randint(5, 40)
             avg_wait_days = random.uniform(1, 7)
-            
+
             congestion[port_id] = {
                 "name": port_info["name"],
                 "region": port_info["region"],
@@ -216,31 +216,31 @@ class ShippingData:
                 "avg_wait_days": round(avg_wait_days, 1),
                 "congestion_level": "high" if vessels_waiting > 25 else ("medium" if vessels_waiting > 15 else "low"),
             }
-        
+
         return {
             "timestamp": datetime.now().isoformat(),
             "ports": congestion,
         }
-    
-    def calculate_shipping_signal(self) -> Dict[str, Any]:
+
+    def calculate_shipping_signal(self) -> dict[str, Any]:
         """
         Calculate trading signal from shipping data.
-        
+
         Returns:
             Signal based on shipping activity
         """
         flows = self.get_trade_flows()
         freight = self.get_freight_rates()
-        
+
         # Analyze trade flows
         total_flow = flows.get("total_observed_mb_d", 40)
         typical_total = sum(r["typical_mb_d"] for r in self.TRADE_ROUTES.values())
-        
+
         flow_ratio = total_flow / typical_total if typical_total > 0 else 1
-        
+
         # Analyze freight rates (high rates = strong demand)
         vlcc_rate = freight.get("spot_rates", {}).get("VLCC", {}).get("rate_usd_day", 45000)
-        
+
         # Generate signal
         if flow_ratio > 1.1 and vlcc_rate > 55000:
             signal = "bullish"
@@ -254,7 +254,7 @@ class ShippingData:
             signal = "neutral"
             confidence = 50
             rationale = "Shipping activity within normal range"
-        
+
         return {
             "signal": signal,
             "confidence": confidence,
@@ -263,15 +263,15 @@ class ShippingData:
             "vlcc_rate": vlcc_rate,
             "timestamp": datetime.now().isoformat(),
         }
-    
-    def _generate_mock_fleet_data(self) -> Dict[str, Any]:
+
+    def _generate_mock_fleet_data(self) -> dict[str, Any]:
         """Generate mock fleet data."""
         vessel_counts = {
             "VLCC": {"at_sea": random.randint(180, 220), "loading": random.randint(25, 40), "discharging": random.randint(30, 50), "anchored": random.randint(40, 70)},
             "Suezmax": {"at_sea": random.randint(120, 160), "loading": random.randint(20, 35), "discharging": random.randint(25, 40), "anchored": random.randint(30, 50)},
             "Aframax": {"at_sea": random.randint(200, 280), "loading": random.randint(30, 50), "discharging": random.randint(40, 60), "anchored": random.randint(50, 80)},
         }
-        
+
         return {
             "timestamp": datetime.now().isoformat(),
             "source": "shipping",

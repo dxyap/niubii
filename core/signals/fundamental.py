@@ -4,16 +4,15 @@ Fundamental Signal Generation
 Trading signals based on oil market fundamentals.
 """
 
-import pandas as pd
+from datetime import datetime
+
 import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
 
 class FundamentalSignals:
     """
     Fundamental signal generation for oil trading.
-    
+
     Signal Types:
     - Inventory surprise signals
     - OPEC compliance signals
@@ -21,33 +20,33 @@ class FundamentalSignals:
     - Supply/demand balance signals
     - Term structure signals
     """
-    
+
     def __init__(self):
         """Initialize fundamental signal generator."""
         pass
-    
+
     def inventory_surprise_signal(
         self,
         actual_change: float,
         expected_change: float,
         current_level: float,
         historical_mean: float = 440
-    ) -> Dict:
+    ) -> dict:
         """
         Generate signal from inventory surprise.
-        
+
         Args:
             actual_change: Actual inventory change
             expected_change: Expected change
             current_level: Current inventory level
             historical_mean: Historical mean level
-            
+
         Returns:
             Signal dictionary
         """
         surprise = actual_change - expected_change
         level_vs_avg = current_level - historical_mean
-        
+
         # Surprise signal
         if surprise < -3:
             surprise_signal = "STRONG_BUY"
@@ -64,7 +63,7 @@ class FundamentalSignals:
         else:
             surprise_signal = "NEUTRAL"
             surprise_confidence = 50
-        
+
         # Level signal
         if level_vs_avg < -30:
             level_signal = "BUY"
@@ -81,23 +80,23 @@ class FundamentalSignals:
         else:
             level_signal = "NEUTRAL"
             level_confidence = 50
-        
+
         # Combine signals
-        signal_scores = {"STRONG_BUY": 2, "BUY": 1, "MILD_BUY": 0.5, 
+        signal_scores = {"STRONG_BUY": 2, "BUY": 1, "MILD_BUY": 0.5,
                         "STRONG_SELL": -2, "SELL": -1, "MILD_SELL": -0.5, "NEUTRAL": 0}
-        
+
         combined_score = (
             signal_scores[surprise_signal] * 0.7 +
             signal_scores[level_signal] * 0.3
         )
-        
+
         if combined_score > 0.8:
             final_signal = "LONG"
         elif combined_score < -0.8:
             final_signal = "SHORT"
         else:
             final_signal = "NEUTRAL"
-        
+
         return {
             "signal": final_signal,
             "confidence": round((surprise_confidence * 0.7 + level_confidence * 0.3), 1),
@@ -109,19 +108,19 @@ class FundamentalSignals:
             "expected_change": round(expected_change, 2),
             "current_level": round(current_level, 1),
         }
-    
+
     def opec_compliance_signal(
         self,
         overall_compliance: float,
         production_deviation: float
-    ) -> Dict:
+    ) -> dict:
         """
         Generate signal from OPEC compliance data.
-        
+
         Args:
             overall_compliance: Compliance percentage
             production_deviation: Production vs quota (mbpd)
-            
+
         Returns:
             Signal dictionary
         """
@@ -145,7 +144,7 @@ class FundamentalSignals:
             signal = "NEUTRAL"
             confidence = 50
             description = "OPEC+ compliance near target"
-        
+
         # Production deviation impact
         if production_deviation < -0.5:
             signal = "LONG" if signal != "SHORT" else "NEUTRAL"
@@ -153,7 +152,7 @@ class FundamentalSignals:
         elif production_deviation > 0.5:
             signal = "SHORT" if signal != "LONG" else "NEUTRAL"
             confidence = max(confidence, 65)
-        
+
         return {
             "signal": signal,
             "confidence": round(confidence, 1),
@@ -161,27 +160,27 @@ class FundamentalSignals:
             "deviation_mbpd": round(production_deviation, 2),
             "description": description,
         }
-    
+
     def term_structure_signal(
         self,
         m1_m2_spread: float,
         m1_m12_spread: float,
         curve_slope: float
-    ) -> Dict:
+    ) -> dict:
         """
         Generate signal from term structure.
-        
+
         Args:
             m1_m2_spread: Front month - second month spread
             m1_m12_spread: Front month - 12th month spread
             curve_slope: Overall curve slope
-            
+
         Returns:
             Signal dictionary
         """
         # Backwardation is typically bullish (tight market)
         # Contango is typically bearish (oversupplied)
-        
+
         if curve_slope < -0.15:
             structure_signal = "LONG"
             confidence = min(abs(curve_slope) * 300, 85)
@@ -202,7 +201,7 @@ class FundamentalSignals:
             structure_signal = "NEUTRAL"
             confidence = 50
             description = "Flat curve - balanced market"
-        
+
         # Calendar spread momentum
         if m1_m2_spread > 0.5:
             spread_signal = "LONG"
@@ -210,10 +209,10 @@ class FundamentalSignals:
             spread_signal = "SHORT"
         else:
             spread_signal = "NEUTRAL"
-        
+
         # Combine
         final_signal = structure_signal.replace("MILD_", "")
-        
+
         return {
             "signal": final_signal,
             "confidence": round(confidence, 1),
@@ -223,27 +222,27 @@ class FundamentalSignals:
             "spread_signal": spread_signal,
             "description": description,
         }
-    
+
     def crack_spread_signal(
         self,
         current_crack: float,
         historical_mean: float = 25,
         historical_std: float = 8
-    ) -> Dict:
+    ) -> dict:
         """
         Generate signal from crack spread levels.
-        
+
         Args:
             current_crack: Current crack spread
             historical_mean: Historical mean
             historical_std: Historical standard deviation
-            
+
         Returns:
             Signal dictionary
         """
         zscore = (current_crack - historical_mean) / historical_std
         percentile = 50 + 34.13 * np.sign(zscore) * (1 - np.exp(-abs(zscore)))
-        
+
         # High crack spreads generally supportive of crude (refiners buying)
         if zscore > 1.5:
             signal = "LONG"
@@ -265,7 +264,7 @@ class FundamentalSignals:
             signal = "NEUTRAL"
             confidence = 50
             description = "Normal refining margins"
-        
+
         return {
             "signal": signal.replace("MILD_", ""),
             "confidence": round(confidence, 1),
@@ -274,24 +273,24 @@ class FundamentalSignals:
             "percentile": round(percentile, 1),
             "description": description,
         }
-    
+
     def turnaround_signal(
         self,
         offline_capacity_kbpd: float,
         upcoming_capacity_kbpd: float
-    ) -> Dict:
+    ) -> dict:
         """
         Generate signal from refinery turnaround data.
-        
+
         Args:
             offline_capacity_kbpd: Current offline capacity
             upcoming_capacity_kbpd: Capacity going offline in next 30 days
-            
+
         Returns:
             Signal dictionary
         """
         total_impact = offline_capacity_kbpd + upcoming_capacity_kbpd
-        
+
         # High turnaround activity reduces crude demand (bearish)
         if total_impact > 2000:
             signal = "SHORT"
@@ -309,7 +308,7 @@ class FundamentalSignals:
             signal = "NEUTRAL"
             confidence = 50
             description = "Normal turnaround levels"
-        
+
         return {
             "signal": signal.replace("MILD_", ""),
             "confidence": round(confidence, 1),
@@ -318,25 +317,25 @@ class FundamentalSignals:
             "total_impact_kbpd": round(total_impact, 0),
             "description": description,
         }
-    
+
     def generate_composite_fundamental_signal(
         self,
-        inventory_data: Dict,
-        opec_data: Dict,
-        curve_data: Dict,
+        inventory_data: dict,
+        opec_data: dict,
+        curve_data: dict,
         crack_spread: float,
-        turnaround_data: Dict
-    ) -> Dict:
+        turnaround_data: dict
+    ) -> dict:
         """
         Generate composite fundamental signal.
-        
+
         Args:
             inventory_data: Inventory metrics
             opec_data: OPEC compliance data
             curve_data: Curve/term structure data
             crack_spread: Current crack spread
             turnaround_data: Turnaround impact data
-            
+
         Returns:
             Composite signal dictionary
         """
@@ -346,25 +345,25 @@ class FundamentalSignals:
             expected_change=inventory_data.get("expectation", 0),
             current_level=inventory_data.get("level", 430)
         )
-        
+
         opec_signal = self.opec_compliance_signal(
             overall_compliance=opec_data.get("compliance", 95),
             production_deviation=opec_data.get("deviation", 0)
         )
-        
+
         term_signal = self.term_structure_signal(
             m1_m2_spread=curve_data.get("m1_m2_spread", 0),
             m1_m12_spread=curve_data.get("m1_m12_spread", 0),
             curve_slope=curve_data.get("slope", 0)
         )
-        
+
         crack_signal = self.crack_spread_signal(crack_spread)
-        
+
         turn_signal = self.turnaround_signal(
             offline_capacity_kbpd=turnaround_data.get("offline", 500),
             upcoming_capacity_kbpd=turnaround_data.get("upcoming", 500)
         )
-        
+
         # Weight signals
         signal_scores = {"LONG": 1, "SHORT": -1, "NEUTRAL": 0}
         weights = {
@@ -374,7 +373,7 @@ class FundamentalSignals:
             "crack": 0.15,
             "turnaround": 0.15,
         }
-        
+
         total_score = (
             weights["inventory"] * signal_scores.get(inv_signal["signal"], 0) * (inv_signal["confidence"] / 100) +
             weights["opec"] * signal_scores.get(opec_signal["signal"], 0) * (opec_signal["confidence"] / 100) +
@@ -382,7 +381,7 @@ class FundamentalSignals:
             weights["crack"] * signal_scores.get(crack_signal["signal"], 0) * (crack_signal["confidence"] / 100) +
             weights["turnaround"] * signal_scores.get(turn_signal["signal"], 0) * (turn_signal["confidence"] / 100)
         )
-        
+
         # Determine composite signal
         if total_score > 0.3:
             composite_signal = "LONG"
@@ -390,7 +389,7 @@ class FundamentalSignals:
             composite_signal = "SHORT"
         else:
             composite_signal = "NEUTRAL"
-        
+
         return {
             "signal": composite_signal,
             "confidence": round(min(abs(total_score) * 100 + 20, 95), 1),

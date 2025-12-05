@@ -4,15 +4,16 @@ Monitoring Module
 Health checks, metrics collection, and system monitoring.
 """
 
+import json
 import logging
-import time
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
-import json
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,10 @@ class HealthCheck:
     timeout_seconds: float = 5.0
     critical: bool = True
     description: str = ""
-    last_check: Optional[datetime] = None
+    last_check: datetime | None = None
     last_status: HealthStatus = HealthStatus.UNKNOWN
     consecutive_failures: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -69,10 +70,10 @@ class HealthCheckResult:
     status: HealthStatus
     duration_ms: float
     timestamp: datetime
-    message: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict:
+    message: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
         return {
             "name": self.name,
             "status": self.status.value,
@@ -89,23 +90,23 @@ class Metric:
     name: str
     type: MetricType
     help: str
-    labels: Dict[str, str] = field(default_factory=dict)
+    labels: dict[str, str] = field(default_factory=dict)
     value: float = 0.0
-    timestamp: Optional[datetime] = None
-    
+    timestamp: datetime | None = None
+
     # For histograms
-    buckets: List[float] = field(default_factory=list)
-    bucket_counts: Dict[float, int] = field(default_factory=dict)
+    buckets: list[float] = field(default_factory=list)
+    bucket_counts: dict[float, int] = field(default_factory=dict)
     sum: float = 0.0
     count: int = 0
-    
+
     def to_prometheus(self) -> str:
         """Format metric in Prometheus exposition format."""
         labels_str = ""
         if self.labels:
             labels_list = [f'{k}="{v}"' for k, v in self.labels.items()]
             labels_str = "{" + ",".join(labels_list) + "}"
-        
+
         if self.type == MetricType.HISTOGRAM:
             lines = []
             for bucket, count in sorted(self.bucket_counts.items()):
@@ -120,23 +121,23 @@ class Metric:
 class HealthChecker:
     """
     Health Checker.
-    
+
     Manages health checks for all system components.
     """
-    
-    def __init__(self, config: Optional[MonitoringConfig] = None):
+
+    def __init__(self, config: MonitoringConfig | None = None):
         self.config = config or MonitoringConfig()
-        
+
         # Registered health checks
-        self._checks: Dict[str, HealthCheck] = {}
-        
+        self._checks: dict[str, HealthCheck] = {}
+
         # Background thread for periodic checks
         self._running = False
-        self._thread: Optional[threading.Thread] = None
-        
+        self._thread: threading.Thread | None = None
+
         # Register default checks
         self._register_default_checks()
-    
+
     def _register_default_checks(self):
         """Register default system health checks."""
         # Database check
@@ -146,7 +147,7 @@ class HealthChecker:
             critical=True,
             description="Check database connectivity",
         )
-        
+
         # Disk space check
         self.register(
             name="disk_space",
@@ -154,7 +155,7 @@ class HealthChecker:
             critical=True,
             description="Check available disk space",
         )
-        
+
         # Memory check
         self.register(
             name="memory",
@@ -162,7 +163,7 @@ class HealthChecker:
             critical=False,
             description="Check memory usage",
         )
-        
+
         # Data loader check
         self.register(
             name="data_loader",
@@ -170,7 +171,7 @@ class HealthChecker:
             critical=True,
             description="Check data loader connectivity",
         )
-    
+
     def register(
         self,
         name: str,
@@ -181,7 +182,7 @@ class HealthChecker:
     ):
         """
         Register a health check.
-        
+
         Args:
             name: Check name
             check_fn: Function that returns True if healthy
@@ -196,27 +197,27 @@ class HealthChecker:
             description=description,
             timeout_seconds=timeout_seconds,
         )
-        
+
         logger.info(f"Registered health check: {name}")
-    
+
     def unregister(self, name: str):
         """Unregister a health check."""
         if name in self._checks:
             del self._checks[name]
             logger.info(f"Unregistered health check: {name}")
-    
+
     def check(self, name: str) -> HealthCheckResult:
         """
         Run a specific health check.
-        
+
         Args:
             name: Check name
-            
+
         Returns:
             Health check result
         """
         check = self._checks.get(name)
-        
+
         if not check:
             return HealthCheckResult(
                 name=name,
@@ -225,23 +226,23 @@ class HealthChecker:
                 timestamp=datetime.now(),
                 message="Check not found",
             )
-        
+
         start_time = time.time()
-        
+
         try:
             result = check.check_fn()
             duration_ms = (time.time() - start_time) * 1000
-            
+
             if result:
                 status = HealthStatus.HEALTHY
                 check.consecutive_failures = 0
             else:
                 check.consecutive_failures += 1
                 status = HealthStatus.UNHEALTHY if check.critical else HealthStatus.DEGRADED
-            
+
             check.last_status = status
             check.last_check = datetime.now()
-            
+
             return HealthCheckResult(
                 name=name,
                 status=status,
@@ -249,13 +250,13 @@ class HealthChecker:
                 timestamp=datetime.now(),
                 details=check.metadata,
             )
-        
+
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             check.consecutive_failures += 1
             check.last_status = HealthStatus.UNHEALTHY
             check.last_check = datetime.now()
-            
+
             return HealthCheckResult(
                 name=name,
                 status=HealthStatus.UNHEALTHY,
@@ -263,36 +264,36 @@ class HealthChecker:
                 timestamp=datetime.now(),
                 message=str(e),
             )
-    
-    def check_all(self) -> Dict[str, HealthCheckResult]:
+
+    def check_all(self) -> dict[str, HealthCheckResult]:
         """
         Run all health checks.
-        
+
         Returns:
             Dictionary of check results
         """
         results = {}
-        
+
         for name in self._checks:
             results[name] = self.check(name)
-        
+
         return results
-    
+
     def get_overall_status(self) -> HealthStatus:
         """
         Get overall system health status.
-        
+
         Returns:
             Overall health status
         """
         results = self.check_all()
-        
+
         has_critical_failure = False
         has_degraded = False
-        
+
         for result in results.values():
             check = self._checks.get(result.name)
-            
+
             if result.status == HealthStatus.UNHEALTHY:
                 if check and check.critical:
                     has_critical_failure = True
@@ -300,24 +301,24 @@ class HealthChecker:
                     has_degraded = True
             elif result.status == HealthStatus.DEGRADED:
                 has_degraded = True
-        
+
         if has_critical_failure:
             return HealthStatus.UNHEALTHY
         elif has_degraded:
             return HealthStatus.DEGRADED
         else:
             return HealthStatus.HEALTHY
-    
-    def get_health_summary(self) -> Dict[str, Any]:
+
+    def get_health_summary(self) -> dict[str, Any]:
         """
         Get complete health summary.
-        
+
         Returns:
             Health summary
         """
         results = self.check_all()
         overall = self.get_overall_status()
-        
+
         return {
             "status": overall.value,
             "timestamp": datetime.now().isoformat(),
@@ -332,24 +333,24 @@ class HealthChecker:
                 "unhealthy": sum(1 for r in results.values() if r.status == HealthStatus.UNHEALTHY),
             },
         }
-    
+
     def start_background_checks(self):
         """Start background health check thread."""
         if self._running:
             return
-        
+
         self._running = True
         self._thread = threading.Thread(target=self._background_check_loop, daemon=True)
         self._thread.start()
         logger.info("Started background health checks")
-    
+
     def stop_background_checks(self):
         """Stop background health check thread."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=5)
         logger.info("Stopped background health checks")
-    
+
     def _background_check_loop(self):
         """Background check loop."""
         while self._running:
@@ -357,9 +358,9 @@ class HealthChecker:
                 self.check_all()
             except Exception as e:
                 logger.error(f"Background health check error: {e}")
-            
+
             time.sleep(self.config.health_check_interval_seconds)
-    
+
     # Default check implementations
     def _check_database(self) -> bool:
         """Check database connectivity."""
@@ -372,7 +373,7 @@ class HealthChecker:
             return True
         except Exception:
             return False
-    
+
     def _check_disk_space(self) -> bool:
         """Check available disk space."""
         try:
@@ -386,7 +387,7 @@ class HealthChecker:
             return free_percent > 10  # At least 10% free
         except Exception:
             return True  # Assume OK if we can't check
-    
+
     def _check_memory(self) -> bool:
         """Check memory usage."""
         try:
@@ -401,12 +402,12 @@ class HealthChecker:
             return True  # psutil not available
         except Exception:
             return True
-    
+
     def _check_data_loader(self) -> bool:
         """Check data loader connectivity."""
         try:
             from core.data import DataLoader
-            loader = DataLoader()
+            DataLoader()
             # Just check if it initializes
             return True
         except Exception:
@@ -416,23 +417,23 @@ class HealthChecker:
 class MetricsCollector:
     """
     Prometheus-compatible Metrics Collector.
-    
+
     Collects and exposes application metrics.
     """
-    
-    def __init__(self, config: Optional[MonitoringConfig] = None):
+
+    def __init__(self, config: MonitoringConfig | None = None):
         self.config = config or MonitoringConfig()
-        
+
         # Ensure storage directory exists
         self.config.storage_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Metrics storage
-        self._metrics: Dict[str, Metric] = {}
+        self._metrics: dict[str, Metric] = {}
         self._lock = threading.Lock()
-        
+
         # Register default metrics
         self._register_default_metrics()
-    
+
     def _register_default_metrics(self):
         """Register default application metrics."""
         # Request counter
@@ -441,7 +442,7 @@ class MetricsCollector:
             type=MetricType.COUNTER,
             help="Total number of requests",
         )
-        
+
         # Request duration
         self.register(
             name="app_request_duration_seconds",
@@ -449,83 +450,83 @@ class MetricsCollector:
             help="Request duration in seconds",
             buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0],
         )
-        
+
         # Active sessions
         self.register(
             name="app_active_sessions",
             type=MetricType.GAUGE,
             help="Number of active sessions",
         )
-        
+
         # Trading metrics
         self.register(
             name="trading_orders_total",
             type=MetricType.COUNTER,
             help="Total number of orders",
         )
-        
+
         self.register(
             name="trading_position_value",
             type=MetricType.GAUGE,
             help="Current position value",
         )
-        
+
         self.register(
             name="trading_pnl",
             type=MetricType.GAUGE,
             help="Current P&L",
         )
-        
+
         # Risk metrics
         self.register(
             name="risk_var_95",
             type=MetricType.GAUGE,
             help="Value at Risk (95%)",
         )
-        
+
         self.register(
             name="risk_limit_utilization",
             type=MetricType.GAUGE,
             help="Risk limit utilization percentage",
         )
-        
+
         # System metrics
         self.register(
             name="system_cpu_usage",
             type=MetricType.GAUGE,
             help="CPU usage percentage",
         )
-        
+
         self.register(
             name="system_memory_usage",
             type=MetricType.GAUGE,
             help="Memory usage percentage",
         )
-        
+
         # ML metrics
         self.register(
             name="ml_predictions_total",
             type=MetricType.COUNTER,
             help="Total ML predictions made",
         )
-        
+
         self.register(
             name="ml_model_accuracy",
             type=MetricType.GAUGE,
             help="ML model accuracy",
         )
-    
+
     def register(
         self,
         name: str,
         type: MetricType,
         help: str,
-        labels: Optional[Dict[str, str]] = None,
-        buckets: Optional[List[float]] = None,
+        labels: dict[str, str] | None = None,
+        buckets: list[float] | None = None,
     ):
         """
         Register a new metric.
-        
+
         Args:
             name: Metric name
             type: Metric type
@@ -540,18 +541,18 @@ class MetricsCollector:
                 help=help,
                 labels=labels or {},
                 buckets=buckets or [],
-                bucket_counts={b: 0 for b in (buckets or [])},
+                bucket_counts=dict.fromkeys(buckets or [], 0),
             )
-    
+
     def increment(
         self,
         name: str,
         value: float = 1.0,
-        labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
     ):
         """
         Increment a counter metric.
-        
+
         Args:
             name: Metric name
             value: Value to add
@@ -559,23 +560,23 @@ class MetricsCollector:
         """
         with self._lock:
             metric = self._metrics.get(name)
-            
+
             if metric and metric.type == MetricType.COUNTER:
                 metric.value += value
                 metric.timestamp = datetime.now()
-                
+
                 if labels:
                     metric.labels.update(labels)
-    
+
     def set(
         self,
         name: str,
         value: float,
-        labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
     ):
         """
         Set a gauge metric.
-        
+
         Args:
             name: Metric name
             value: New value
@@ -583,23 +584,23 @@ class MetricsCollector:
         """
         with self._lock:
             metric = self._metrics.get(name)
-            
+
             if metric and metric.type == MetricType.GAUGE:
                 metric.value = value
                 metric.timestamp = datetime.now()
-                
+
                 if labels:
                     metric.labels.update(labels)
-    
+
     def observe(
         self,
         name: str,
         value: float,
-        labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
     ):
         """
         Observe a value for histogram/summary.
-        
+
         Args:
             name: Metric name
             value: Observed value
@@ -607,38 +608,38 @@ class MetricsCollector:
         """
         with self._lock:
             metric = self._metrics.get(name)
-            
+
             if metric and metric.type == MetricType.HISTOGRAM:
                 metric.sum += value
                 metric.count += 1
-                
+
                 # Update bucket counts
                 for bucket in metric.buckets:
                     if value <= bucket:
                         metric.bucket_counts[bucket] = metric.bucket_counts.get(bucket, 0) + 1
-                
+
                 metric.timestamp = datetime.now()
-                
+
                 if labels:
                     metric.labels.update(labels)
-    
-    def get_metric(self, name: str) -> Optional[Metric]:
+
+    def get_metric(self, name: str) -> Metric | None:
         """Get a metric by name."""
         return self._metrics.get(name)
-    
-    def get_all_metrics(self) -> Dict[str, Metric]:
+
+    def get_all_metrics(self) -> dict[str, Metric]:
         """Get all metrics."""
         return self._metrics.copy()
-    
+
     def get_prometheus_output(self) -> str:
         """
         Get all metrics in Prometheus exposition format.
-        
+
         Returns:
             Prometheus-formatted metrics
         """
         lines = []
-        
+
         for name, metric in self._metrics.items():
             # Help line
             lines.append(f"# HELP {name} {metric.help}")
@@ -646,29 +647,29 @@ class MetricsCollector:
             lines.append(f"# TYPE {name} {metric.type.value}")
             # Metric value(s)
             lines.append(metric.to_prometheus())
-        
+
         return "\n".join(lines)
-    
+
     def collect_system_metrics(self):
         """Collect system metrics."""
         try:
             import psutil
-            
+
             # CPU usage
             cpu_percent = psutil.cpu_percent(interval=0.1)
             self.set("system_cpu_usage", cpu_percent)
-            
+
             # Memory usage
             memory = psutil.virtual_memory()
             self.set("system_memory_usage", memory.percent)
-        
+
         except ImportError:
             pass  # psutil not available
-    
+
     def save_metrics(self):
         """Save metrics to file."""
         metrics_file = self.config.storage_path / "metrics.json"
-        
+
         try:
             data = {
                 name: {
@@ -679,30 +680,30 @@ class MetricsCollector:
                 }
                 for name, m in self._metrics.items()
             }
-            
+
             with open(metrics_file, "w") as f:
                 json.dump(data, f, indent=2)
-        
+
         except Exception as e:
             logger.error(f"Failed to save metrics: {e}")
-    
+
     def load_metrics(self):
         """Load metrics from file."""
         metrics_file = self.config.storage_path / "metrics.json"
-        
+
         if not metrics_file.exists():
             return
-        
+
         try:
             with open(metrics_file) as f:
                 data = json.load(f)
-            
+
             for name, values in data.items():
                 if name in self._metrics:
                     self._metrics[name].value = values.get("value", 0)
                     if values.get("timestamp"):
                         self._metrics[name].timestamp = datetime.fromisoformat(values["timestamp"])
-        
+
         except Exception as e:
             logger.error(f"Failed to load metrics: {e}")
 
@@ -710,17 +711,17 @@ class MetricsCollector:
 class MetricsMiddleware:
     """
     Middleware for automatic metrics collection.
-    
+
     Can be used with Streamlit or other frameworks.
     """
-    
+
     def __init__(self, collector: MetricsCollector):
         self.collector = collector
-    
+
     def track_request(self, endpoint: str):
         """
         Context manager to track request metrics.
-        
+
         Usage:
             with middleware.track_request("/api/data"):
                 # handle request
@@ -730,17 +731,17 @@ class MetricsMiddleware:
 
 class RequestTracker:
     """Context manager for request tracking."""
-    
+
     def __init__(self, collector: MetricsCollector, endpoint: str):
         self.collector = collector
         self.endpoint = endpoint
         self.start_time = None
-    
+
     def __enter__(self):
         self.start_time = time.time()
         self.collector.increment("app_requests_total", labels={"endpoint": self.endpoint})
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         duration = time.time() - self.start_time
         self.collector.observe(

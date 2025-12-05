@@ -10,14 +10,14 @@ This module provides a single source of truth for:
 - Risk parameters
 """
 
-from typing import Dict, Final
+from typing import Final
 
 # =============================================================================
 # CONTRACT SPECIFICATIONS
 # =============================================================================
 
 # Contract multipliers (barrels or gallons per contract)
-CONTRACT_MULTIPLIERS: Final[Dict[str, int]] = {
+CONTRACT_MULTIPLIERS: Final[dict[str, int]] = {
     "CL": 1000,     # WTI Crude (NYMEX) - 1,000 barrels
     "ENA": 1000,    # WTI Crude (ICE) - 1,000 barrels
     "CO": 1000,     # Brent Crude (ICE) - 1,000 barrels
@@ -29,7 +29,7 @@ CONTRACT_MULTIPLIERS: Final[Dict[str, int]] = {
 }
 
 # Tick sizes (minimum price increment)
-TICK_SIZES: Final[Dict[str, float]] = {
+TICK_SIZES: Final[dict[str, float]] = {
     "CL": 0.01,
     "ENA": 0.01,
     "CO": 0.01,
@@ -41,7 +41,7 @@ TICK_SIZES: Final[Dict[str, float]] = {
 }
 
 # Tick values ($ value per tick)
-TICK_VALUES: Final[Dict[str, float]] = {
+TICK_VALUES: Final[dict[str, float]] = {
     "CL": 10.00,
     "ENA": 10.00,
     "CO": 10.00,
@@ -53,7 +53,7 @@ TICK_VALUES: Final[Dict[str, float]] = {
 }
 
 # Exchange mappings
-EXCHANGES: Final[Dict[str, str]] = {
+EXCHANGES: Final[dict[str, str]] = {
     "CL": "NYMEX",
     "ENA": "ICE",
     "CO": "ICE",
@@ -93,7 +93,7 @@ CACHE_TTL_REFERENCE: Final[int] = 604800  # 7 days
 # BLOOMBERG FIELD MAPPINGS
 # =============================================================================
 
-BLOOMBERG_FIELDS: Final[Dict[str, str]] = {
+BLOOMBERG_FIELDS: Final[dict[str, str]] = {
     "last": "PX_LAST",
     "bid": "PX_BID",
     "ask": "PX_ASK",
@@ -111,7 +111,7 @@ BLOOMBERG_FIELDS: Final[Dict[str, str]] = {
 # MONTH CODES
 # =============================================================================
 
-MONTH_CODES: Final[Dict[int, str]] = {
+MONTH_CODES: Final[dict[int, str]] = {
     1: 'F',   # January
     2: 'G',   # February
     3: 'H',   # March
@@ -126,7 +126,7 @@ MONTH_CODES: Final[Dict[int, str]] = {
     12: 'Z',  # December
 }
 
-MONTH_CODES_REVERSE: Final[Dict[str, int]] = {v: k for k, v in MONTH_CODES.items()}
+MONTH_CODES_REVERSE: Final[dict[str, int]] = {v: k for k, v in MONTH_CODES.items()}
 
 # =============================================================================
 # DASHBOARD SETTINGS
@@ -148,7 +148,7 @@ MIN_TRAINING_SAMPLES: Final[int] = 252  # ~1 year of daily data
 # PRICE REFERENCE VALUES (for simulation)
 # =============================================================================
 
-REFERENCE_PRICES: Final[Dict[str, float]] = {
+REFERENCE_PRICES: Final[dict[str, float]] = {
     "CL": 72.50,    # WTI NYMEX
     "ENA": 72.55,   # WTI ICE
     "CO": 77.20,    # Brent
@@ -160,7 +160,7 @@ REFERENCE_PRICES: Final[Dict[str, float]] = {
 }
 
 # Annualized volatility estimates (for VaR)
-ANNUALIZED_VOLATILITY: Final[Dict[str, float]] = {
+ANNUALIZED_VOLATILITY: Final[dict[str, float]] = {
     "CL": 0.25,     # 25% annual vol
     "ENA": 0.25,
     "CO": 0.25,

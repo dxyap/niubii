@@ -34,7 +34,6 @@ from app.ui import (
     SidebarView,
 )
 
-
 # =============================================================================
 # STREAMLIT CACHING FOR EXPENSIVE OPERATIONS
 # =============================================================================
@@ -116,11 +115,11 @@ class DashboardApp:
 
     def _render_header(self) -> None:
         st.title("Oil Trading Dashboard")
-        
+
         # Check Bloomberg connection
         connection_status = self.data_loader.get_connection_status()
         data_mode = connection_status.get("data_mode", "disconnected")
-        
+
         if data_mode == "live":
             st.caption("🟢 Live market data from Bloomberg")
         elif data_mode == "disconnected":

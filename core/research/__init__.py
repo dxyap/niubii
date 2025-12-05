@@ -14,40 +14,36 @@ This module provides:
 Phase 8 Implementation - Advanced Analytics & AI
 """
 
-from .llm import (
-    NewsAnalyzer,
-    SentimentAnalyzer,
-    NewsArticle,
-    SentimentResult,
-    AnalysisConfig,
-)
-
-from .correlations import (
-    CorrelationAnalyzer,
-    CrossAssetCorrelation,
-    RollingCorrelation,
-    CorrelationRegime,
-)
-
-from .regimes import (
-    RegimeDetector,
-    MarketRegime,
-    RegimeConfig,
-    RegimeTransition,
-)
-
-from .factors import (
-    FactorModel,
-    FactorDecomposition,
-    FactorConfig,
-    RiskFactor,
-)
-
 from .alt_data import (
     AlternativeDataProvider,
+    PositioningData,
     SatelliteData,
     ShippingData,
-    PositioningData,
+)
+from .correlations import (
+    CorrelationAnalyzer,
+    CorrelationRegime,
+    CrossAssetCorrelation,
+    RollingCorrelation,
+)
+from .factors import (
+    FactorConfig,
+    FactorDecomposition,
+    FactorModel,
+    RiskFactor,
+)
+from .llm import (
+    AnalysisConfig,
+    NewsAnalyzer,
+    NewsArticle,
+    SentimentAnalyzer,
+    SentimentResult,
+)
+from .regimes import (
+    MarketRegime,
+    RegimeConfig,
+    RegimeDetector,
+    RegimeTransition,
 )
 
 __all__ = [

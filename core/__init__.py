@@ -18,8 +18,7 @@ Submodules:
 - indicators: Technical indicator calculations
 """
 
-from . import constants
-from . import indicators
+from . import constants, indicators
 
 __version__ = "3.0.0"  # Phase 9 complete - all phases implemented
 __all__ = ["constants", "indicators"]

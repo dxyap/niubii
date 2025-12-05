@@ -4,40 +4,40 @@ Market Insights Page
 Comprehensive market analysis and intelligence.
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime, timedelta
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import numpy as np
+import plotly.graph_objects as go
+import streamlit as st
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from app import shared_state
-from core.analytics import CurveAnalyzer, SpreadAnalyzer, FundamentalAnalyzer
-from core.data.bloomberg import DataUnavailableError
 from app.components.charts import (
+    BASE_LAYOUT,
+    CHART_COLORS,
     create_candlestick_chart,
     create_futures_curve_chart,
-    create_volume_chart,
     create_open_interest_chart,
-    create_bar_chart,
-    CHART_COLORS,
-    BASE_LAYOUT,
+    create_volume_chart,
 )
+from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
+from core.data.bloomberg import DataUnavailableError
 
 st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈", layout="wide")
 
 # Apply shared theme
-from app.components.theme import apply_theme, COLORS, PLOTLY_LAYOUT, get_chart_config
+from app.components.theme import apply_theme, get_chart_config
+
 apply_theme(st)
 
 # Auto-refresh configuration
@@ -81,8 +81,8 @@ with header_col3:
 if data_mode == "live":
     time_since_update = (datetime.now() - st.session_state.last_refresh).seconds
     st.markdown(
-        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; 
-        background: linear-gradient(90deg, rgba(0,210,130,0.15) 0%, rgba(0,210,130,0.05) 100%); 
+        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+        background: linear-gradient(90deg, rgba(0,210,130,0.15) 0%, rgba(0,210,130,0.05) 100%);
         border-left: 3px solid #00D282; border-radius: 4px; margin-bottom: 1rem;">
         <span style="color: #00D282; font-weight: 600;">🟢 LIVE</span>
         <span style="color: #94A3B8;">Bloomberg Connected</span>
@@ -92,8 +92,8 @@ if data_mode == "live":
     )
 elif data_mode == "mock":
     st.markdown(
-        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; 
-        background: linear-gradient(90deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%); 
+        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+        background: linear-gradient(90deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%);
         border-left: 3px solid #F59E0B; border-radius: 4px; margin-bottom: 1rem;">
         <span style="color: #F59E0B; font-weight: 600;">🟡 SIMULATED</span>
         <span style="color: #94A3B8;">Development Mode</span>
@@ -120,7 +120,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     # Price Action Tab
     st.subheader("Price Action & Structure")
-    
+
     # Instrument definitions
     # Note: Dubai uses 2nd month swap (DAT2) to avoid BALMO (Balance of Month)
     # Note: WTI uses ICE prices (ENA1 Comdty) not NYMEX (CL1)
@@ -129,29 +129,29 @@ with tab1:
         "WTI": {"ticker": "ENA1 Comdty", "name": "WTI Crude Oil (ICE)", "icon": "🇺🇸"},
         "Dubai": {"ticker": "DAT2 Comdty", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
-    
+
     # Instrument tabs
     brent_tab, wti_tab, dubai_tab = st.tabs([
         f"{instruments['Brent']['icon']} Brent",
         f"{instruments['WTI']['icon']} WTI",
         f"{instruments['Dubai']['icon']} Dubai"
     ])
-    
+
     def render_price_action(instrument_key: str):
         """Render price action charts for an instrument."""
         inst = instruments[instrument_key]
         ticker = inst["ticker"]
         name = inst["name"]
-        
+
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             # Price chart
             chart_title = f"**{name} - Daily Chart**"
             if data_mode == "mock":
                 chart_title += " _(simulated)_"
             st.markdown(chart_title)
-            
+
             # Get historical data
             hist_data = None
             data_warning_shown = False
@@ -167,7 +167,7 @@ with tab1:
             except Exception as exc:
                 st.error(f"Failed to load history for {name}: {exc}")
                 data_warning_shown = True
-            
+
             if hist_data is not None and not hist_data.empty:
                 # Candlestick chart
                 fig = create_candlestick_chart(
@@ -178,18 +178,18 @@ with tab1:
                     show_ma=True,
                     ma_periods=[20, 50],
                 )
-                
+
                 st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-                
+
                 # Volume and Open Interest charts side by side
                 vol_col, oi_col = st.columns(2)
-                
+
                 with vol_col:
                     st.markdown("**Volume**")
                     if 'PX_VOLUME' in hist_data.columns:
                         vol_fig = create_volume_chart(hist_data, height=120)
                         st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
-                
+
                 with oi_col:
                     st.markdown("**Open Interest**")
                     if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
@@ -201,29 +201,29 @@ with tab1:
                 if not data_warning_shown:
                     st.info(f"Historical data unavailable for {name}.")
                 hist_data = None
-        
+
         with col2:
             # Get live price first
             live_price = price_cache.get(ticker)
-            
+
             # Display live price prominently at the top
             if live_price:
                 # Calculate change from previous close
                 prev_close = None
                 daily_change = 0
                 daily_change_pct = 0
-                
+
                 if hist_data is not None and not hist_data.empty and len(hist_data) >= 2:
                     prev_close = hist_data['PX_LAST'].iloc[-2]
                     daily_change = live_price - prev_close
                     daily_change_pct = (daily_change / prev_close * 100) if prev_close else 0
-                
+
                 # Live price with change
                 change_color = "#00DC82" if daily_change >= 0 else "#FF5252"
                 change_sign = "+" if daily_change >= 0 else ""
-                
+
                 st.markdown(
-                    f"""<div style="background: linear-gradient(135deg, rgba(0,163,224,0.1) 0%, rgba(0,163,224,0.05) 100%); 
+                    f"""<div style="background: linear-gradient(135deg, rgba(0,163,224,0.1) 0%, rgba(0,163,224,0.05) 100%);
                     padding: 16px; border-radius: 8px; border-left: 4px solid #00A3E0; margin-bottom: 16px;">
                     <div style="color: #94A3B8; font-size: 12px; margin-bottom: 4px;">LIVE PRICE</div>
                     <div style="color: #E2E8F0; font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;">${live_price:.2f}</div>
@@ -231,7 +231,7 @@ with tab1:
                     </div>""",
                     unsafe_allow_html=True
                 )
-                
+
                 # Yesterday's close
                 if prev_close:
                     st.markdown(
@@ -241,41 +241,41 @@ with tab1:
                         </div>""",
                         unsafe_allow_html=True
                     )
-            
+
             st.markdown("**Key Levels**")
-            
+
             if hist_data is not None and not hist_data.empty:
                 current_price = live_price if live_price else hist_data['PX_LAST'].iloc[-1]
                 high_range = hist_data['PX_HIGH'].max()
                 low_range = hist_data['PX_LOW'].min()
-                
+
                 # Today's OHLC from last bar
                 today_open = hist_data['PX_OPEN'].iloc[-1]
                 today_high = hist_data['PX_HIGH'].iloc[-1]
                 today_low = hist_data['PX_LOW'].iloc[-1]
-                
+
                 st.metric("Today Open", f"${today_open:.2f}")
                 st.metric("Today High", f"${today_high:.2f}")
                 st.metric("Today Low", f"${today_low:.2f}")
-                
+
                 st.divider()
-                
+
                 st.metric("180D High", f"${high_range:.2f}")
                 st.metric("180D Low", f"${low_range:.2f}")
-                
+
                 # Price position
                 if high_range != low_range:
                     position = (current_price - low_range) / (high_range - low_range) * 100
                     st.progress(int(min(max(position, 0), 100)) / 100, text=f"Range Position: {position:.0f}%")
-            
+
             st.divider()
-            
+
             st.markdown("**Technical Indicators**")
-            
+
             # Calculate technical indicators
             if hist_data is not None and not hist_data.empty and len(hist_data) >= 14:
                 closes = hist_data['PX_LAST']
-                
+
                 # RSI calculation
                 delta = closes.diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -283,43 +283,43 @@ with tab1:
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
                 current_rsi = rsi.iloc[-1] if not np.isnan(rsi.iloc[-1]) else 50
-                
+
                 # Trend determination
                 sma20 = closes.rolling(20).mean().iloc[-1] if len(closes) >= 20 else closes.iloc[-1]
                 sma50 = closes.rolling(50).mean().iloc[-1] if len(closes) >= 50 else closes.iloc[-1]
                 trend = "Bullish" if sma20 > sma50 else "Bearish" if sma20 < sma50 else "Neutral"
-                
+
                 st.text(f"RSI (14): {current_rsi:.1f}")
                 st.text(f"Trend: {trend}")
                 st.text(f"SMA20: ${sma20:.2f}")
                 st.text(f"SMA50: ${sma50:.2f}")
             else:
                 st.text("Insufficient data for indicators")
-    
+
     with brent_tab:
         render_price_action("Brent")
-    
+
     with wti_tab:
         render_price_action("WTI")
-    
+
     with dubai_tab:
         render_price_action("Dubai")
 
 with tab2:
     # Term Structure Tab
     st.subheader("Futures Curve Analysis")
-    
+
     # Create sub-tabs for different curve views
     curve_tab1, curve_tab2 = st.tabs(["🛢️ WTI vs Brent", "🇦🇪 Dubai Swap Curve"])
-    
+
     with curve_tab1:
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             # WTI vs Brent curves via shared context cache
             wti_curve = context.data.futures_curve
             brent_curve = context.data.brent_curve
-            
+
             # Create enhanced futures curve chart with both WTI and Brent
             fig = create_futures_curve_chart(
                 curve_data=brent_curve,
@@ -327,13 +327,13 @@ with tab2:
                 title="WTI vs Brent Futures Curve",
                 height=400,
             )
-            
+
             st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-            
+
             # Calendar spreads
             st.markdown("**Calendar Spreads (WTI)**")
             spreads = curve_analyzer.calculate_calendar_spreads(wti_curve)
-            
+
             st.dataframe(
                 spreads,
                 use_container_width=True,
@@ -345,72 +345,72 @@ with tab2:
                     'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
                 }
             )
-        
+
         with col2:
             st.markdown("**WTI Curve Analysis**")
-            
+
             curve_metrics = curve_analyzer.analyze_curve(wti_curve)
-            
+
             st.metric("Structure", curve_metrics['structure'])
             st.metric("M1-M2 Spread", f"${curve_metrics['m1_m2_spread']:.2f}")
             st.metric("Roll Yield (Ann.)", f"{curve_metrics['roll_yield_annual_pct']:.1f}%")
             st.metric("Curve Slope", f"{curve_metrics['overall_slope']:.4f}")
-            
+
             st.divider()
-            
+
             # Roll yield
             roll_yield = curve_analyzer.calculate_roll_yield(wti_curve)
-            
+
             st.markdown("**Roll Yield Analysis**")
             st.text(f"Roll Cost: ${roll_yield['roll_cost']:.2f}")
             st.text(f"Roll Yield: ${roll_yield['roll_yield']:.2f}")
             st.text(f"Annual Roll Yield: {roll_yield['roll_yield_annual_pct']:.1f}%")
             st.text(f"Curve Carry: {roll_yield['curve_carry']}")
-    
+
     with curve_tab2:
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             # Dubai swap curve via shared context cache
             dubai_curve = context.data.dubai_curve
-            
+
             # Create Dubai swap curve chart
             if dubai_curve is not None and not dubai_curve.empty:
                 # Use contract_month labels for x-axis
                 x_column = 'contract_month' if 'contract_month' in dubai_curve.columns else 'month'
-                
+
                 # Get price range for proper y-axis scaling
                 price_min = dubai_curve['price'].min()
                 price_max = dubai_curve['price'].max()
                 price_range = price_max - price_min
                 y_min = price_min - (price_range * 0.15)
                 y_max = price_max + (price_range * 0.15)
-                
+
                 if price_range < 2:
                     mid = (price_min + price_max) / 2
                     y_min = mid - 2
                     y_max = mid + 2
-                
+
                 fig = go.Figure()
-                
+
                 # Dubai curve with distinct styling (green for UAE)
                 fig.add_trace(go.Scatter(
                     x=dubai_curve[x_column],
                     y=dubai_curve['price'],
                     name='Dubai',
                     mode='lines+markers',
-                    line=dict(color='#00DC82', width=3, shape='spline'),  # Green for Dubai/UAE
-                    marker=dict(
-                        size=8,
-                        color='#00DC82',
-                        line=dict(width=2, color='white'),
-                        symbol='circle',
-                    ),
+                    line={"color": '#00DC82', "width": 3, "shape": 'spline'},  # Green for Dubai/UAE
+                    marker={
+                        "size": 8,
+                        "color": '#00DC82',
+                        "line": {"width": 2, "color": 'white'},
+                        "symbol": 'circle',
+                    },
                     fill='tozeroy',
                     fillcolor='rgba(0, 220, 130, 0.1)',
                     hovertemplate='%{x}<br>$%{y:.2f}<extra>Dubai</extra>',
                 ))
-                
+
                 # Also show Brent for comparison (EFS spread context)
                 if brent_curve is not None and not brent_curve.empty:
                     brent_x_column = 'contract_month' if 'contract_month' in brent_curve.columns else 'month'
@@ -419,16 +419,16 @@ with tab2:
                         y=brent_curve['price'],
                         name='Brent',
                         mode='lines+markers',
-                        line=dict(color=CHART_COLORS["primary"], width=2, dash='dot'),
-                        marker=dict(
-                            size=6,
-                            color=CHART_COLORS["primary"],
-                            line=dict(width=1, color='white'),
-                            symbol='diamond',
-                        ),
+                        line={"color": CHART_COLORS["primary"], "width": 2, "dash": 'dot'},
+                        marker={
+                            "size": 6,
+                            "color": CHART_COLORS["primary"],
+                            "line": {"width": 1, "color": 'white'},
+                            "symbol": 'diamond',
+                        },
                         hovertemplate='%{x}<br>$%{y:.2f}<extra>Brent</extra>',
                     ))
-                    
+
                     # Update y-axis range to include both curves
                     all_prices = list(dubai_curve['price']) + list(brent_curve['price'])
                     price_min = min(all_prices)
@@ -440,7 +440,7 @@ with tab2:
                         mid = (price_min + price_max) / 2
                         y_min = mid - 2
                         y_max = mid + 2
-                
+
                 base_layout_without_axes = {
                     key: value for key, value in BASE_LAYOUT.items()
                     if key not in {"yaxis", "xaxis"}
@@ -448,12 +448,12 @@ with tab2:
                 fig.update_layout(
                     **base_layout_without_axes,
                     height=400,
-                    title=dict(
-                        text="Dubai Swap Curve (vs Brent)",
-                        font=dict(size=14, color=CHART_COLORS["text_primary"]),
-                        x=0,
-                        xanchor='left',
-                    ),
+                    title={
+                        "text": "Dubai Swap Curve (vs Brent)",
+                        "font": {"size": 14, "color": CHART_COLORS["text_primary"]},
+                        "x": 0,
+                        "xanchor": 'left',
+                    },
                     yaxis=dict(
                         **BASE_LAYOUT["yaxis"],
                         range=[y_min, y_max],
@@ -466,13 +466,13 @@ with tab2:
                         tickangle=-45 if len(dubai_curve) > 12 else 0,
                     ),
                 )
-                
+
                 st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-                
+
                 # Dubai Calendar spreads
                 st.markdown("**Calendar Spreads (Dubai)**")
                 dubai_spreads = curve_analyzer.calculate_calendar_spreads(dubai_curve)
-                
+
                 st.dataframe(
                     dubai_spreads,
                     use_container_width=True,
@@ -486,42 +486,42 @@ with tab2:
                 )
             else:
                 st.warning("Dubai swap curve data not available")
-        
+
         with col2:
             st.markdown("**Dubai Curve Analysis**")
-            
+
             if dubai_curve is not None and not dubai_curve.empty:
                 dubai_metrics = curve_analyzer.analyze_curve(dubai_curve)
-                
+
                 st.metric("Structure", dubai_metrics['structure'])
                 st.metric("M1-M2 Spread", f"${dubai_metrics['m1_m2_spread']:.2f}")
                 st.metric("Roll Yield (Ann.)", f"{dubai_metrics['roll_yield_annual_pct']:.1f}%")
                 st.metric("Curve Slope", f"{dubai_metrics['overall_slope']:.4f}")
-                
+
                 st.divider()
-                
+
                 # Dubai-Brent EFS (Exchange for Swaps) spread
                 st.markdown("**Dubai-Brent EFS Spread**")
-                
+
                 if brent_curve is not None and not brent_curve.empty:
                     # Front month EFS spread (Dubai - Brent)
                     dubai_front = dubai_curve['price'].iloc[0]
                     brent_front = brent_curve['price'].iloc[0]
                     efs_spread = dubai_front - brent_front
-                    
+
                     st.metric(
-                        "EFS Spread (M1)", 
+                        "EFS Spread (M1)",
                         f"${efs_spread:.2f}",
                         help="Dubai minus Brent. Negative = Dubai discount"
                     )
-                    
+
                     # M6 EFS spread
                     if len(dubai_curve) >= 6 and len(brent_curve) >= 6:
                         dubai_m6 = dubai_curve['price'].iloc[5]
                         brent_m6 = brent_curve['price'].iloc[5]
                         efs_m6 = dubai_m6 - brent_m6
                         st.metric("EFS Spread (M6)", f"${efs_m6:.2f}")
-                    
+
                     # Market interpretation
                     if efs_spread < -1.0:
                         st.info("📉 Wide Dubai discount - bullish for Asian refiners")
@@ -531,12 +531,12 @@ with tab2:
                         st.caption("EFS spread within normal range")
                 else:
                     st.caption("Brent data required for EFS calculation")
-                
+
                 st.divider()
-                
+
                 # Roll yield
                 dubai_roll = curve_analyzer.calculate_roll_yield(dubai_curve)
-                
+
                 st.markdown("**Roll Yield Analysis**")
                 st.text(f"Roll Cost: ${dubai_roll['roll_cost']:.2f}")
                 st.text(f"Roll Yield: ${dubai_roll['roll_yield']:.2f}")
@@ -548,18 +548,18 @@ with tab2:
 with tab3:
     # Crack Spreads Tab
     st.subheader("Crack Spread Analysis")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("**3-2-1 Crack Spread (USGC)**")
-        
+
         # Get LIVE prices using price cache
         wti = price_cache.get("CL1 Comdty")
         rbob = price_cache.get("XB1 Comdty")
         ho = price_cache.get("HO1 Comdty")
         brent = price_cache.get("CO1 Comdty")
-        
+
         if wti and rbob and ho:
             # Calculate crack spread with explicit unit specification
             # WTI (CL1) is in $/barrel, RBOB (XB1) and HO (HO1) are in $/gallon
@@ -571,22 +571,22 @@ with tab3:
                 gasoline_unit="gallon",
                 distillate_unit="gallon"
             )
-            
+
             # Get crack spread change from context
             crack_data = context.data.crack_spread
             crack_change = crack_data.get('change', 0) if crack_data else 0
-            
+
             st.metric(
                 "Current",
                 f"${crack_321['crack_spread']:.2f}/bbl",
                 delta=f"{crack_change:+.2f}"
             )
-            
+
             # Component breakdown visualization
             st.markdown("**Spread Components**")
             rbob_bbl = rbob * 42
             ho_bbl = ho * 42
-            
+
             component_fig = go.Figure()
             component_fig.add_trace(go.Bar(
                 x=['RBOB×2', 'HO×1', 'WTI×3', 'Crack'],
@@ -594,18 +594,18 @@ with tab3:
                 marker_color=[CHART_COLORS['profit'], CHART_COLORS['profit'], CHART_COLORS['loss'], CHART_COLORS['primary']],
                 text=[f"${rbob_bbl*2:.2f}", f"${ho_bbl:.2f}", f"-${wti*3:.2f}", f"${crack_321['crack_spread']*3:.2f}"],
                 textposition='outside',
-                textfont=dict(size=12, color=CHART_COLORS['text_primary']),
+                textfont={"size": 12, "color": CHART_COLORS['text_primary']},
                 marker_line_width=0,
             ))
-            
+
             component_fig.update_layout(
                 **BASE_LAYOUT,
                 height=250,
                 yaxis_title='$/bbl equivalent',
             )
-            
+
             st.plotly_chart(component_fig, use_container_width=True, config=get_chart_config())
-            
+
             # Metrics
             m_col1, m_col2, m_col3 = st.columns(3)
             with m_col1:
@@ -616,20 +616,20 @@ with tab3:
                 st.metric("Product Value", f"${(rbob_bbl*2 + ho_bbl)/3:.2f}/bbl")
         else:
             st.warning("Price data unavailable for crack spread calculation")
-    
+
     with col2:
         st.markdown("**Live Spreads**")
-        
+
         # Calculate LIVE regional differentials
         if wti and brent:
             brent_wti_spread = brent - wti
             spread_data = context.data.wti_brent_spread
             spread_change = spread_data.get('change', 0) if spread_data else 0
-            
+
             st.metric("Brent-WTI", f"${brent_wti_spread:.2f}", delta=f"{spread_change:+.2f}")
-        
+
         st.divider()
-        
+
         st.markdown("**Live Component Prices**")
         if wti:
             st.metric("WTI Crude", f"${wti:.2f}/bbl")
@@ -643,9 +643,9 @@ with tab3:
 with tab4:
     # Inventory Tab
     st.subheader("Inventory Analytics")
-    
+
     eia_data = data_loader.get_eia_inventory()
-    
+
     if eia_data is None or (hasattr(eia_data, 'empty') and eia_data.empty):
         st.info("📊 EIA inventory data requires Bloomberg connection or external data feed.")
         st.markdown("""
@@ -656,40 +656,40 @@ with tab4:
         """)
     else:
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             st.markdown("**EIA Weekly Crude Inventory**")
-            
+
             fig = go.Figure()
-            
+
             # Inventory level with gradient fill
             fig.add_trace(go.Scatter(
                 x=eia_data.index,
                 y=eia_data['inventory_mmb'],
                 name='Inventory',
-                line=dict(color=CHART_COLORS['primary'], width=2.5),
+                line={"color": CHART_COLORS['primary'], "width": 2.5},
                 fill='tozeroy',
                 fillcolor='rgba(0, 163, 224, 0.1)',
                 hovertemplate='%{x}<br>%{y:.1f} MMbbl<extra></extra>',
             ))
-            
+
             # 5-year range
             mean = eia_data['inventory_mmb'].mean()
             fig.add_hline(y=mean, line_dash='dash', line_color=CHART_COLORS['ma_fast'],
                          annotation_text='5-Year Avg')
-            
+
             fig.update_layout(
                 **BASE_LAYOUT,
                 height=350,
                 yaxis_title='Inventory (MMbbl)',
                 yaxis_tickformat='.0f',
             )
-            
+
             st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-            
+
             # Weekly change
             st.markdown("**Weekly Change**")
-            
+
             change_fig = go.Figure()
             change_fig.add_trace(go.Bar(
                 x=eia_data.index,
@@ -699,32 +699,32 @@ with tab4:
                 name='Change',
                 hovertemplate='%{x}<br>%{y:+.1f} MMbbl<extra></extra>',
             ))
-            
+
             fig.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
-            
+
             change_fig.update_layout(
                 **BASE_LAYOUT,
                 height=200,
                 yaxis_title='Change (MMbbl)',
             )
-            
+
             st.plotly_chart(change_fig, use_container_width=True, config=get_chart_config())
-        
+
         with col2:
             st.markdown("**Latest Report**")
-            
+
             latest = eia_data.iloc[-1]
-            
+
             inv_analysis = fundamental_analyzer.analyze_inventory(
                 current_level=latest['inventory_mmb'],
                 change=latest['change_mmb'],
                 expectation=latest['expectation_mmb']
             )
-            
+
             st.metric("Current Level", f"{inv_analysis['current_level']:.1f} MMbbl")
             st.metric("Change", f"{inv_analysis['change']:+.1f} MMbbl")
             st.metric("Surprise", f"{inv_analysis['surprise']:+.1f} MMbbl")
-            
+
             # Signal
             if "Bullish" in inv_analysis['surprise_signal']:
                 st.success(inv_analysis['surprise_signal'])
@@ -732,9 +732,9 @@ with tab4:
                 st.error(inv_analysis['surprise_signal'])
             else:
                 st.info(inv_analysis['surprise_signal'])
-            
+
             st.divider()
-            
+
             st.markdown("**Level Analysis**")
             st.text(f"Percentile: {inv_analysis['percentile']:.0f}th")
             st.text(f"vs 5-Year Avg: {inv_analysis['vs_5yr_avg']:+.1f} MMbbl")
@@ -743,9 +743,9 @@ with tab4:
 with tab5:
     # OPEC Monitor Tab
     st.subheader("OPEC+ Production Monitor")
-    
+
     opec_data = data_loader.get_opec_production()
-    
+
     if opec_data is None or (hasattr(opec_data, 'empty') and opec_data.empty):
         st.info("📊 OPEC production data requires Bloomberg connection or external data feed.")
         st.markdown("""
@@ -756,12 +756,12 @@ with tab5:
         """)
     else:
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             st.markdown("**Production vs Quota by Country**")
-            
+
             fig = go.Figure()
-            
+
             fig.add_trace(go.Bar(
                 name='Quota',
                 x=opec_data['country'],
@@ -770,7 +770,7 @@ with tab5:
                 marker_line_width=0,
                 hovertemplate='Quota: %{y:.2f} mb/d<extra></extra>',
             ))
-            
+
             fig.add_trace(go.Bar(
                 name='Actual',
                 x=opec_data['country'],
@@ -779,20 +779,20 @@ with tab5:
                 marker_line_width=0,
                 hovertemplate='Actual: %{y:.2f} mb/d<extra></extra>',
             ))
-            
+
             fig.update_layout(
                 **BASE_LAYOUT,
                 height=400,
                 barmode='group',
                 yaxis_title='Production (mb/d)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                legend={"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
             )
-            
+
             st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-            
+
             # Compliance table
             st.markdown("**Compliance by Country**")
-            
+
             st.dataframe(
                 opec_data,
                 use_container_width=True,
@@ -804,38 +804,38 @@ with tab5:
                     'compliance_pct': st.column_config.ProgressColumn('Compliance', min_value=0, max_value=110, format='%.0f%%'),
                 }
             )
-        
+
         with col2:
             st.markdown("**Overall Compliance**")
-            
+
             opec_analysis = fundamental_analyzer.analyze_opec_compliance(opec_data)
-            
+
             st.metric(
                 "Overall Compliance",
                 f"{opec_analysis['overall_compliance_pct']:.1f}%"
             )
-            
+
             st.metric(
                 "Total OPEC+ Production",
                 f"{opec_analysis['total_actual_mbpd']:.2f} mb/d"
             )
-            
+
             st.metric(
                 "vs Quota",
                 f"{opec_analysis['deviation_mbpd']:+.2f} mb/d"
             )
-            
+
             # Market impact
             st.divider()
             st.markdown("**Market Impact Assessment**")
-            
+
             if "Bullish" in opec_analysis['market_impact']:
                 st.success(opec_analysis['market_impact'])
             elif "Bearish" in opec_analysis['market_impact']:
                 st.error(opec_analysis['market_impact'])
             else:
                 st.info(opec_analysis['market_impact'])
-            
+
             if opec_analysis['over_producers']:
                 st.warning(f"Over-producers: {', '.join(opec_analysis['over_producers'])}")
 
@@ -848,7 +848,7 @@ if st.session_state.auto_refresh:
     # Calculate time until next refresh
     time_since_last = (datetime.now() - st.session_state.last_refresh).total_seconds()
     time_until_refresh = max(0, REFRESH_INTERVAL_SECONDS - time_since_last)
-    
+
     if time_until_refresh <= 0:
         st.session_state.last_refresh = datetime.now()
         time.sleep(0.1)  # Small delay to prevent rapid refreshes
@@ -870,8 +870,8 @@ if st.session_state.auto_refresh:
 # Footer with refresh info
 st.markdown("---")
 st.markdown(
-    f"""<div style="text-align: center; color: #64748B; font-size: 12px;">
-    Data refreshes every 15 seconds when auto-refresh is enabled | 
+    """<div style="text-align: center; color: #64748B; font-size: 12px;">
+    Data refreshes every 15 seconds when auto-refresh is enabled |
     Charts show up to 180 days of historical data
     </div>""",
     unsafe_allow_html=True
