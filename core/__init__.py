@@ -11,11 +11,12 @@ Submodules:
 - trading: Position management and P&L tracking
 - ml: Machine learning models and feature engineering
 - backtest: Strategy backtesting and optimization
+- execution: Order management, execution algorithms, and automation
 - indicators: Technical indicator calculations
 """
 
 from . import constants
 from . import indicators
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"  # Phase 6 complete
 __all__ = ["constants", "indicators"]

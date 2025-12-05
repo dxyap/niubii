@@ -4,7 +4,7 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![Tests](https://img.shields.io/badge/Tests-90%20passed-green.svg)
+![Tests](https://img.shields.io/badge/Tests-137%20passed-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## Features
@@ -35,6 +35,14 @@ A lightweight, local-first quantitative trading dashboard for oil markets. Built
 - Position monitor with live P&L
 - Trade blotter with history and statistics
 - Strategy tagging and performance attribution
+
+### 🤖 Execution & Automation (NEW - Phase 6)
+- **Order Management System**: Full order lifecycle tracking (created→submitted→filled)
+- **Paper Trading Mode**: Simulated execution for strategy testing
+- **Position Sizing**: Kelly criterion, volatility targeting, risk parity, ATR/VaR-based
+- **Execution Algorithms**: TWAP, VWAP, POV, Implementation Shortfall
+- **Broker Integration**: Simulated broker with realistic fills and slippage
+- **Automation Rules**: Signal-to-order conversion with configurable conditions
 
 ## Quick Start
 
@@ -79,7 +87,8 @@ Open in browser at `http://localhost:8501`
 │   │   ├── 5_📋_Blotter.py
 │   │   ├── 6_📊_Analytics.py
 │   │   ├── 7_🤖_ML_Signals.py    # ML-powered signals
-│   │   └── 8_🔬_Backtest.py      # Strategy backtesting
+│   │   ├── 8_🔬_Backtest.py      # Strategy backtesting
+│   │   └── 9_🤖_Automation.py    # Execution & automation
 │   ├── components/          # Reusable UI components
 │   └── shared_state.py      # Session state management
 │
@@ -112,18 +121,28 @@ Open in browser at `http://localhost:8501`
 │   │   ├── training.py      # Training pipeline
 │   │   ├── prediction.py    # Inference service
 │   │   └── monitoring.py    # Model monitoring & drift detection
-│   └── backtest/            # Backtesting Engine (Phase 5)
-│       ├── engine.py        # Main backtesting engine
-│       ├── strategy.py      # Strategy framework & examples
-│       ├── execution.py     # Order execution simulation
-│       ├── costs.py         # Transaction cost models
-│       ├── metrics.py       # Performance metrics
-│       ├── optimization.py  # Walk-forward optimization
-│       └── reporting.py     # Reports & visualization
+│   ├── backtest/            # Backtesting Engine (Phase 5)
+│   │   ├── engine.py        # Main backtesting engine
+│   │   ├── strategy.py      # Strategy framework & examples
+│   │   ├── execution.py     # Order execution simulation
+│   │   ├── costs.py         # Transaction cost models
+│   │   ├── metrics.py       # Performance metrics
+│   │   ├── optimization.py  # Walk-forward optimization
+│   │   └── reporting.py     # Reports & visualization
+│   └── execution/            # Execution & Automation (Phase 6)
+│       ├── oms.py            # Order Management System
+│       ├── sizing.py         # Position sizing algorithms
+│       ├── algorithms.py     # TWAP, VWAP, POV, IS algorithms
+│       ├── paper_trading.py  # Paper trading engine
+│       ├── automation.py     # Automation rules engine
+│       └── brokers/          # Broker integrations
+│           ├── base.py       # Broker interface
+│           └── simulator.py  # Simulated broker
 │
 ├── config/                  # Configuration files
 │   ├── instruments.yaml    # Instrument definitions
 │   ├── risk_limits.yaml    # Risk parameters
+│   ├── execution.yaml      # Execution & automation config
 │   └── bloomberg_tickers.yaml  # Bloomberg ticker mappings
 │
 ├── models/                  # Trained ML models (auto-created)
@@ -133,7 +152,7 @@ Open in browser at `http://localhost:8501`
 │   ├── historical/         # Parquet files
 │   └── trades/             # Trade database
 │
-└── tests/                   # Test suite (90 tests)
+└── tests/                   # Test suite (137 tests)
 ```
 
 ## Bloomberg Integration
@@ -712,6 +731,7 @@ pytest tests/test_analytics.py -v
 | ML (Feature Engineering) | 25 | 90% |
 | Trading | 10 | 85% |
 | Backtesting | 25 | 90% |
+| Execution & Automation | 47 | 92% |
 
 ## Status & Roadmap
 
@@ -741,7 +761,11 @@ pytest tests/test_analytics.py -v
 | Strategy Framework | ✅ Complete | 5 |
 | Walk-Forward Optimization | ✅ Complete | 5 |
 | Performance Metrics | ✅ Complete | 5 |
-| Execution & Automation | 🔲 Planned | 6 |
+| Order Management System | ✅ Complete | 6 |
+| Paper Trading | ✅ Complete | 6 |
+| Position Sizing Algorithms | ✅ Complete | 6 |
+| Execution Algorithms | ✅ Complete | 6 |
+| Automation Rules Engine | ✅ Complete | 6 |
 | Multi-channel Alerts | 🔲 Planned | 7 |
 | Advanced Analytics & AI | 🔲 Planned | 8 |
 | Production Hardening | 🔲 Planned | 9 |
@@ -948,43 +972,167 @@ print(f"OOS Sharpe: {result.oos_metrics.sharpe_ratio:.2f}")
 
 ---
 
-### 🔲 Phase 6: Execution & Automation
+### ✅ Phase 6: Execution & Automation (Complete)
 
 **Order Management & Automated Trading**
 
-Connect signals to execution with an order management system.
+Full execution infrastructure for signal-to-order conversion and automated trading.
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Order Management System | Track orders through lifecycle (new→filled→settled) | High |
-| Paper Trading Mode | Simulate execution without real orders | High |
-| Position Sizing | Kelly criterion, volatility targeting, risk parity | High |
-| Execution Algorithms | TWAP, VWAP, implementation shortfall | Medium |
-| Broker Integration | Connect to Interactive Brokers, CQG, or TT | Medium |
-| Smart Order Routing | Optimal venue selection | Low |
-| Auto-Execution Rules | Trigger orders based on signals + conditions | Medium |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Order Management System | Complete order lifecycle with SQLite persistence | ✅ Complete |
+| Paper Trading Mode | Simulated execution with realistic fills | ✅ Complete |
+| Position Sizing | Kelly, volatility targeting, risk parity, ATR, VaR | ✅ Complete |
+| Execution Algorithms | TWAP, VWAP, POV, Implementation Shortfall | ✅ Complete |
+| Broker Interface | Abstract broker with simulated implementation | ✅ Complete |
+| Automation Rules | Signal-based rules with multi-condition logic | ✅ Complete |
+| Dashboard Page | Full automation UI with paper trading | ✅ Complete |
 
-**Implementation Plan:**
+**Implementation:**
 ```
 core/
 ├── execution/
-│   ├── __init__.py
-│   ├── oms.py               # Order management system
-│   ├── paper_trading.py     # Paper trading engine
-│   ├── sizing.py            # Position sizing algorithms
-│   ├── algorithms.py        # Execution algorithms (TWAP, VWAP)
-│   ├── brokers/
-│   │   ├── base.py          # Broker interface
-│   │   ├── ib.py            # Interactive Brokers
-│   │   └── simulator.py     # Simulated broker
-│   └── routing.py           # Order routing logic
+│   ├── __init__.py           # Module exports
+│   ├── oms.py                # Order Management System
+│   ├── sizing.py             # Position sizing algorithms
+│   ├── algorithms.py         # Execution algorithms (TWAP, VWAP, POV, IS)
+│   ├── paper_trading.py      # Paper trading engine
+│   ├── automation.py         # Automation rules engine
+│   └── brokers/
+│       ├── base.py           # Abstract broker interface
+│       └── simulator.py      # Simulated broker
 app/pages/
-├── 9_🤖_Automation.py      # Automation rules UI
+├── 9_🤖_Automation.py       # Automation dashboard
+config/
+├── execution.yaml            # Execution configuration
 ```
 
-**New Dependencies:**
+**Position Sizing Algorithms:**
+
+```python
+from core.execution import (
+    PositionSizer, SizingConfig, SizingMethod,
+    KellyCriterion, VolatilityTargeting, RiskParity,
+    calculate_optimal_size
+)
+
+# Volatility targeting
+config = SizingConfig(
+    method=SizingMethod.VOLATILITY_TARGET,
+    account_value=1_000_000,
+    target_volatility=0.15,  # 15% annual target
+)
+
+result = calculate_optimal_size(
+    price=75.0,
+    volatility=0.25,  # 25% asset volatility
+    account_value=1_000_000,
+)
+
+print(f"Recommended: {result.contracts} contracts")
+print(f"Notional: ${result.notional_value:,.0f}")
+print(f"Rationale: {result.rationale}")
 ```
-ib_insync>=0.9.86      # Interactive Brokers API
+
+**Execution Algorithms:**
+
+```python
+from core.execution import (
+    TWAPAlgorithm, VWAPAlgorithm, AlgorithmConfig,
+    Order, OrderSide
+)
+
+# Create parent order
+order = Order(
+    order_id="ORD-001",
+    symbol="CL1",
+    side=OrderSide.BUY,
+    quantity=20,
+)
+
+# Generate TWAP schedule
+config = AlgorithmConfig(
+    duration_minutes=60,
+    num_slices=12,
+    randomize_timing=True,
+)
+
+algo = TWAPAlgorithm(config)
+slices = algo.generate_schedule(order, current_price=75.0)
+
+for s in slices:
+    print(f"Slice {s.sequence}: {s.quantity} contracts at {s.scheduled_time}")
+```
+
+**Paper Trading:**
+
+```python
+from core.execution import PaperTradingEngine, PaperTradingConfig
+
+# Start paper trading session
+config = PaperTradingConfig(
+    initial_capital=1_000_000,
+    slippage_bps=1.0,
+    commission_per_contract=2.50,
+)
+
+engine = PaperTradingEngine(config)
+engine.start_session()
+
+# Update prices
+engine.update_prices({"CL1": 75.0, "CO1": 78.0})
+
+# Submit order
+order = engine.submit_order(
+    symbol="CL1",
+    side="BUY",
+    quantity=5,
+    order_type="MARKET",
+    strategy="momentum",
+)
+
+# Check P&L
+summary = engine.get_pnl_summary()
+print(f"NAV: ${summary['current_nav']:,.0f}")
+print(f"Return: {summary['return_pct']:.2f}%")
+
+# Stop session
+session = engine.stop_session()
+print(f"Session Sharpe: {session.sharpe_ratio:.2f}")
+```
+
+**Automation Rules:**
+
+```python
+from core.execution import (
+    AutomationEngine, RuleConfig, RuleCondition, RuleAction,
+    ConditionType, ActionType, SizingMethod, create_signal_rule
+)
+
+engine = AutomationEngine()
+
+# Create rule: Enter long on high-confidence bullish signal
+rule = create_signal_rule(
+    name="Long on Strong Signal",
+    symbol="CL1",
+    direction="LONG",
+    min_confidence=65,
+    sizing_method=SizingMethod.VOLATILITY_TARGET,
+    risk_pct=0.02,
+)
+engine.add_rule(rule)
+
+# Evaluate rules against current context
+context = {
+    "signal": {"direction": "LONG", "confidence": 72},
+    "position": {"quantity": 0},
+    "price": 75.0,
+    "volatility": 0.25,
+    "account_value": 1_000_000,
+}
+
+triggered = engine.evaluate_rules(context, execute=True)
+print(f"Triggered {len(triggered)} rules")
 ```
 
 ---
@@ -1155,11 +1303,19 @@ prometheus-client>=0.18.0
 ├── Walk-forward optimization
 └── Performance reporting & visualization
 
-🔄 Q2 2025: Phase 6 & 7 - Execution & Alerts
-├── Paper trading mode
-├── Position sizing algorithms
+✅ Q2 2025: Phase 6 - Execution & Automation (COMPLETE)
+├── Order Management System with full lifecycle
+├── Paper trading engine with P&L tracking
+├── Position sizing (Kelly, vol targeting, risk parity)
+├── Execution algorithms (TWAP, VWAP, POV, IS)
+├── Automation rules engine
+└── Broker simulation framework
+
+🔄 Q2-Q3 2025: Phase 7 - Alerts & Notifications
 ├── Multi-channel alert system
+├── Email, Telegram, Slack integration
 ├── Scheduled reporting
+└── Alert escalation
 
 📅 Q3-Q4 2025: Phase 8 & 9 - Advanced Analytics & Production
 ├── LLM news analysis
