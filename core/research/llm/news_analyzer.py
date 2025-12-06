@@ -10,15 +10,15 @@ Features:
 - Multi-source aggregation
 """
 
+import json
 import logging
 import os
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
-import json
-import urllib.request
-import urllib.parse
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,12 @@ class NewsArticle:
     title: str
     content: str
     source: NewsSource = NewsSource.CUSTOM
-    url: Optional[str] = None
+    url: str | None = None
     published_at: datetime = field(default_factory=datetime.now)
-    author: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict:
+    author: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
         return {
             "article_id": self.article_id,
             "title": self.title,
@@ -71,15 +71,15 @@ class ArticleSummary:
     article_id: str
     title: str
     summary: str
-    key_points: List[str]
-    commodities_mentioned: List[str]
+    key_points: list[str]
+    commodities_mentioned: list[str]
     impact_level: ImpactLevel
     impact_direction: str  # "bullish", "bearish", "neutral"
     confidence: float  # 0-1
-    extracted_entities: Dict[str, List[str]]  # organizations, people, locations
+    extracted_entities: dict[str, list[str]]  # organizations, people, locations
     generated_at: datetime = field(default_factory=datetime.now)
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         return {
             "article_id": self.article_id,
             "title": self.title,
@@ -99,18 +99,18 @@ class AnalysisConfig:
     # LLM provider settings
     provider: str = "openai"  # openai, anthropic, local
     model: str = "gpt-4"
-    api_key: Optional[str] = None
-    
+    api_key: str | None = None
+
     # Analysis settings
     max_tokens: int = 500
     temperature: float = 0.3
-    
+
     # Focus areas
-    commodities: List[str] = field(default_factory=lambda: ["crude oil", "wti", "brent", "gasoline", "heating oil"])
+    commodities: list[str] = field(default_factory=lambda: ["crude oil", "wti", "brent", "gasoline", "heating oil"])
     include_geopolitics: bool = True
     include_supply_demand: bool = True
     include_technical: bool = False
-    
+
     # Output settings
     summary_length: str = "medium"  # short, medium, long
     extract_entities: bool = True
@@ -119,47 +119,47 @@ class AnalysisConfig:
 class NewsAnalyzer:
     """
     LLM-powered news analyzer for oil markets.
-    
+
     Supports:
     - OpenAI GPT models
     - Anthropic Claude models
     - Local LLM endpoints
     """
-    
-    def __init__(self, config: Optional[AnalysisConfig] = None):
+
+    def __init__(self, config: AnalysisConfig | None = None):
         self.config = config or AnalysisConfig()
-        
+
         # Get API key from config or environment
         if not self.config.api_key:
             if self.config.provider == "openai":
                 self.config.api_key = os.getenv("OPENAI_API_KEY")
             elif self.config.provider == "anthropic":
                 self.config.api_key = os.getenv("ANTHROPIC_API_KEY")
-        
+
         # Cache for recent analyses
-        self._cache: Dict[str, ArticleSummary] = {}
-        
+        self._cache: dict[str, ArticleSummary] = {}
+
         # Rate limiting
         self._request_count = 0
         self._last_reset = datetime.now()
-    
+
     def analyze(self, article: NewsArticle) -> ArticleSummary:
         """
         Analyze a news article.
-        
+
         Args:
             article: News article to analyze
-            
+
         Returns:
             ArticleSummary with analysis results
         """
         # Check cache
         if article.article_id in self._cache:
             return self._cache[article.article_id]
-        
+
         # Build prompt
         prompt = self._build_prompt(article)
-        
+
         # Call LLM
         try:
             if self.config.provider == "openai":
@@ -168,41 +168,41 @@ class NewsAnalyzer:
                 response = self._call_anthropic(prompt)
             else:
                 response = self._fallback_analysis(article)
-            
+
             summary = self._parse_response(article, response)
-            
+
             # Cache result
             self._cache[article.article_id] = summary
-            
+
             return summary
-            
+
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
             return self._fallback_analysis(article)
-    
-    def analyze_batch(self, articles: List[NewsArticle]) -> List[ArticleSummary]:
+
+    def analyze_batch(self, articles: list[NewsArticle]) -> list[ArticleSummary]:
         """Analyze multiple articles."""
         return [self.analyze(article) for article in articles]
-    
-    def get_market_summary(self, articles: List[NewsArticle]) -> Dict[str, Any]:
+
+    def get_market_summary(self, articles: list[NewsArticle]) -> dict[str, Any]:
         """
         Generate an overall market summary from multiple articles.
-        
+
         Args:
             articles: List of news articles
-            
+
         Returns:
             Market summary with sentiment and key themes
         """
         summaries = self.analyze_batch(articles)
-        
+
         # Aggregate sentiment
         bullish = sum(1 for s in summaries if s.impact_direction == "bullish")
         bearish = sum(1 for s in summaries if s.impact_direction == "bearish")
         neutral = sum(1 for s in summaries if s.impact_direction == "neutral")
-        
+
         total = len(summaries)
-        
+
         # Determine overall sentiment
         if total == 0:
             overall_sentiment = "neutral"
@@ -215,25 +215,25 @@ class NewsAnalyzer:
                 overall_sentiment = "bearish"
             else:
                 overall_sentiment = "neutral"
-        
+
         # Extract common themes
         all_key_points = []
         all_commodities = set()
         all_entities = {"organizations": set(), "people": set(), "locations": set()}
-        
+
         for summary in summaries:
             all_key_points.extend(summary.key_points)
             all_commodities.update(summary.commodities_mentioned)
             for entity_type, entities in summary.extracted_entities.items():
                 if entity_type in all_entities:
                     all_entities[entity_type].update(entities)
-        
+
         # Find high-impact articles
         high_impact = [
-            s.to_dict() for s in summaries 
+            s.to_dict() for s in summaries
             if s.impact_level == ImpactLevel.HIGH
         ]
-        
+
         return {
             "article_count": total,
             "overall_sentiment": overall_sentiment,
@@ -249,11 +249,11 @@ class NewsAnalyzer:
             "entities": {k: list(v) for k, v in all_entities.items()},
             "generated_at": datetime.now().isoformat(),
         }
-    
+
     def _build_prompt(self, article: NewsArticle) -> str:
         """Build the analysis prompt."""
         commodities = ", ".join(self.config.commodities)
-        
+
         prompt = f"""Analyze the following oil market news article and provide a structured summary.
 
 ARTICLE:
@@ -289,19 +289,19 @@ FORMAT YOUR RESPONSE AS JSON:
 }}
 """
         return prompt
-    
+
     def _call_openai(self, prompt: str) -> str:
         """Call OpenAI API."""
         if not self.config.api_key:
             raise ValueError("OpenAI API key not configured")
-        
+
         url = "https://api.openai.com/v1/chat/completions"
-        
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.config.api_key}",
         }
-        
+
         data = {
             "model": self.config.model,
             "messages": [
@@ -311,30 +311,30 @@ FORMAT YOUR RESPONSE AS JSON:
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
         }
-        
+
         req = urllib.request.Request(
             url,
             data=json.dumps(data).encode(),
             headers=headers,
         )
-        
+
         with urllib.request.urlopen(req, timeout=30) as response:
             result = json.loads(response.read().decode())
             return result["choices"][0]["message"]["content"]
-    
+
     def _call_anthropic(self, prompt: str) -> str:
         """Call Anthropic API."""
         if not self.config.api_key:
             raise ValueError("Anthropic API key not configured")
-        
+
         url = "https://api.anthropic.com/v1/messages"
-        
+
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.config.api_key,
             "anthropic-version": "2023-06-01",
         }
-        
+
         data = {
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
@@ -342,17 +342,17 @@ FORMAT YOUR RESPONSE AS JSON:
                 {"role": "user", "content": prompt},
             ],
         }
-        
+
         req = urllib.request.Request(
             url,
             data=json.dumps(data).encode(),
             headers=headers,
         )
-        
+
         with urllib.request.urlopen(req, timeout=30) as response:
             result = json.loads(response.read().decode())
             return result["content"][0]["text"]
-    
+
     def _parse_response(self, article: NewsArticle, response: str) -> ArticleSummary:
         """Parse LLM response into ArticleSummary."""
         try:
@@ -364,7 +364,7 @@ FORMAT YOUR RESPONSE AS JSON:
                 data = json.loads(json_str)
             else:
                 raise ValueError("No JSON found in response")
-            
+
             return ArticleSummary(
                 article_id=article.article_id,
                 title=article.title,
@@ -376,52 +376,52 @@ FORMAT YOUR RESPONSE AS JSON:
                 confidence=float(data.get("confidence", 0.5)),
                 extracted_entities=data.get("entities", {}),
             )
-            
+
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Failed to parse response: {e}")
             return self._fallback_analysis(article)
-    
+
     def _fallback_analysis(self, article: NewsArticle) -> ArticleSummary:
         """Fallback analysis when LLM is unavailable."""
         # Simple keyword-based analysis
         content_lower = article.content.lower()
         title_lower = article.title.lower()
-        
+
         # Detect sentiment
         bullish_keywords = ["increase", "rise", "gain", "rally", "surge", "higher", "growth", "supply cut"]
         bearish_keywords = ["decrease", "fall", "drop", "decline", "lower", "weak", "surplus", "oversupply"]
-        
+
         bullish_count = sum(1 for kw in bullish_keywords if kw in content_lower)
         bearish_count = sum(1 for kw in bearish_keywords if kw in content_lower)
-        
+
         if bullish_count > bearish_count + 2:
             direction = "bullish"
         elif bearish_count > bullish_count + 2:
             direction = "bearish"
         else:
             direction = "neutral"
-        
+
         # Detect commodities
         commodities = []
         for commodity in self.config.commodities:
             if commodity.lower() in content_lower or commodity.lower() in title_lower:
                 commodities.append(commodity)
-        
+
         # Detect impact level
         high_impact_keywords = ["opec", "sanctions", "war", "crisis", "emergency", "breakthrough"]
         medium_impact_keywords = ["inventory", "production", "demand", "export", "import"]
-        
+
         if any(kw in content_lower for kw in high_impact_keywords):
             impact = ImpactLevel.HIGH
         elif any(kw in content_lower for kw in medium_impact_keywords):
             impact = ImpactLevel.MEDIUM
         else:
             impact = ImpactLevel.LOW
-        
+
         # Generate simple summary
         sentences = article.content.split(".")
         summary = ". ".join(sentences[:2]) + "." if len(sentences) > 1 else article.content[:200]
-        
+
         return ArticleSummary(
             article_id=article.article_id,
             title=article.title,
@@ -433,7 +433,7 @@ FORMAT YOUR RESPONSE AS JSON:
             confidence=0.5,
             extracted_entities={"organizations": [], "people": [], "locations": []},
         )
-    
+
     def clear_cache(self):
         """Clear analysis cache."""
         self._cache.clear()

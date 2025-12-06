@@ -4,86 +4,82 @@ Technical Signal Generation
 Technical analysis based trading signals.
 """
 
-import pandas as pd
-import numpy as np
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
 
 from core.indicators import (
-    calculate_rsi,
     calculate_bollinger_bands,
-    calculate_sma,
-    calculate_ema,
-    calculate_macd,
-    calculate_atr,
-    get_crossover_signal,
+    calculate_rsi,
 )
 
 
 class TechnicalSignals:
     """
     Technical signal generation for oil trading.
-    
+
     Signal Types:
     - Trend following (MA crossovers, breakouts)
     - Mean reversion (RSI, Bollinger Bands)
     - Momentum (ROC, relative strength)
     - Term structure signals
     """
-    
+
     def __init__(self):
         """Initialize technical signal generator."""
         pass
-    
+
     def calculate_moving_averages(
         self,
         prices: pd.Series,
-        periods: List[int] = [20, 50, 200]
+        periods: list[int] = None
     ) -> pd.DataFrame:
         """
         Calculate multiple moving averages.
-        
+
         Args:
             prices: Price series
             periods: MA periods
-            
+
         Returns:
             DataFrame with MAs
         """
+        if periods is None:
+            periods = [20, 50, 200]
         mas = pd.DataFrame(index=prices.index)
         mas["close"] = prices
-        
+
         for period in periods:
             mas[f"sma_{period}"] = prices.rolling(window=period).mean()
             mas[f"ema_{period}"] = prices.ewm(span=period, adjust=False).mean()
-        
+
         return mas
-    
+
     def ma_crossover_signal(
         self,
         prices: pd.Series,
         fast_period: int = 20,
         slow_period: int = 50
-    ) -> Dict:
+    ) -> dict:
         """
         Generate moving average crossover signal.
-        
+
         Args:
             prices: Price series
             fast_period: Fast MA period
             slow_period: Slow MA period
-            
+
         Returns:
             Signal dictionary
         """
         fast_ma = prices.ewm(span=fast_period, adjust=False).mean()
         slow_ma = prices.ewm(span=slow_period, adjust=False).mean()
-        
+
         current_fast = fast_ma.iloc[-1]
         current_slow = slow_ma.iloc[-1]
         prev_fast = fast_ma.iloc[-2] if len(fast_ma) > 1 else current_fast
         prev_slow = slow_ma.iloc[-2] if len(slow_ma) > 1 else current_slow
-        
+
         # Signal detection
         if prev_fast <= prev_slow and current_fast > current_slow:
             signal = "BUY"
@@ -95,7 +91,7 @@ class TechnicalSignals:
             signal = "HOLD"
             spread = (current_fast - current_slow) / current_slow * 100
             confidence = 50 + spread * 10  # Directional bias
-        
+
         return {
             "signal": signal,
             "confidence": round(max(0, min(100, confidence)), 1),
@@ -105,30 +101,30 @@ class TechnicalSignals:
             "fast_period": fast_period,
             "slow_period": slow_period,
         }
-    
+
     def rsi_signal(
         self,
         prices: pd.Series,
         period: int = 14,
         overbought: float = 70,
         oversold: float = 30
-    ) -> Dict:
+    ) -> dict:
         """
         Generate RSI-based signal.
-        
+
         Args:
             prices: Price series
             period: RSI period
             overbought: Overbought threshold
             oversold: Oversold threshold
-            
+
         Returns:
             Signal dictionary
         """
         rsi = calculate_rsi(prices, period)
         current_rsi = rsi.iloc[-1]
         prev_rsi = rsi.iloc[-2] if len(rsi) > 1 else current_rsi
-        
+
         # Signal generation
         if current_rsi < oversold:
             if prev_rsi < current_rsi:  # Turning up from oversold
@@ -147,7 +143,7 @@ class TechnicalSignals:
         else:
             signal = "NEUTRAL"
             confidence = 50
-        
+
         return {
             "signal": signal,
             "confidence": round(max(0, min(100, confidence)), 1),
@@ -157,37 +153,37 @@ class TechnicalSignals:
             "oversold_level": oversold,
             "period": period,
         }
-    
+
     def bollinger_band_signal(
         self,
         prices: pd.Series,
         period: int = 20,
         num_std: float = 2.0
-    ) -> Dict:
+    ) -> dict:
         """
         Generate Bollinger Band signal.
-        
+
         Args:
             prices: Price series
             period: BB period
             num_std: Number of standard deviations
-            
+
         Returns:
             Signal dictionary
         """
         sma, upper_band, lower_band = calculate_bollinger_bands(prices, period, num_std)
-        
+
         current_price = prices.iloc[-1]
         current_upper = upper_band.iloc[-1]
         current_lower = lower_band.iloc[-1]
         current_sma = sma.iloc[-1]
-        
+
         # Calculate %B (position within bands)
         percent_b = (current_price - current_lower) / (current_upper - current_lower) * 100
-        
+
         # Bandwidth (volatility indicator)
         bandwidth = (current_upper - current_lower) / current_sma * 100
-        
+
         # Signal generation
         if current_price <= current_lower:
             signal = "BUY"
@@ -204,7 +200,7 @@ class TechnicalSignals:
         else:
             signal = "NEUTRAL"
             confidence = 50
-        
+
         return {
             "signal": signal,
             "confidence": round(max(0, min(100, confidence)), 1),
@@ -215,30 +211,30 @@ class TechnicalSignals:
             "percent_b": round(percent_b, 1),
             "bandwidth": round(bandwidth, 2),
         }
-    
+
     def momentum_signal(
         self,
         prices: pd.Series,
         period: int = 14
-    ) -> Dict:
+    ) -> dict:
         """
         Generate momentum-based signal.
-        
+
         Args:
             prices: Price series
             period: Momentum period
-            
+
         Returns:
             Signal dictionary
         """
         # Rate of change
         roc = ((prices / prices.shift(period)) - 1) * 100
         current_roc = roc.iloc[-1]
-        
+
         # Momentum (price change)
         momentum = prices.diff(period)
         current_momentum = momentum.iloc[-1]
-        
+
         # Signal generation
         if current_roc > 5:
             signal = "STRONG_BUY"
@@ -255,7 +251,7 @@ class TechnicalSignals:
         else:
             signal = "NEUTRAL"
             confidence = 50 + current_roc * 5
-        
+
         return {
             "signal": signal,
             "confidence": round(max(0, min(100, confidence)), 1),
@@ -263,32 +259,32 @@ class TechnicalSignals:
             "momentum": round(current_momentum, 2),
             "period": period,
         }
-    
+
     def breakout_signal(
         self,
         prices: pd.Series,
         lookback: int = 20
-    ) -> Dict:
+    ) -> dict:
         """
         Generate breakout signal based on price channels.
-        
+
         Args:
             prices: Price series
             lookback: Lookback period for channel
-            
+
         Returns:
             Signal dictionary
         """
         high_channel = prices.rolling(window=lookback).max()
         low_channel = prices.rolling(window=lookback).min()
-        
+
         current_price = prices.iloc[-1]
         prev_price = prices.iloc[-2]
         current_high = high_channel.iloc[-2]  # Previous high (not including current)
         current_low = low_channel.iloc[-2]
-        
+
         channel_width = (current_high - current_low) / current_low * 100
-        
+
         # Breakout detection
         if current_price > current_high and prev_price <= current_high:
             signal = "BREAKOUT_BUY"
@@ -304,9 +300,9 @@ class TechnicalSignals:
             confidence = 60
         else:
             signal = "RANGE_BOUND"
-            position_in_range = (current_price - current_low) / (current_high - current_low) * 100
+            (current_price - current_low) / (current_high - current_low) * 100
             confidence = 50
-        
+
         return {
             "signal": signal,
             "confidence": round(max(0, min(100, confidence)), 1),
@@ -316,17 +312,17 @@ class TechnicalSignals:
             "channel_width_pct": round(channel_width, 2),
             "lookback": lookback,
         }
-    
+
     def generate_composite_signal(
         self,
         prices: pd.Series
-    ) -> Dict:
+    ) -> dict:
         """
         Generate composite technical signal from multiple indicators.
-        
+
         Args:
             prices: Price series
-            
+
         Returns:
             Composite signal dictionary
         """
@@ -336,7 +332,7 @@ class TechnicalSignals:
         bb_signal = self.bollinger_band_signal(prices)
         mom_signal = self.momentum_signal(prices)
         breakout = self.breakout_signal(prices)
-        
+
         # Score signals
         signal_scores = {
             "BUY": 1, "STRONG_BUY": 1.5, "WATCH_BUY": 0.5, "BREAKOUT_BUY": 1.5,
@@ -344,7 +340,7 @@ class TechnicalSignals:
             "NEUTRAL": 0, "HOLD": 0, "RANGE_BOUND": 0,
             "APPROACHING_RESISTANCE": -0.25, "APPROACHING_SUPPORT": 0.25,
         }
-        
+
         # Weighted average
         weights = {
             "ma": 0.25,
@@ -353,7 +349,7 @@ class TechnicalSignals:
             "momentum": 0.20,
             "breakout": 0.15,
         }
-        
+
         total_score = (
             weights["ma"] * signal_scores.get(ma_signal["signal"], 0) * (ma_signal["confidence"] / 100) +
             weights["rsi"] * signal_scores.get(rsi_signal["signal"], 0) * (rsi_signal["confidence"] / 100) +
@@ -361,7 +357,7 @@ class TechnicalSignals:
             weights["momentum"] * signal_scores.get(mom_signal["signal"], 0) * (mom_signal["confidence"] / 100) +
             weights["breakout"] * signal_scores.get(breakout["signal"], 0) * (breakout["confidence"] / 100)
         )
-        
+
         # Determine composite signal
         if total_score > 0.4:
             composite_signal = "LONG"
@@ -369,9 +365,9 @@ class TechnicalSignals:
             composite_signal = "SHORT"
         else:
             composite_signal = "NEUTRAL"
-        
+
         composite_confidence = abs(total_score) * 100
-        
+
         return {
             "signal": composite_signal,
             "confidence": round(min(composite_confidence, 100), 1),

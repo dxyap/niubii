@@ -10,16 +10,16 @@ Performance optimizations:
 - Efficient memory management
 """
 
-import os
-import json
+import contextlib
 import hashlib
-import pandas as pd
-from datetime import datetime, timedelta
-from typing import Any, Optional, Callable, Dict
-from pathlib import Path
 import logging
 import threading
-from functools import lru_cache
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
 
 try:
     import diskcache
@@ -35,20 +35,20 @@ class TTLCache:
     Thread-safe in-memory cache with TTL expiration.
     Optimized for high-frequency price data access.
     """
-    
+
     def __init__(self, max_size: int = 1000, default_ttl: float = 5.0):
         """
         Initialize TTL cache.
-        
+
         Args:
             max_size: Maximum number of entries
             default_ttl: Default TTL in seconds
         """
-        self._cache: Dict[str, tuple] = {}  # key -> (value, expiry_time)
+        self._cache: dict[str, tuple] = {}  # key -> (value, expiry_time)
         self._lock = threading.Lock()
         self._max_size = max_size
         self._default_ttl = default_ttl
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get value if not expired."""
         with self._lock:
@@ -60,12 +60,12 @@ class TTLCache:
                     # Expired - remove
                     del self._cache[key]
             return default
-    
+
     def set(self, key: str, value: Any, ttl: float = None) -> None:
         """Set value with TTL."""
         if ttl is None:
             ttl = self._default_ttl
-        
+
         with self._lock:
             # Evict oldest entries if at capacity
             if len(self._cache) >= self._max_size:
@@ -75,22 +75,22 @@ class TTLCache:
                     to_remove = list(self._cache.keys())[:self._max_size // 10]
                     for k in to_remove:
                         del self._cache[k]
-            
+
             expiry = datetime.now().timestamp() + ttl
             self._cache[key] = (value, expiry)
-    
+
     def _evict_expired(self) -> None:
         """Remove expired entries."""
         now = datetime.now().timestamp()
         expired = [k for k, (_, exp) in self._cache.items() if now >= exp]
         for k in expired:
             del self._cache[k]
-    
+
     def clear(self) -> None:
         """Clear all entries."""
         with self._lock:
             self._cache.clear()
-    
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._cache)
@@ -99,20 +99,20 @@ class TTLCache:
 class DataCache:
     """
     Multi-layer caching system for market data.
-    
+
     Caching Strategy:
     - Real-time prices: 15 seconds (in-memory TTL cache)
     - Intraday: 60 seconds (in-memory TTL cache)
     - Historical OHLCV: 24 hours (disk)
     - Reference data: 7 days (disk)
     - Fundamental data: Until next release (disk)
-    
+
     Performance features:
     - Thread-safe TTL cache for high-frequency access
     - Efficient memory management
     - Automatic cache eviction
     """
-    
+
     # Cache durations in seconds
     DURATIONS = {
         "real_time": 15,
@@ -121,25 +121,25 @@ class DataCache:
         "reference": 604800,  # 7 days
         "fundamental": 604800,  # 7 days
     }
-    
+
     def __init__(self, cache_dir: str = "data/cache"):
         """
         Initialize cache.
-        
+
         Args:
             cache_dir: Directory for disk cache
         """
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Efficient TTL cache for real-time data
         self._real_time_cache = TTLCache(max_size=1000, default_ttl=15.0)
         self._intraday_cache = TTLCache(max_size=500, default_ttl=60.0)
-        
+
         # Legacy memory cache (for backward compatibility)
         self._memory_cache: dict = {}
         self._memory_timestamps: dict = {}
-        
+
         # Disk cache for persistent data
         if HAS_DISKCACHE:
             try:
@@ -150,26 +150,26 @@ class DataCache:
         else:
             self._disk_cache = None
             logger.debug("diskcache not available, using file-based caching")
-    
+
     def _get_cache_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate unique cache key."""
         key_data = f"{prefix}:{args}:{sorted(kwargs.items())}"
         return hashlib.md5(key_data.encode()).hexdigest()
-    
+
     def get(
         self,
         key: str,
         cache_type: str = "historical",
         default: Any = None
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """
         Get value from cache.
-        
+
         Args:
             key: Cache key
             cache_type: Type of cache (determines expiry)
             default: Default value if not found
-            
+
         Returns:
             Cached value or default
         """
@@ -182,16 +182,15 @@ class DataCache:
             result = self._intraday_cache.get(key)
             if result is not None:
                 return result
-        
+
         duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
-        
+
         # Legacy memory cache fallback
-        if cache_type in ("real_time", "intraday"):
-            if key in self._memory_cache:
-                timestamp = self._memory_timestamps.get(key, 0)
-                if datetime.now().timestamp() - timestamp < duration:
-                    return self._memory_cache[key]
-        
+        if cache_type in ("real_time", "intraday") and key in self._memory_cache:
+            timestamp = self._memory_timestamps.get(key, 0)
+            if datetime.now().timestamp() - timestamp < duration:
+                return self._memory_cache[key]
+
         # Check disk cache
         if self._disk_cache is not None:
             try:
@@ -200,7 +199,7 @@ class DataCache:
                     return value
             except Exception as e:
                 logger.warning(f"Disk cache read error: {e}")
-        
+
         # Fall back to file cache
         cache_file = self.cache_dir / f"{key}.pkl"
         if cache_file.exists():
@@ -210,9 +209,9 @@ class DataCache:
                     return pd.read_pickle(cache_file)
             except Exception as e:
                 logger.warning(f"File cache read error: {e}")
-        
+
         return default
-    
+
     def set(
         self,
         key: str,
@@ -221,14 +220,14 @@ class DataCache:
     ) -> None:
         """
         Set value in cache.
-        
+
         Args:
             key: Cache key
             value: Value to cache
             cache_type: Type of cache
         """
         duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
-        
+
         # Use efficient TTL caches for high-frequency data
         if cache_type == "real_time":
             self._real_time_cache.set(key, value, ttl=duration)
@@ -236,7 +235,7 @@ class DataCache:
         elif cache_type == "intraday":
             self._intraday_cache.set(key, value, ttl=duration)
             return
-        
+
         # Disk cache
         if self._disk_cache is not None:
             try:
@@ -244,7 +243,7 @@ class DataCache:
                 return
             except Exception as e:
                 logger.warning(f"Disk cache write error: {e}")
-        
+
         # Fall back to file cache
         try:
             cache_file = self.cache_dir / f"{key}.pkl"
@@ -254,7 +253,7 @@ class DataCache:
                 pd.to_pickle(value, cache_file)
         except Exception as e:
             logger.warning(f"File cache write error: {e}")
-    
+
     def cached(
         self,
         cache_type: str = "historical",
@@ -262,11 +261,11 @@ class DataCache:
     ) -> Callable:
         """
         Decorator for caching function results.
-        
+
         Args:
             cache_type: Type of cache
             key_prefix: Prefix for cache key
-            
+
         Returns:
             Decorated function
         """
@@ -277,48 +276,46 @@ class DataCache:
                     *args,
                     **kwargs
                 )
-                
+
                 # Try cache first
                 cached_value = self.get(key, cache_type)
                 if cached_value is not None:
                     return cached_value
-                
+
                 # Call function and cache result
                 result = func(*args, **kwargs)
                 self.set(key, result, cache_type)
                 return result
-            
+
             return wrapper
         return decorator
-    
-    def clear(self, cache_type: Optional[str] = None) -> None:
+
+    def clear(self, cache_type: str | None = None) -> None:
         """
         Clear cache.
-        
+
         Args:
             cache_type: Type of cache to clear (None = all)
         """
         if cache_type == "real_time" or cache_type is None:
             self._real_time_cache.clear()
-        
+
         if cache_type == "intraday" or cache_type is None:
             self._intraday_cache.clear()
-        
+
         if cache_type in ("real_time", "intraday", None):
             self._memory_cache.clear()
             self._memory_timestamps.clear()
-        
+
         if cache_type not in ("real_time", "intraday"):
             if self._disk_cache is not None:
                 self._disk_cache.clear()
-            
+
             # Clear file cache
             for f in self.cache_dir.glob("*.pkl"):
-                try:
+                with contextlib.suppress(Exception):
                     f.unlink()
-                except Exception:
-                    pass
-    
+
     def get_stats(self) -> dict:
         """Get cache statistics."""
         stats = {
@@ -328,31 +325,29 @@ class DataCache:
             "disk_entries": 0,
             "file_entries": len(list(self.cache_dir.glob("*.pkl"))),
         }
-        
+
         if self._disk_cache is not None:
-            try:
+            with contextlib.suppress(Exception):
                 stats["disk_entries"] = len(self._disk_cache)
-            except Exception:
-                pass
-        
+
         return stats
 
 
 class ParquetStorage:
     """
     Parquet-based storage for historical data.
-    
+
     Optimized for:
     - Fast columnar queries
     - Efficient compression
     - Easy Snowflake migration
     """
-    
+
     def __init__(self, base_dir: str = "data/historical"):
         """Initialize Parquet storage."""
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def save_ohlcv(
         self,
         ticker: str,
@@ -361,7 +356,7 @@ class ParquetStorage:
     ) -> None:
         """
         Save OHLCV data to Parquet.
-        
+
         Args:
             ticker: Instrument ticker
             data: OHLCV DataFrame
@@ -369,38 +364,38 @@ class ParquetStorage:
         """
         ohlcv_dir = self.base_dir / "ohlcv"
         ohlcv_dir.mkdir(exist_ok=True)
-        
+
         # Clean ticker for filename
         clean_ticker = ticker.replace(" ", "_").replace("/", "_")
         filepath = ohlcv_dir / f"{clean_ticker}_{frequency}.parquet"
-        
+
         data.to_parquet(filepath, engine="pyarrow", compression="snappy")
-    
+
     def load_ohlcv(
         self,
         ticker: str,
         frequency: str = "daily",
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> Optional[pd.DataFrame]:
+        start_date: datetime | None = None,
+        end_date: datetime | None = None
+    ) -> pd.DataFrame | None:
         """
         Load OHLCV data from Parquet.
-        
+
         Args:
             ticker: Instrument ticker
             frequency: Data frequency
             start_date: Filter start date
             end_date: Filter end date
-            
+
         Returns:
             OHLCV DataFrame or None
         """
         clean_ticker = ticker.replace(" ", "_").replace("/", "_")
         filepath = self.base_dir / "ohlcv" / f"{clean_ticker}_{frequency}.parquet"
-        
+
         if not filepath.exists():
             return None
-        
+
         df = pd.read_parquet(filepath)
         # Normalize index to pandas datetime for safe comparisons
         try:
@@ -410,7 +405,7 @@ class ParquetStorage:
             df.rename(columns={"index": "date"}, inplace=True)
             df["date"] = pd.to_datetime(df["date"])
             df.set_index("date", inplace=True)
-        
+
         # Apply date filters
         if start_date is not None:
             if not isinstance(start_date, pd.Timestamp):
@@ -420,49 +415,49 @@ class ParquetStorage:
             if not isinstance(end_date, pd.Timestamp):
                 end_date = pd.Timestamp(end_date)
             df = df[df.index <= end_date]
-        
+
         return df
-    
+
     def save_curve(self, date: datetime, commodity: str, data: pd.DataFrame) -> None:
         """Save curve snapshot to Parquet."""
         curves_dir = self.base_dir / "curves"
         curves_dir.mkdir(exist_ok=True)
-        
+
         date_str = date.strftime("%Y%m%d")
         filepath = curves_dir / f"{commodity}_curve_{date_str}.parquet"
         data.to_parquet(filepath, engine="pyarrow", compression="snappy")
-    
+
     def load_curve(
         self,
         date: datetime,
         commodity: str
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """Load curve snapshot from Parquet."""
         date_str = date.strftime("%Y%m%d")
         filepath = self.base_dir / "curves" / f"{commodity}_curve_{date_str}.parquet"
-        
+
         if not filepath.exists():
             return None
-        
+
         return pd.read_parquet(filepath)
-    
+
     def save_fundamentals(self, data_type: str, data: pd.DataFrame) -> None:
         """Save fundamental data to Parquet."""
         fund_dir = self.base_dir / "fundamentals"
         fund_dir.mkdir(exist_ok=True)
-        
+
         filepath = fund_dir / f"{data_type}.parquet"
         data.to_parquet(filepath, engine="pyarrow", compression="snappy")
-    
-    def load_fundamentals(self, data_type: str) -> Optional[pd.DataFrame]:
+
+    def load_fundamentals(self, data_type: str) -> pd.DataFrame | None:
         """Load fundamental data from Parquet."""
         filepath = self.base_dir / "fundamentals" / f"{data_type}.parquet"
-        
+
         if not filepath.exists():
             return None
-        
+
         return pd.read_parquet(filepath)
-    
+
     def list_available_data(self) -> dict:
         """List all available data files."""
         available = {
@@ -470,17 +465,17 @@ class ParquetStorage:
             "curves": [],
             "fundamentals": [],
         }
-        
+
         ohlcv_dir = self.base_dir / "ohlcv"
         if ohlcv_dir.exists():
             available["ohlcv"] = [f.stem for f in ohlcv_dir.glob("*.parquet")]
-        
+
         curves_dir = self.base_dir / "curves"
         if curves_dir.exists():
             available["curves"] = [f.stem for f in curves_dir.glob("*.parquet")]
-        
+
         fund_dir = self.base_dir / "fundamentals"
         if fund_dir.exists():
             available["fundamentals"] = [f.stem for f in fund_dir.glob("*.parquet")]
-        
+
         return available

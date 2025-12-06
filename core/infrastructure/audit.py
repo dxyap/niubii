@@ -7,12 +7,12 @@ Comprehensive audit trail for security and compliance.
 import json
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import threading
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class AuditEventType(Enum):
     SESSION_EXPIRED = "session_expired"
     TOKEN_CREATED = "token_created"
     TOKEN_REFRESHED = "token_refreshed"
-    
+
     # User management
     USER_CREATED = "user_created"
     USER_UPDATED = "user_updated"
     USER_DEACTIVATED = "user_deactivated"
     USER_ROLE_CHANGED = "user_role_changed"
-    
+
     # Trading
     ORDER_CREATED = "order_created"
     ORDER_MODIFIED = "order_modified"
@@ -41,28 +41,28 @@ class AuditEventType(Enum):
     ORDER_EXECUTED = "order_executed"
     POSITION_OPENED = "position_opened"
     POSITION_CLOSED = "position_closed"
-    
+
     # Risk
     RISK_LIMIT_SET = "risk_limit_set"
     RISK_LIMIT_BREACHED = "risk_limit_breached"
     RISK_LIMIT_OVERRIDE = "risk_limit_override"
-    
+
     # System
     SYSTEM_STARTED = "system_started"
     SYSTEM_STOPPED = "system_stopped"
     CONFIG_CHANGED = "config_changed"
     ALERT_TRIGGERED = "alert_triggered"
-    
+
     # Data access
     DATA_ACCESSED = "data_accessed"
     DATA_EXPORTED = "data_exported"
     REPORT_GENERATED = "report_generated"
-    
+
     # ML/Research
     MODEL_TRAINED = "model_trained"
     MODEL_DEPLOYED = "model_deployed"
     PREDICTION_MADE = "prediction_made"
-    
+
     # Backtest
     BACKTEST_STARTED = "backtest_started"
     BACKTEST_COMPLETED = "backtest_completed"
@@ -84,18 +84,18 @@ class AuditEvent:
     timestamp: datetime
     event_type: AuditEventType
     severity: AuditSeverity
-    user_id: Optional[str]
-    username: Optional[str]
+    user_id: str | None
+    username: str | None
     action: str
-    resource: Optional[str]
-    resource_id: Optional[str]
-    details: Dict[str, Any]
-    ip_address: Optional[str]
-    user_agent: Optional[str]
+    resource: str | None
+    resource_id: str | None
+    details: dict[str, Any]
+    ip_address: str | None
+    user_agent: str | None
     success: bool
-    error_message: Optional[str] = None
-    
-    def to_dict(self) -> Dict:
+    error_message: str | None = None
+
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat(),
@@ -112,9 +112,9 @@ class AuditEvent:
             "success": self.success,
             "error_message": self.error_message,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict) -> "AuditEvent":
+    def from_dict(cls, data: dict) -> "AuditEvent":
         return cls(
             id=data["id"],
             timestamp=datetime.fromisoformat(data["timestamp"]),
@@ -146,7 +146,7 @@ class AuditConfig:
     log_to_console: bool = False
     include_details: bool = True
     mask_sensitive: bool = True
-    sensitive_fields: List[str] = field(default_factory=lambda: [
+    sensitive_fields: list[str] = field(default_factory=lambda: [
         "password", "token", "secret", "api_key", "credit_card"
     ])
 
@@ -154,31 +154,31 @@ class AuditConfig:
 class AuditLogger:
     """
     Audit Logger.
-    
+
     Records all significant system events for compliance and security.
     """
-    
-    def __init__(self, config: Optional[AuditConfig] = None):
+
+    def __init__(self, config: AuditConfig | None = None):
         self.config = config or AuditConfig()
-        
+
         # Ensure storage directory exists
         self.config.storage_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Thread lock for database operations
         self._lock = threading.Lock()
-        
+
         # Initialize database
         if self.config.log_to_db:
             self._init_db()
-        
+
         # Initialize file logger
         if self.config.log_to_file:
             self._init_file_logger()
-    
+
     def _init_db(self):
         """Initialize SQLite database."""
         db_path = self.config.storage_path / self.config.db_file
-        
+
         with sqlite3.connect(str(db_path)) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS audit_events (
@@ -198,7 +198,7 @@ class AuditLogger:
                     error_message TEXT
                 )
             """)
-            
+
             # Create indexes
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_timestamp ON audit_events(timestamp)
@@ -209,60 +209,60 @@ class AuditLogger:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_user_id ON audit_events(user_id)
             """)
-            
+
             conn.commit()
-    
+
     def _init_file_logger(self):
         """Initialize file logger."""
         log_path = self.config.storage_path / self.config.log_file
-        
+
         self._file_handler = logging.FileHandler(log_path)
         self._file_handler.setFormatter(
             logging.Formatter('%(asctime)s - %(message)s')
         )
-    
+
     def _generate_id(self) -> str:
         """Generate unique event ID."""
         import secrets
         return secrets.token_hex(16)
-    
-    def _mask_sensitive(self, data: Dict) -> Dict:
+
+    def _mask_sensitive(self, data: dict) -> dict:
         """Mask sensitive fields in data."""
         if not self.config.mask_sensitive:
             return data
-        
+
         masked = {}
-        
+
         for key, value in data.items():
             key_lower = key.lower()
-            
+
             if any(s in key_lower for s in self.config.sensitive_fields):
                 masked[key] = "***MASKED***"
             elif isinstance(value, dict):
                 masked[key] = self._mask_sensitive(value)
             else:
                 masked[key] = value
-        
+
         return masked
-    
+
     def log(
         self,
         event_type: AuditEventType,
         action: str,
-        user_id: Optional[str] = None,
-        username: Optional[str] = None,
-        resource: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | None = None,
+        username: str | None = None,
+        resource: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
-        severity: Optional[AuditSeverity] = None,
+        error_message: str | None = None,
+        severity: AuditSeverity | None = None,
     ) -> AuditEvent:
         """
         Log an audit event.
-        
+
         Args:
             event_type: Type of event
             action: Description of action taken
@@ -276,13 +276,13 @@ class AuditLogger:
             success: Whether action was successful
             error_message: Error message if failed
             severity: Event severity
-            
+
         Returns:
             Created audit event
         """
         if not self.config.enabled:
             return None
-        
+
         # Determine severity
         if severity is None:
             if not success:
@@ -294,10 +294,10 @@ class AuditLogger:
                 severity = AuditSeverity.WARNING
             else:
                 severity = AuditSeverity.INFO
-        
+
         # Mask sensitive data
         masked_details = self._mask_sensitive(details or {})
-        
+
         event = AuditEvent(
             id=self._generate_id(),
             timestamp=datetime.now(),
@@ -314,25 +314,25 @@ class AuditLogger:
             success=success,
             error_message=error_message,
         )
-        
+
         # Log to database
         if self.config.log_to_db:
             self._log_to_db(event)
-        
+
         # Log to file
         if self.config.log_to_file:
             self._log_to_file(event)
-        
+
         # Log to console
         if self.config.log_to_console:
             self._log_to_console(event)
-        
+
         return event
-    
+
     def _log_to_db(self, event: AuditEvent):
         """Log event to database."""
         db_path = self.config.storage_path / self.config.db_file
-        
+
         with self._lock:
             try:
                 with sqlite3.connect(str(db_path)) as conn:
@@ -361,7 +361,7 @@ class AuditLogger:
                     conn.commit()
             except Exception as e:
                 logger.error(f"Failed to log audit event to database: {e}")
-    
+
     def _log_to_file(self, event: AuditEvent):
         """Log event to file."""
         log_line = (
@@ -372,10 +372,10 @@ class AuditLogger:
             f"resource={event.resource or 'N/A'} | "
             f"success={event.success}"
         )
-        
+
         if event.error_message:
             log_line += f" | error={event.error_message}"
-        
+
         try:
             self._file_handler.emit(
                 logging.LogRecord(
@@ -390,7 +390,7 @@ class AuditLogger:
             )
         except Exception as e:
             logger.error(f"Failed to log audit event to file: {e}")
-    
+
     def _log_to_console(self, event: AuditEvent):
         """Log event to console."""
         logger.info(
@@ -398,20 +398,20 @@ class AuditLogger:
             f"user={event.username or 'system'} | "
             f"action={event.action}"
         )
-    
+
     def query(
         self,
-        event_types: Optional[List[AuditEventType]] = None,
-        user_id: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        success_only: Optional[bool] = None,
+        event_types: list[AuditEventType] | None = None,
+        user_id: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        success_only: bool | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """
         Query audit events.
-        
+
         Args:
             event_types: Filter by event types
             user_id: Filter by user ID
@@ -420,46 +420,46 @@ class AuditLogger:
             success_only: Filter by success status
             limit: Maximum number of results
             offset: Offset for pagination
-            
+
         Returns:
             List of matching audit events
         """
         db_path = self.config.storage_path / self.config.db_file
-        
+
         query = "SELECT * FROM audit_events WHERE 1=1"
         params = []
-        
+
         if event_types:
             placeholders = ",".join("?" * len(event_types))
             query += f" AND event_type IN ({placeholders})"
             params.extend(et.value for et in event_types)
-        
+
         if user_id:
             query += " AND user_id = ?"
             params.append(user_id)
-        
+
         if start_date:
             query += " AND timestamp >= ?"
             params.append(start_date.isoformat())
-        
+
         if end_date:
             query += " AND timestamp <= ?"
             params.append(end_date.isoformat())
-        
+
         if success_only is not None:
             query += " AND success = ?"
             params.append(1 if success_only else 0)
-        
+
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
+
         events = []
-        
+
         try:
             with sqlite3.connect(str(db_path)) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute(query, params)
-                
+
                 for row in cursor.fetchall():
                     events.append(AuditEvent(
                         id=row["id"],
@@ -479,27 +479,27 @@ class AuditLogger:
                     ))
         except Exception as e:
             logger.error(f"Failed to query audit events: {e}")
-        
+
         return events
-    
+
     def get_user_activity(
         self,
         user_id: str,
         days: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get user activity summary.
-        
+
         Args:
             user_id: User ID
             days: Number of days to analyze
-            
+
         Returns:
             Activity summary
         """
         start_date = datetime.now() - timedelta(days=days)
         events = self.query(user_id=user_id, start_date=start_date, limit=1000)
-        
+
         summary = {
             "total_events": len(events),
             "successful": sum(1 for e in events if e.success),
@@ -508,32 +508,32 @@ class AuditLogger:
             "by_day": {},
             "last_activity": None,
         }
-        
+
         for event in events:
             # By type
             type_key = event.event_type.value
             summary["by_type"][type_key] = summary["by_type"].get(type_key, 0) + 1
-            
+
             # By day
             day_key = event.timestamp.strftime("%Y-%m-%d")
             summary["by_day"][day_key] = summary["by_day"].get(day_key, 0) + 1
-            
+
             # Last activity
             if summary["last_activity"] is None or event.timestamp > summary["last_activity"]:
                 summary["last_activity"] = event.timestamp
-        
+
         return summary
-    
+
     def get_security_events(
         self,
         days: int = 7,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """
         Get security-related events.
-        
+
         Args:
             days: Number of days to analyze
-            
+
         Returns:
             List of security events
         """
@@ -544,23 +544,23 @@ class AuditLogger:
             AuditEventType.RISK_LIMIT_OVERRIDE,
             AuditEventType.RISK_LIMIT_BREACHED,
         ]
-        
+
         return self.query(
             event_types=security_types,
             start_date=datetime.now() - timedelta(days=days),
             limit=500,
         )
-    
+
     def cleanup_old_events(self) -> int:
         """
         Remove events older than retention period.
-        
+
         Returns:
             Number of events deleted
         """
         db_path = self.config.storage_path / self.config.db_file
         cutoff_date = datetime.now() - timedelta(days=self.config.retention_days)
-        
+
         try:
             with sqlite3.connect(str(db_path)) as conn:
                 cursor = conn.execute(
@@ -569,17 +569,17 @@ class AuditLogger:
                 )
                 deleted = cursor.rowcount
                 conn.commit()
-                
+
                 logger.info(f"Cleaned up {deleted} old audit events")
                 return deleted
         except Exception as e:
             logger.error(f"Failed to cleanup old audit events: {e}")
             return 0
-    
-    def get_statistics(self) -> Dict[str, Any]:
+
+    def get_statistics(self) -> dict[str, Any]:
         """Get audit log statistics."""
         db_path = self.config.storage_path / self.config.db_file
-        
+
         stats = {
             "total_events": 0,
             "events_by_type": {},
@@ -587,38 +587,38 @@ class AuditLogger:
             "success_rate": 0,
             "db_size_mb": 0,
         }
-        
+
         try:
             with sqlite3.connect(str(db_path)) as conn:
                 # Total events
                 cursor = conn.execute("SELECT COUNT(*) FROM audit_events")
                 stats["total_events"] = cursor.fetchone()[0]
-                
+
                 # By type
                 cursor = conn.execute(
                     "SELECT event_type, COUNT(*) FROM audit_events GROUP BY event_type"
                 )
                 stats["events_by_type"] = dict(cursor.fetchall())
-                
+
                 # By severity
                 cursor = conn.execute(
                     "SELECT severity, COUNT(*) FROM audit_events GROUP BY severity"
                 )
                 stats["events_by_severity"] = dict(cursor.fetchall())
-                
+
                 # Success rate
                 cursor = conn.execute(
                     "SELECT AVG(success) FROM audit_events"
                 )
                 result = cursor.fetchone()[0]
                 stats["success_rate"] = result if result else 0
-            
+
             # Database size
             stats["db_size_mb"] = db_path.stat().st_size / (1024 * 1024)
-        
+
         except Exception as e:
             logger.error(f"Failed to get audit statistics: {e}")
-        
+
         return stats
 
 
@@ -627,8 +627,8 @@ def log_login(
     audit_logger: AuditLogger,
     username: str,
     success: bool,
-    ip_address: Optional[str] = None,
-    error: Optional[str] = None,
+    ip_address: str | None = None,
+    error: str | None = None,
 ):
     """Log login attempt."""
     audit_logger.log(
@@ -647,7 +647,7 @@ def log_trade(
     username: str,
     action: str,
     order_id: str,
-    details: Dict[str, Any],
+    details: dict[str, Any],
 ):
     """Log trading action."""
     event_types = {
@@ -656,7 +656,7 @@ def log_trade(
         "cancel": AuditEventType.ORDER_CANCELLED,
         "execute": AuditEventType.ORDER_EXECUTED,
     }
-    
+
     audit_logger.log(
         event_type=event_types.get(action, AuditEventType.ORDER_CREATED),
         action=f"Order {action}: {order_id}",

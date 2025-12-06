@@ -9,27 +9,24 @@ Data sources:
 - Positioning data (COT, speculator positions)
 """
 
+from .positioning import (
+    COTData,
+    PositioningConfig,
+    PositioningData,
+)
 from .provider import (
     AlternativeDataProvider,
     DataSourceConfig,
 )
-
 from .satellite import (
+    SatelliteConfig,
     SatelliteData,
     StorageTankData,
-    SatelliteConfig,
 )
-
 from .shipping import (
+    ShippingConfig,
     ShippingData,
     TankerData,
-    ShippingConfig,
-)
-
-from .positioning import (
-    PositioningData,
-    COTData,
-    PositioningConfig,
 )
 
 __all__ = [

@@ -5,16 +5,15 @@ LLM-powered news analysis and sentiment scoring.
 """
 
 from .news_analyzer import (
+    AnalysisConfig,
+    ArticleSummary,
     NewsAnalyzer,
     NewsArticle,
-    ArticleSummary,
-    AnalysisConfig,
 )
-
 from .sentiment import (
     SentimentAnalyzer,
-    SentimentResult,
     SentimentConfig,
+    SentimentResult,
     SentimentSource,
 )
 

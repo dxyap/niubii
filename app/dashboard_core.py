@@ -6,11 +6,11 @@ Provides object-oriented helpers that keep dashboard rendering code lean.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Sequence
 
-import os
 import pandas as pd
 
 
@@ -24,10 +24,10 @@ class PriceCache:
 
     def __init__(self, data_loader):
         self._data_loader = data_loader
-        self._prices: Dict[str, float] = {}
-        self._errors: Dict[str, str] = {}
+        self._prices: dict[str, float] = {}
+        self._errors: dict[str, str] = {}
 
-    def get(self, ticker: str) -> Optional[float]:
+    def get(self, ticker: str) -> float | None:
         """Return the latest price for ticker, caching repeated requests."""
         if ticker in self._errors:
             return None
@@ -38,11 +38,11 @@ class PriceCache:
                 self._errors[ticker] = str(e)
                 return None
         return self._prices[ticker]
-    
-    def get_error(self, ticker: str) -> Optional[str]:
+
+    def get_error(self, ticker: str) -> str | None:
         """Get error message for ticker if any."""
         return self._errors.get(ticker)
-    
+
     def has_errors(self) -> bool:
         """Check if any errors occurred."""
         return len(self._errors) > 0
@@ -66,9 +66,9 @@ class PortfolioAnalytics:
         self.positions = list(positions)
         self.data_loader = data_loader
         self.price_cache = price_cache or PriceCache(data_loader)
-        self._multiplier_cache: Dict[str, int] = {}
+        self._multiplier_cache: dict[str, int] = {}
         self._positions_df: pd.DataFrame | None = None
-        self._summary: Dict[str, float] | None = None
+        self._summary: dict[str, float] | None = None
         self._var_limit = float(os.getenv("MAX_VAR_LIMIT", 375000))
         self._base_capital = float(os.getenv("PORTFOLIO_BASE_CAPITAL", 1_000_000))
 
@@ -85,7 +85,7 @@ class PortfolioAnalytics:
         rows = []
         for pos in self.positions:
             current_price = self.price_cache.get(pos.ticker)
-            
+
             # Handle case when price data is unavailable
             if current_price is None:
                 rows.append(
@@ -103,7 +103,7 @@ class PortfolioAnalytics:
                     }
                 )
                 continue
-            
+
             multiplier = self._get_multiplier(pos.ticker)
             notional = abs(pos.qty) * current_price * multiplier
             price_change = current_price - pos.entry
@@ -164,14 +164,14 @@ class PortfolioAnalytics:
         return formatted[["Symbol", "Qty", "Entry", "Current", "P&L"]]
 
     @property
-    def summary(self) -> Dict[str, float]:
+    def summary(self) -> dict[str, float]:
         """Portfolio level summary metrics."""
         if self._summary is None:
             df = self.positions_dataframe
-            
+
             # Filter out rows with unavailable data for calculations
             valid_df = df[df["pnl"].notna()] if not df.empty else df
-            
+
             total_pnl = float(valid_df["pnl"].sum()) if not valid_df.empty else 0.0
             gross_exposure = float(valid_df["notional"].sum()) if not valid_df.empty else 0.0
             long_exposure = float(valid_df.loc[valid_df["qty"] > 0, "notional"].sum()) if not valid_df.empty else 0.0
@@ -183,7 +183,7 @@ class PortfolioAnalytics:
             var_utilization = (var_estimate / self._var_limit * 100) if self._var_limit else 0.0
             pnl_return_pct = (total_pnl / self._base_capital * 100) if self._base_capital else 0.0
             position_records = df.to_dict("records")
-            
+
             # Count positions with data errors
             data_errors = len(df[df["error"].notna()]) if "error" in df.columns and not df.empty else 0
 
@@ -210,10 +210,10 @@ class PortfolioAnalytics:
     def concentration(self, ticker_prefix: str) -> float:
         """Return concentration percentage for tickers with prefix."""
         df = self.positions_dataframe
-        
+
         # Filter out rows with None notional values
         valid_df = df[df["notional"].notna()] if not df.empty else df
-        
+
         total = float(valid_df["notional"].sum()) if not valid_df.empty else 0.0
         if total == 0:
             return 0.0
@@ -226,7 +226,7 @@ class PortfolioAnalytics:
 class DashboardData:
     """
     Data bundle for the dashboard with optimized loading.
-    
+
     Key optimizations:
     - Prefetch all price data in a single batch call
     - Lazy loading for expensive historical data
@@ -239,29 +239,29 @@ class DashboardData:
     def __init__(self, data_loader, lookback_days: int = 90, prefetch: bool = True):
         self.data_loader = data_loader
         self.lookback_days = lookback_days
-        
+
         # Price data (loaded together in batch)
         self._oil_prices = self._NOT_LOADED
         self._all_spreads = self._NOT_LOADED
-        
+
         # Curve data
         self._futures_curve = self._NOT_LOADED
         self._brent_curve = self._NOT_LOADED
         self._dubai_curve = self._NOT_LOADED
-        
+
         # Historical data (expensive - loaded lazily)
         self._wti_history = self._NOT_LOADED
-        
+
         # Connection status
-        self._connection_status: Dict[str, str] | None = None
-        
+        self._connection_status: dict[str, str] | None = None
+
         # Store errors for display
-        self._errors: Dict[str, str] = {}
-        
+        self._errors: dict[str, str] = {}
+
         # Prefetch price data if requested
         if prefetch:
             self._prefetch_price_data()
-    
+
     def _prefetch_price_data(self) -> None:
         """
         Prefetch all price-related data in optimized batch calls.
@@ -273,7 +273,7 @@ class DashboardData:
         except Exception as e:
             self._errors["oil_prices"] = str(e)
             self._oil_prices = None
-        
+
         try:
             # Fetch all spreads in a single batch (4 tickers total)
             self._all_spreads = self.data_loader.get_all_spreads()
@@ -282,7 +282,7 @@ class DashboardData:
             self._all_spreads = None
 
     @property
-    def oil_prices(self) -> Optional[Dict[str, Dict[str, float]]]:
+    def oil_prices(self) -> dict[str, dict[str, float]] | None:
         if self._oil_prices is self._NOT_LOADED:
             try:
                 self._oil_prices = self.data_loader.get_oil_prices()
@@ -292,11 +292,11 @@ class DashboardData:
         return self._oil_prices
 
     @property
-    def wti_brent_spread(self) -> Optional[Dict[str, float]]:
+    def wti_brent_spread(self) -> dict[str, float] | None:
         # Use prefetched spread data if available
         if self._all_spreads is not self._NOT_LOADED and self._all_spreads is not None:
             return self._all_spreads.get("wti_brent")
-        
+
         # Fallback to direct fetch
         try:
             return self.data_loader.get_wti_brent_spread()
@@ -305,11 +305,11 @@ class DashboardData:
             return None
 
     @property
-    def crack_spread(self) -> Optional[Dict[str, float]]:
+    def crack_spread(self) -> dict[str, float] | None:
         # Use prefetched spread data if available
         if self._all_spreads is not self._NOT_LOADED and self._all_spreads is not None:
             return self._all_spreads.get("crack_321")
-        
+
         # Fallback to direct fetch
         try:
             return self.data_loader.get_crack_spread_321()
@@ -318,7 +318,7 @@ class DashboardData:
             return None
 
     @property
-    def futures_curve(self) -> Optional[pd.DataFrame]:
+    def futures_curve(self) -> pd.DataFrame | None:
         if self._futures_curve is self._NOT_LOADED:
             try:
                 self._futures_curve = self.data_loader.get_futures_curve("wti", 18)
@@ -328,7 +328,7 @@ class DashboardData:
         return self._futures_curve
 
     @property
-    def brent_curve(self) -> Optional[pd.DataFrame]:
+    def brent_curve(self) -> pd.DataFrame | None:
         if self._brent_curve is self._NOT_LOADED:
             try:
                 self._brent_curve = self.data_loader.get_futures_curve("brent", 18)
@@ -338,7 +338,7 @@ class DashboardData:
         return self._brent_curve
 
     @property
-    def dubai_curve(self) -> Optional[pd.DataFrame]:
+    def dubai_curve(self) -> pd.DataFrame | None:
         if self._dubai_curve is self._NOT_LOADED:
             try:
                 self._dubai_curve = self.data_loader.get_futures_curve("dubai", 18)
@@ -348,7 +348,7 @@ class DashboardData:
         return self._dubai_curve
 
     @property
-    def wti_history(self) -> Optional[pd.DataFrame]:
+    def wti_history(self) -> pd.DataFrame | None:
         """Historical data is loaded lazily as it's expensive."""
         if self._wti_history is self._NOT_LOADED:
             try:
@@ -361,31 +361,31 @@ class DashboardData:
         return self._wti_history
 
     @property
-    def connection_status(self) -> Dict[str, str]:
+    def connection_status(self) -> dict[str, str]:
         if self._connection_status is None:
             self._connection_status = self.data_loader.get_connection_status()
         return self._connection_status
-    
-    def get_error(self, key: str) -> Optional[str]:
+
+    def get_error(self, key: str) -> str | None:
         """Get error message for a data key if any."""
         return self._errors.get(key)
-    
+
     def has_errors(self) -> bool:
         """Check if any errors occurred during data loading."""
         return len(self._errors) > 0
-    
-    def get_all_errors(self) -> Dict[str, str]:
+
+    def get_all_errors(self) -> dict[str, str]:
         """Get all error messages."""
         return self._errors.copy()
 
-    def curve_metrics(self) -> Dict[str, float | str]:
+    def curve_metrics(self) -> dict[str, float | str]:
         curve = self.futures_curve
         if curve is None or (isinstance(curve, pd.DataFrame) and curve.empty):
             return {
-                "structure": "Data Unavailable", 
-                "slope": 0.0, 
-                "m1_m2": 0.0, 
-                "m1_m6": 0.0, 
+                "structure": "Data Unavailable",
+                "slope": 0.0,
+                "m1_m2": 0.0,
+                "m1_m6": 0.0,
                 "m1_m12": 0.0,
                 "error": self.get_error("futures_curve"),
             }
@@ -418,7 +418,7 @@ class DashboardData:
 class DashboardContext:
     """Aggregates all data required to render the dashboard."""
 
-    def __init__(self, data_loader, positions: Sequence[Dict[str, float]], lookback_days: int = 90):
+    def __init__(self, data_loader, positions: Sequence[dict[str, float]], lookback_days: int = 90):
         self.data_loader = data_loader
         self.price_cache = PriceCache(data_loader)
         self.positions = [Position(**pos) for pos in positions]
@@ -428,8 +428,8 @@ class DashboardContext:
     def is_data_available(self) -> bool:
         """Check if data is available for display."""
         return self.data_loader.is_data_available()
-    
-    def get_connection_error(self) -> Optional[str]:
+
+    def get_connection_error(self) -> str | None:
         """Get connection error message if any."""
         return self.data_loader.get_connection_error_message()
 
@@ -447,7 +447,7 @@ class DashboardContext:
                 return trades[["trade_time", "instrument", "side", "quantity", "price"]].rename(
                     columns={
                         "trade_time": "Time",
-                        "instrument": "Symbol", 
+                        "instrument": "Symbol",
                         "side": "Side",
                         "quantity": "Qty",
                         "price": "Price",
@@ -455,7 +455,7 @@ class DashboardContext:
                 ).head(10)
         except Exception:
             pass
-        
+
         # Return empty DataFrame if no trades
         return pd.DataFrame(columns=["Time", "Symbol", "Side", "Qty", "Price"])
 
@@ -463,16 +463,16 @@ class DashboardContext:
         """Return a small table of rule-based signals."""
         oil_prices = self.data.oil_prices
         spread_data = self.data.wti_brent_spread
-        
+
         # If data is not available, return empty signals
         if oil_prices is None or spread_data is None:
             return pd.DataFrame(columns=["Instrument", "Direction", "Confidence", "Horizon", "Status"])
-        
+
         wti_data = oil_prices.get("WTI", {})
         wti_change = float(wti_data.get("change_pct", 0.0) or 0.0)
         spread = float(spread_data.get("spread", 0.0))
 
-        signals: List[Dict[str, str]] = []
+        signals: list[dict[str, str]] = []
 
         if wti_change > 0.3:
             confidence = min(50 + wti_change * 10, 85)
@@ -494,19 +494,19 @@ class DashboardContext:
 
         return pd.DataFrame(signals)
 
-    def generate_alerts(self, curve_structure: str, var_utilization: float) -> List[Dict[str, str]]:
+    def generate_alerts(self, curve_structure: str, var_utilization: float) -> list[dict[str, str]]:
         """Assemble risk alerts from portfolio metrics."""
-        alerts: List[Dict[str, str]] = []
-        
+        alerts: list[dict[str, str]] = []
+
         # Check for data availability issues first
         if not self.is_data_available():
             error = self.get_connection_error()
             alerts.append({
-                "severity": "critical", 
+                "severity": "critical",
                 "message": f"Data unavailable: {error or 'Bloomberg not connected'}"
             })
             return alerts
-        
+
         # Check for data loading errors
         if self.data.has_errors():
             for key, error in self.data.get_all_errors().items():
@@ -514,7 +514,7 @@ class DashboardContext:
                     "severity": "warning",
                     "message": f"Data error ({key}): {error[:50]}..."
                 })
-        
+
         # Portfolio alerts only if we have positions
         if self.positions:
             wti_concentration = self.portfolio.concentration("CL")
