@@ -101,7 +101,7 @@ class DataCache:
     Multi-layer caching system for market data.
 
     Caching Strategy:
-    - Real-time prices: 15 seconds (in-memory TTL cache)
+    - Real-time prices: 60 seconds (in-memory TTL cache)
     - Intraday: 60 seconds (in-memory TTL cache)
     - Historical OHLCV: 24 hours (disk)
     - Reference data: 7 days (disk)
@@ -115,7 +115,7 @@ class DataCache:
 
     # Cache durations in seconds
     DURATIONS = {
-        "real_time": 15,
+        "real_time": 60,
         "intraday": 60,
         "historical": 86400,  # 24 hours
         "reference": 604800,  # 7 days
@@ -133,7 +133,7 @@ class DataCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Efficient TTL cache for real-time data
-        self._real_time_cache = TTLCache(max_size=1000, default_ttl=15.0)
+        self._real_time_cache = TTLCache(max_size=1000, default_ttl=60.0)
         self._intraday_cache = TTLCache(max_size=500, default_ttl=60.0)
 
         # Legacy memory cache (for backward compatibility)

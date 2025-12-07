@@ -163,7 +163,7 @@ class SidebarView:
             auto_refresh = st.toggle(toggle_label, value=self.refresh_controller.auto_refresh_enabled)
             self.refresh_controller.update_auto_refresh(auto_refresh)
 
-            if st.button("Refresh Now", use_container_width=True):
+            if st.button("Refresh Now", width="stretch"):
                 self.refresh_controller.refresh_now()
 
             st.divider()
@@ -253,7 +253,7 @@ class MarketOverviewView:
             show_ma=True,
             ma_periods=[20, 50],
         )
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
         prices = self.context.data.oil_prices or {}
         live_brent = prices.get("Brent", {}).get("current")
@@ -277,7 +277,7 @@ class MarketOverviewView:
             return "Unknown"
 
         fig = create_futures_curve_chart(curve_data=curve, title="", height=280)
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
         prices = curve["price"]
         slope = (prices.iloc[-1] - prices.iloc[0]) / max(len(prices) - 1, 1)
@@ -317,7 +317,7 @@ class PortfolioView:
 
         st.dataframe(
             table,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Symbol": st.column_config.TextColumn("Symbol"),
@@ -392,7 +392,7 @@ class ActivityFeedView:
         if trades.empty:
             st.info("No recent trades.")
             return
-        st.dataframe(trades, use_container_width=True, hide_index=True)
+        st.dataframe(trades, width="stretch", hide_index=True)
 
     def _render_signals(self) -> None:
         st.subheader("Active Signals")
@@ -400,4 +400,4 @@ class ActivityFeedView:
         if signals.empty:
             st.info("No active signals.")
             return
-        st.dataframe(signals, use_container_width=True, hide_index=True)
+        st.dataframe(signals, width="stretch", hide_index=True)

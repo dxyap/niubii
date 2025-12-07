@@ -350,7 +350,7 @@ st.rerun()
 
 # After: Non-blocking with streamlit-autorefresh
 from streamlit_autorefresh import st_autorefresh
-st_autorefresh(interval=15000)  # Milliseconds
+st_autorefresh(interval=60000)  # Milliseconds (60s)
 ```
 
 ### Lazy Loading
@@ -372,8 +372,8 @@ class DashboardData:
 Adjust performance settings in `.env`:
 
 ```bash
-# Auto-refresh interval (seconds) - increase to reduce load
-AUTO_REFRESH_INTERVAL=10
+# Auto-refresh interval (seconds) - 60s default reduces churn
+AUTO_REFRESH_INTERVAL=60
 
 # Enable/disable real-time subscriptions
 BLOOMBERG_ENABLE_SUBSCRIPTIONS=true
@@ -418,7 +418,7 @@ MAX_CRUDE_GROUP_CONCENTRATION=60
 # =============================================================================
 # DASHBOARD SETTINGS
 # =============================================================================
-AUTO_REFRESH_INTERVAL=15          # Auto-refresh interval (seconds)
+AUTO_REFRESH_INTERVAL=60          # Auto-refresh interval (60 seconds)
 DASHBOARD_THEME=dark              # dark or light
 ```
 

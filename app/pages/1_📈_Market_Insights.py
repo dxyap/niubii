@@ -42,7 +42,7 @@ from app.components.theme import apply_theme, get_chart_config
 apply_theme(st)
 
 # Auto-refresh configuration
-REFRESH_INTERVAL_SECONDS = 15  # Refresh every 15 seconds
+REFRESH_INTERVAL_SECONDS = 60  # Refresh every 60 seconds
 
 # Initialize last refresh time in session state
 if 'last_refresh' not in st.session_state:
@@ -116,7 +116,8 @@ with header_col1:
     st.title("📈 Market Insights")
 
 with header_col2:
-    auto_refresh = st.toggle("Auto Refresh (15s)", value=st.session_state.auto_refresh, key="auto_refresh_toggle")
+    toggle_label = f"Auto Refresh ({REFRESH_INTERVAL_SECONDS}s)"
+    auto_refresh = st.toggle(toggle_label, value=st.session_state.auto_refresh, key="auto_refresh_toggle")
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
@@ -1021,8 +1022,8 @@ if st.session_state.auto_refresh:
 # Footer with refresh info
 st.markdown("---")
 st.markdown(
-    """<div style="text-align: center; color: #64748B; font-size: 12px;">
-    Data refreshes every 15 seconds when auto-refresh is enabled |
+    f"""<div style="text-align: center; color: #64748B; font-size: 12px;">
+    Data refreshes every {REFRESH_INTERVAL_SECONDS} seconds when auto-refresh is enabled |
     Charts show up to 180 days of historical data
     </div>""",
     unsafe_allow_html=True

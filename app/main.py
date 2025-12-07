@@ -83,7 +83,7 @@ class DashboardApp:
 
     def __init__(self):
         load_dotenv()
-        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "15"))
+        self.refresh_interval = int(os.getenv("AUTO_REFRESH_INTERVAL", "60"))
         self.refresh_controller = RefreshController(self.refresh_interval)
         self.data_loader = shared_state.get_data_loader()
         self._ensure_core_subscriptions()
