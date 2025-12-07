@@ -275,31 +275,74 @@ class DataLoader:
         if isinstance(end_date, str):
             end_date = pd.to_datetime(end_date)
 
-        today = pd.Timestamp.now().normalize()
+        now_ts = pd.Timestamp.now()
+        today = now_ts.normalize()
+
+        frequency_lower = frequency.lower()
+        stored_df = None
 
         # Try loading from storage first (if parquet/pyarrow is available)
-        df = None
         try:
-            df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
+            if frequency_lower == "daily":
+                stored_df = self.storage.load_ohlcv(ticker, frequency)
+            else:
+                stored_df = self.storage.load_ohlcv(ticker, frequency, start_date, end_date)
         except ImportError as e:
             # pyarrow not installed - skip storage, fetch directly from Bloomberg
             logger.debug(f"Parquet storage unavailable ({e}), fetching from Bloomberg")
         except Exception as e:
             logger.debug(f"Storage load failed for {ticker}: {e}")
 
-        if df is not None and len(df) > 0:
-            # Check if stored data is up-to-date (includes today if today is a business day)
-            # If today is a business day and the stored data is missing it, fetch fresh data
-            last_date = pd.Timestamp(df.index[-1]).normalize()
+        df = stored_df
+
+        # Incremental refresh for daily data to minimise Bloomberg calls
+        if df is not None and len(df) > 0 and frequency_lower == "daily":
+            df = df.sort_index()
+            last_stored_date = pd.Timestamp(df.index[-1]).normalize()
+            target_end = pd.Timestamp(end_date).normalize()
+            needs_refresh = last_stored_date < target_end
+
             is_business_day = today.dayofweek < 5  # Mon=0, Fri=4
+            if not needs_refresh and is_business_day and target_end >= today and last_stored_date < today:
+                needs_refresh = True
 
-            # If data is stale (missing today for business days), fetch fresh data
-            if is_business_day and last_date < today:
-                logger.debug(f"Stored data for {ticker} is stale (last: {last_date}, today: {today}), fetching fresh data")
-            else:
-                return df
+            if needs_refresh:
+                fetch_start = (last_stored_date - pd.Timedelta(days=3)).normalize()
+                fetch_end = end_date if end_date >= now_ts else now_ts
+                incremental_df = self.bloomberg.get_historical(
+                    ticker,
+                    fetch_start,
+                    fetch_end,
+                    frequency=frequency.upper()
+                )
 
-        # Fetch from Bloomberg
+                if incremental_df is not None and len(incremental_df) > 0:
+                    combined = pd.concat(
+                        [df[df.index < fetch_start], incremental_df]
+                    ).sort_index()
+                    combined = combined[~combined.index.duplicated(keep="last")]
+
+                    try:
+                        self.storage.save_ohlcv(ticker, combined, frequency)
+                    except ImportError:
+                        pass  # pyarrow not installed - skip saving
+                    except Exception as e:
+                        logger.debug(f"Could not save to storage: {e}")
+
+                    df = combined
+                else:
+                    logger.debug(f"No incremental data returned for {ticker} between {fetch_start} and {fetch_end}")
+
+        if df is not None and len(df) > 0:
+            filtered = df
+            if start_date is not None:
+                filtered = filtered[filtered.index >= start_date]
+            if end_date is not None:
+                filtered = filtered[filtered.index <= end_date]
+            if len(filtered) > 0:
+                return filtered
+
+        # Fetch from Bloomberg when cache/storage missing or empty
         df = self.bloomberg.get_historical(
             ticker,
             start_date,
