@@ -293,7 +293,7 @@ class DataLoader:
         except Exception as e:
             logger.debug(f"Storage load failed for {ticker}: {e}")
 
-        df = stored_df
+        df = self._ensure_datetime_index(stored_df)
 
         # Incremental refresh for daily data to minimise Bloomberg calls
         if df is not None and len(df) > 0 and frequency_lower == "daily":
@@ -315,6 +315,7 @@ class DataLoader:
                     fetch_end,
                     frequency=frequency.upper()
                 )
+                incremental_df = self._ensure_datetime_index(incremental_df)
 
                 if incremental_df is not None and len(incremental_df) > 0:
                     combined = pd.concat(
@@ -349,6 +350,7 @@ class DataLoader:
             end_date,
             frequency=frequency.upper()
         )
+        df = self._ensure_datetime_index(df)
 
         # Save to storage for future use (if parquet/pyarrow is available)
         if df is not None and len(df) > 0:
@@ -875,6 +877,22 @@ class DataLoader:
         self._connection_error = None
         self._fallback_reason = None
         self._reset_subscription_service()
+
+    def _ensure_datetime_index(self, df: pd.DataFrame | None) -> pd.DataFrame | None:
+        """Ensure dataframe index is a tz-naive DatetimeIndex for safe comparisons."""
+        if df is None or len(df) == 0:
+            return df
+
+        index = pd.to_datetime(df.index)
+        if getattr(index, "tz", None) is not None:
+            index = index.tz_localize(None)
+
+        if isinstance(df.index, pd.DatetimeIndex) and df.index.equals(index):
+            return df
+
+        df = df.copy()
+        df.index = index
+        return df
 
     def _switch_to_mock_mode(self, reason: str | None = None) -> None:
         """Switch to mock Bloomberg data."""
