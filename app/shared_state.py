@@ -37,11 +37,9 @@ def get_data_loader() -> DataLoader:
     """Get or create the shared data loader."""
     if 'data_loader' not in st.session_state:
         from core.data import DataLoader
-        # use_mock=None lets DataLoader read from BLOOMBERG_USE_MOCK env var
         st.session_state.data_loader = DataLoader(
             config_dir=str(project_root / "config"),
             data_dir=str(project_root / "data"),
-            use_mock=None  # Auto-detect from environment (defaults to live data)
         )
     return st.session_state.data_loader
 

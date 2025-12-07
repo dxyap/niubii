@@ -60,7 +60,7 @@ class AlternativeDataProvider:
         self,
         source_type: DataSourceType,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
         Get latest data from a source.
 
@@ -69,10 +69,11 @@ class AlternativeDataProvider:
             **kwargs: Source-specific parameters
 
         Returns:
-            Data from the source
+            Data from the source, or None if unavailable
         """
         if source_type not in self.configs or not self.configs[source_type].enabled:
-            return self._get_mock_data(source_type, **kwargs)
+            logger.warning(f"Data source {source_type.value} not configured or disabled")
+            return None
 
         # Check cache
         cache_key = f"{source_type.value}_{str(kwargs)}"
@@ -94,7 +95,11 @@ class AlternativeDataProvider:
             elif source_type == DataSourceType.POSITIONING:
                 data = self._fetch_positioning_data(**kwargs)
             else:
-                data = self._get_mock_data(source_type, **kwargs)
+                logger.warning(f"Unknown data source type: {source_type.value}")
+                return None
+
+            if data is None:
+                return None
 
             # Cache
             self._cache[cache_key] = data
@@ -104,7 +109,7 @@ class AlternativeDataProvider:
 
         except Exception as e:
             logger.error(f"Failed to fetch {source_type.value} data: {e}")
-            return self._get_mock_data(source_type, **kwargs)
+            return None
 
     def get_aggregated_view(self) -> dict[str, Any]:
         """
@@ -121,24 +126,27 @@ class AlternativeDataProvider:
         # Satellite data
         try:
             satellite = self.get_latest_data(DataSourceType.SATELLITE)
-            insights["satellite_storage"] = satellite
-            insights["sources"].append("satellite")
+            if satellite is not None:
+                insights["satellite_storage"] = satellite
+                insights["sources"].append("satellite")
         except Exception as e:
             logger.debug(f"Satellite data unavailable: {e}")
 
         # Shipping data
         try:
             shipping = self.get_latest_data(DataSourceType.SHIPPING)
-            insights["shipping_activity"] = shipping
-            insights["sources"].append("shipping")
+            if shipping is not None:
+                insights["shipping_activity"] = shipping
+                insights["sources"].append("shipping")
         except Exception as e:
             logger.debug(f"Shipping data unavailable: {e}")
 
         # Positioning data
         try:
             positioning = self.get_latest_data(DataSourceType.POSITIONING)
-            insights["market_positioning"] = positioning
-            insights["sources"].append("positioning")
+            if positioning is not None:
+                insights["market_positioning"] = positioning
+                insights["sources"].append("positioning")
         except Exception as e:
             logger.debug(f"Positioning data unavailable: {e}")
 
@@ -147,113 +155,55 @@ class AlternativeDataProvider:
 
         return insights
 
-    def _fetch_satellite_data(self, **kwargs) -> dict[str, Any]:
-        """Fetch satellite imagery data."""
-        # Would integrate with satellite data providers
-        # (Orbital Insight, Kayrros, etc.)
-        return self._get_mock_data(DataSourceType.SATELLITE, **kwargs)
+    def _fetch_satellite_data(self, **kwargs) -> dict[str, Any] | None:
+        """
+        Fetch satellite imagery data.
 
-    def _fetch_shipping_data(self, **kwargs) -> dict[str, Any]:
-        """Fetch shipping/tanker data."""
-        # Would integrate with AIS data providers
-        # (MarineTraffic, Kpler, etc.)
-        return self._get_mock_data(DataSourceType.SHIPPING, **kwargs)
+        Requires integration with satellite data providers (Orbital Insight, Kayrros, etc.)
+        Returns None if not configured.
+        """
+        config = self.configs.get(DataSourceType.SATELLITE)
+        if not config or not config.api_key:
+            logger.warning("Satellite data provider not configured - API key required")
+            return None
 
-    def _fetch_positioning_data(self, **kwargs) -> dict[str, Any]:
-        """Fetch positioning/COT data."""
-        # Would fetch from CFTC or data vendors
-        return self._get_mock_data(DataSourceType.POSITIONING, **kwargs)
+        # TODO: Integrate with satellite data providers
+        # This would call external APIs like Orbital Insight, Kayrros, etc.
+        logger.warning("Satellite data integration not implemented")
+        return None
 
-    def _get_mock_data(
-        self,
-        source_type: DataSourceType,
-        **kwargs,
-    ) -> dict[str, Any]:
-        """Generate mock data for testing."""
-        import random
+    def _fetch_shipping_data(self, **kwargs) -> dict[str, Any] | None:
+        """
+        Fetch shipping/tanker data.
 
-        base_timestamp = datetime.now().isoformat()
+        Requires integration with AIS data providers (MarineTraffic, Kpler, etc.)
+        Returns None if not configured.
+        """
+        config = self.configs.get(DataSourceType.SHIPPING)
+        if not config or not config.api_key:
+            logger.warning("Shipping data provider not configured - API key required")
+            return None
 
-        if source_type == DataSourceType.SATELLITE:
-            return {
-                "timestamp": base_timestamp,
-                "source": "satellite",
-                "data_type": "storage_levels",
-                "locations": {
-                    "cushing_ok": {
-                        "utilization_pct": round(random.uniform(45, 75), 1),
-                        "change_week": round(random.uniform(-3, 3), 2),
-                        "tanks_observed": 145,
-                    },
-                    "rotterdam": {
-                        "utilization_pct": round(random.uniform(60, 85), 1),
-                        "change_week": round(random.uniform(-2, 2), 2),
-                        "tanks_observed": 89,
-                    },
-                    "singapore": {
-                        "utilization_pct": round(random.uniform(70, 90), 1),
-                        "change_week": round(random.uniform(-2, 2), 2),
-                        "tanks_observed": 112,
-                    },
-                },
-                "global_utilization": round(random.uniform(55, 75), 1),
-                "signal": "neutral" if random.random() > 0.3 else ("bullish" if random.random() > 0.5 else "bearish"),
-            }
+        # TODO: Integrate with AIS data providers
+        # This would call external APIs like MarineTraffic, Kpler, etc.
+        logger.warning("Shipping data integration not implemented")
+        return None
 
-        elif source_type == DataSourceType.SHIPPING:
-            return {
-                "timestamp": base_timestamp,
-                "source": "shipping",
-                "data_type": "tanker_activity",
-                "vlcc_activity": {
-                    "at_sea": random.randint(150, 250),
-                    "loading": random.randint(20, 40),
-                    "discharging": random.randint(25, 45),
-                    "anchored": random.randint(30, 60),
-                },
-                "trade_flows": {
-                    "middle_east_asia": round(random.uniform(15, 25), 1),  # mb/d
-                    "atlantic_basin": round(random.uniform(8, 15), 1),
-                    "russia_exports": round(random.uniform(3, 6), 1),
-                },
-                "freight_rates": {
-                    "vlcc_td3": round(random.uniform(20, 80), 0),  # $/day (thousands)
-                    "suezmax": round(random.uniform(15, 50), 0),
-                    "aframax": round(random.uniform(10, 35), 0),
-                },
-                "signal": "neutral",
-            }
+    def _fetch_positioning_data(self, **kwargs) -> dict[str, Any] | None:
+        """
+        Fetch positioning/COT data.
 
-        elif source_type == DataSourceType.POSITIONING:
-            return {
-                "timestamp": base_timestamp,
-                "source": "cot_report",
-                "data_type": "market_positioning",
-                "crude_oil": {
-                    "managed_money_net": random.randint(-50000, 150000),
-                    "producer_hedger_net": random.randint(-200000, -50000),
-                    "swap_dealer_net": random.randint(-100000, 50000),
-                    "spec_long_pct": round(random.uniform(50, 80), 1),
-                    "change_week": random.randint(-15000, 15000),
-                },
-                "gasoline": {
-                    "managed_money_net": random.randint(-20000, 60000),
-                    "spec_long_pct": round(random.uniform(45, 75), 1),
-                },
-                "heating_oil": {
-                    "managed_money_net": random.randint(-15000, 40000),
-                    "spec_long_pct": round(random.uniform(40, 70), 1),
-                },
-                "signal": "bullish" if random.random() > 0.6 else ("bearish" if random.random() > 0.5 else "neutral"),
-            }
+        Requires integration with CFTC or data vendors.
+        Returns None if not configured.
+        """
+        config = self.configs.get(DataSourceType.POSITIONING)
+        if not config or not config.api_key:
+            logger.warning("Positioning data provider not configured - API key required")
+            return None
 
-        else:
-            return {
-                "timestamp": base_timestamp,
-                "source": source_type.value,
-                "data_type": "unknown",
-                "message": "Mock data - configure API for real data",
-            }
+        # TODO: Integrate with CFTC or data vendors
+        logger.warning("Positioning data integration not implemented")
+        return None
 
     def _generate_aggregate_signal(self, insights: dict[str, Any]) -> dict[str, Any]:
         """Generate aggregate signal from all sources."""

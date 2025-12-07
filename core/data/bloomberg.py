@@ -9,12 +9,10 @@ Raises DataUnavailableError when data cannot be retrieved.
 
 import builtins
 import contextlib
-import hashlib
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -262,276 +260,6 @@ class TickerMapper:
 
 
 # =============================================================================
-# PRICE SIMULATOR
-# =============================================================================
-
-class PriceSimulator:
-    """
-    Realistic price simulator that maintains state across calls.
-    Simulates market microstructure with drift, mean reversion, and volatility clustering.
-    """
-
-    def __init__(self):
-        # Base reference prices (as of market close)
-        self._reference_prices = {
-            "CL1 Comdty": 72.50,   # WTI Front Month (NYMEX)
-            "CL2 Comdty": 72.65,   # WTI 2nd Month (NYMEX)
-            "ENA1 Comdty": 72.55,  # WTI Front Month (ICE)
-            "ENA2 Comdty": 72.70,  # WTI 2nd Month (ICE)
-            "CO1 Comdty": 77.20,   # Brent Front Month
-            "CO2 Comdty": 77.35,   # Brent 2nd Month
-            "DAT2 Comdty": 76.80,  # Dubai Crude Swap M2 (avoids BALMO)
-            "DAT3 Comdty": 76.95,  # Dubai Crude Swap M3
-            "PGCR2MOE Index": 76.80,  # Dubai Crude Swap M2 (Platts - legacy)
-            "XB1 Comdty": 2.18,    # RBOB Gasoline ($/gal)
-            "XB2 Comdty": 2.19,    # RBOB 2nd Month
-            "HO1 Comdty": 2.52,    # Heating Oil ($/gal)
-            "HO2 Comdty": 2.53,    # Heating Oil 2nd Month
-            "QS1 Comdty": 680.50,  # Gasoil ($/tonne)
-            "NG1 Comdty": 3.25,    # Natural Gas
-        }
-
-        # Generate curve prices with realistic term structure (up to 18 months)
-        for i in range(3, 19):
-            # WTI NYMEX: slight contango
-            self._reference_prices[f"CL{i} Comdty"] = 72.50 + (i - 1) * 0.12
-            # WTI ICE: slight contango (tracks NYMEX closely)
-            self._reference_prices[f"ENA{i} Comdty"] = 72.55 + (i - 1) * 0.12
-            # Brent: slight contango
-            self._reference_prices[f"CO{i} Comdty"] = 77.20 + (i - 1) * 0.10
-            # Dubai: slight contango (starts at M2)
-            self._reference_prices[f"DAT{i} Comdty"] = 76.80 + (i - 2) * 0.10
-            # Products
-            self._reference_prices[f"XB{i} Comdty"] = 2.18 + (i - 1) * 0.005
-            self._reference_prices[f"HO{i} Comdty"] = 2.52 + (i - 1) * 0.005
-
-        # Current simulated prices (will drift from reference)
-        self._current_prices: dict[str, float] = {}
-        self._last_update: dict[str, datetime] = {}
-        self._price_history: dict[str, list[tuple]] = {}
-
-        # Volatility state for GARCH-like behavior
-        self._volatility_state: dict[str, float] = {}
-
-        # Session start time for intraday simulation
-        self._session_start = datetime.now()
-        self._daily_open: dict[str, float] = {}
-
-        # Initialize prices
-        self._initialize_session()
-
-    def _initialize_session(self):
-        """Initialize a new trading session with opening prices."""
-        for ticker, ref_price in self._reference_prices.items():
-            # Small gap from reference (overnight move)
-            gap = np.random.normal(0, ref_price * 0.005)
-            open_price = ref_price + gap
-
-            self._daily_open[ticker] = open_price
-            self._current_prices[ticker] = open_price
-            self._last_update[ticker] = datetime.now()
-            self._price_history[ticker] = [(datetime.now(), open_price)]
-            self._volatility_state[ticker] = 0.0001  # Initial variance
-
-    def get_price(self, ticker: str, field: str = "PX_LAST") -> float:
-        """Get simulated price with realistic tick-by-tick movement."""
-        if ticker not in self._current_prices:
-            # Try to infer base price from similar tickers
-            base = self._infer_base_price(ticker)
-            self._current_prices[ticker] = base
-            self._daily_open[ticker] = base
-            self._last_update[ticker] = datetime.now()
-            self._price_history[ticker] = [(datetime.now(), base)]
-            self._volatility_state[ticker] = 0.0001
-
-        # Time since last update
-        now = datetime.now()
-        last = self._last_update.get(ticker, now)
-        elapsed = (now - last).total_seconds()
-
-        # Update price if enough time has passed (simulate tick arrival)
-        if elapsed > 0.5:  # Update every 500ms minimum
-            self._update_price(ticker, elapsed)
-
-        current = self._current_prices[ticker]
-
-        # Apply bid/ask spread based on product
-        spread_pct = self._get_spread_pct(ticker)
-        spread = current * spread_pct
-
-        if field == "PX_BID":
-            return round(current - spread / 2, 4)
-        elif field == "PX_ASK":
-            return round(current + spread / 2, 4)
-        elif field == "PX_OPEN":
-            return round(self._daily_open.get(ticker, current), 4)
-        elif field == "PX_HIGH":
-            history = self._price_history.get(ticker, [])
-            if history:
-                return round(max(p for _, p in history), 4)
-            return round(current, 4)
-        elif field == "PX_LOW":
-            history = self._price_history.get(ticker, [])
-            if history:
-                return round(min(p for _, p in history), 4)
-            return round(current, 4)
-        elif field == "PX_SETTLE":
-            return round(current, 4)
-
-        return round(current, 4)
-
-    def _infer_base_price(self, ticker: str) -> float:
-        """Infer base price for unknown ticker from similar instruments."""
-        # Handle special tickers (non-standard format)
-        if "PGCR" in ticker or "Dubai" in ticker.upper():
-            return 76.80  # Dubai crude
-
-        parsed = TickerMapper.parse_ticker(ticker)
-        commodity = parsed.get("commodity", "CL")
-        month_num = parsed.get("month_number", 1)
-
-        # Base prices by commodity (including ICE WTI and Dubai)
-        base_prices = {
-            "CL": 72.50,   # WTI NYMEX
-            "ENA": 72.55,  # WTI ICE
-            "CO": 77.20,   # Brent
-            "DAT": 76.80,  # Dubai Crude Swap
-            "XB": 2.18,
-            "HO": 2.52,
-            "QS": 680.50,
-            "NG": 3.25,
-        }
-
-        base = base_prices.get(commodity, 70.0)
-
-        # Apply term structure (contango)
-        if month_num > 1:
-            base += (month_num - 1) * 0.10
-
-        return base
-
-    def _get_spread_pct(self, ticker: str) -> float:
-        """Get bid/ask spread percentage based on instrument."""
-        parsed = TickerMapper.parse_ticker(ticker)
-        commodity = parsed.get("commodity", "CL")
-
-        # Spread varies by liquidity
-        spreads = {
-            "CL": 0.0002,  # 2 bps - very liquid
-            "CO": 0.0003,  # 3 bps - liquid
-            "XB": 0.0005,  # 5 bps - moderate
-            "HO": 0.0005,  # 5 bps - moderate
-            "QS": 0.001,   # 10 bps - less liquid
-            "NG": 0.0004,  # 4 bps - liquid
-        }
-
-        return spreads.get(commodity, 0.0005)
-
-    def get_open_interest(self, ticker: str) -> int:
-        """Generate stable-but-realistic open interest for mock data."""
-        parsed = TickerMapper.parse_ticker(ticker)
-        commodity = parsed.get("commodity", "CL")
-        month = parsed.get("month_number") or parsed.get("month") or 1
-
-        # Base levels approximate actual market depth
-        base_levels = {
-            "CL": 350_000,
-            "CO": 280_000,
-            "XB": 120_000,
-            "HO": 95_000,
-            "NG": 400_000,
-            "QS": 60_000,
-        }
-        base = base_levels.get(commodity, 80_000)
-
-        # Later contracts generally have less activity
-        month_factor = max(0.25, 1 - 0.08 * (month - 1))
-
-        # Deterministic noise so values stay consistent across refreshes
-        seed = int(hashlib.md5(ticker.encode()).hexdigest()[:8], 16)
-        rng = np.random.RandomState(seed)
-        noise = rng.randint(-8_000, 8_000)
-
-        value = max(int(base * month_factor + noise), 1_000)
-        return value
-
-    def _update_price(self, ticker: str, elapsed_seconds: float):
-        """Update price using realistic market microstructure model."""
-        current = self._current_prices[ticker]
-        reference = self._reference_prices.get(ticker, current)
-
-        # Scale volatility by time elapsed (but cap it)
-        time_scale = min(elapsed_seconds / 60, 5)  # Cap at 5 minutes equivalent
-
-        # GARCH-like volatility clustering
-        vol_state = self._volatility_state.get(ticker, 0.0001)
-
-        # Volatility parameters (annualized ~25% for oil)
-        base_vol = 0.25 / np.sqrt(252 * 6.5 * 60)  # Per-minute vol
-
-        # Update volatility state (GARCH(1,1) approximation)
-        shock = np.random.standard_normal()
-        vol_state = 0.9 * vol_state + 0.1 * (shock ** 2) * (base_vol ** 2)
-        self._volatility_state[ticker] = vol_state
-
-        current_vol = np.sqrt(vol_state) * np.sqrt(time_scale)
-
-        # Mean reversion toward reference (weak)
-        mean_reversion_speed = 0.01
-        mean_reversion = mean_reversion_speed * (reference - current) * time_scale / 60
-
-        # Random innovation
-        innovation = current_vol * current * shock
-
-        # New price
-        new_price = current + mean_reversion + innovation
-
-        # Ensure price stays positive
-        new_price = max(new_price, current * 0.9)
-
-        self._current_prices[ticker] = new_price
-        self._last_update[ticker] = datetime.now()
-
-        # Store in history (keep last 1000 points)
-        history = self._price_history.get(ticker, [])
-        history.append((datetime.now(), new_price))
-        if len(history) > 1000:
-            history = history[-1000:]
-        self._price_history[ticker] = history
-
-    def get_price_change(self, ticker: str) -> dict[str, float]:
-        """Get price change from session open."""
-        current = self.get_price(ticker)
-        open_price = self._daily_open.get(ticker, current)
-
-        change = current - open_price
-        change_pct = (change / open_price * 100) if open_price != 0 else 0
-
-        return {
-            "current": current,
-            "open": open_price,
-            "change": round(change, 4),
-            "change_pct": round(change_pct, 4),
-            "high": self.get_price(ticker, "PX_HIGH"),
-            "low": self.get_price(ticker, "PX_LOW"),
-        }
-
-    def get_intraday_history(self, ticker: str) -> pd.DataFrame:
-        """Get intraday price history."""
-        history = self._price_history.get(ticker, [])
-        if not history:
-            return pd.DataFrame(columns=["timestamp", "price"])
-
-        df = pd.DataFrame(history, columns=["timestamp", "price"])
-        return df
-
-    def reset_session(self):
-        """Reset to simulate a new trading day."""
-        self._session_start = datetime.now()
-        self._initialize_session()
-
-
-# =============================================================================
 # BLOOMBERG CLIENT
 # =============================================================================
 
@@ -540,31 +268,18 @@ class BloombergClient:
     Bloomberg API Client.
 
     Connects to real Bloomberg Terminal via BLPAPI.
-    Raises BloombergConnectionError if connection fails and mock mode is disabled.
+    Raises BloombergConnectionError if connection fails.
     """
 
-    def __init__(self, use_mock: bool = False):
-        """
-        Initialize Bloomberg client.
-
-        Args:
-            use_mock: If True, use simulated data for development only.
-                      Default is False - requires Bloomberg Terminal.
-        """
-        self.use_mock = use_mock
+    def __init__(self):
+        """Initialize Bloomberg client and connect to Bloomberg Terminal."""
         self.connected = False
         self._session = None
         self._ref_data_service = None
-        self._simulator = None
         self._connection_error = None
 
-        if use_mock:
-            # Only initialize simulator in explicit mock mode
-            self._simulator = PriceSimulator()
-            logger.info("BloombergClient initialized in MOCK mode (development only)")
-        else:
-            # Attempt to connect to Bloomberg
-            self._connect()
+        # Attempt to connect to Bloomberg
+        self._connect()
 
     def _connect(self) -> bool:
         """Attempt to connect to Bloomberg API."""
@@ -608,9 +323,6 @@ class BloombergClient:
 
     def _ensure_connection(self) -> bool:
         """Ensure we have a valid connection. Raises if not connected."""
-        if self.use_mock:
-            return True
-
         if not self.connected:
             # Try to reconnect
             if not self._connect():
@@ -636,11 +348,6 @@ class BloombergClient:
         valid, msg = TickerMapper.validate_ticker(ticker)
         if not valid:
             raise DataUnavailableError(f"Invalid ticker {ticker}: {msg}")
-
-        if self.use_mock:
-            if self._simulator is None:
-                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
-            return self._simulator.get_price(ticker, field)
 
         self._ensure_connection()
         return self._get_bloomberg_price(ticker, field)
@@ -684,11 +391,6 @@ class BloombergClient:
         Raises:
             DataUnavailableError: If price data cannot be retrieved
         """
-        if self.use_mock:
-            if self._simulator is None:
-                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
-            return self._simulator.get_price_change(ticker)
-
         self._ensure_connection()
 
         # Get multiple fields from Bloomberg
@@ -727,22 +429,6 @@ class BloombergClient:
         """
         if fields is None:
             fields = ["PX_LAST", "PX_BID", "PX_ASK", "PX_VOLUME"]
-
-        if self.use_mock:
-            if self._simulator is None:
-                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
-            data = {}
-            for ticker in tickers:
-                row = {}
-                for field in fields:
-                    if field == "PX_VOLUME":
-                        row[field] = np.random.randint(10000, 100000)
-                    elif field == "OPEN_INT":
-                        row[field] = self._simulator.get_open_interest(ticker)
-                    else:
-                        row[field] = self._simulator.get_price(ticker, field)
-                data[ticker] = row
-            return pd.DataFrame(data).T
 
         self._ensure_connection()
         return self._get_bloomberg_prices(tickers, fields)
@@ -819,11 +505,6 @@ class BloombergClient:
         elif isinstance(end_date, str):
             end_date = pd.to_datetime(end_date)
 
-        if self.use_mock:
-            if self._simulator is None:
-                raise DataUnavailableError("Mock mode enabled but simulator not initialized")
-            return self._generate_historical(ticker, start_date, end_date, fields, frequency)
-
         self._ensure_connection()
         return self._get_bloomberg_historical(ticker, start_date, end_date, fields, frequency)
 
@@ -887,96 +568,6 @@ class BloombergClient:
             raise
         except Exception as e:
             raise DataUnavailableError(f"Bloomberg historical API error: {e}")
-
-    def _generate_historical(
-        self,
-        ticker: str,
-        start_date: datetime,
-        end_date: datetime,
-        fields: list[str],
-        frequency: str
-    ) -> pd.DataFrame:
-        """Generate historical data that connects to current price."""
-        # Get current price to anchor the series
-        current_price = self._simulator.get_price(ticker)
-
-        # Normalize dates to midnight for clean date indices
-        start_date_normalized = pd.Timestamp(start_date).normalize()
-        end_date_normalized = pd.Timestamp(end_date).normalize()
-        today = pd.Timestamp.now().normalize()
-
-        # Always ensure we include up to and including today for daily data
-        # This fixes the issue where the last 1-2 days might be missing
-        if end_date_normalized >= today - pd.Timedelta(days=2):
-            end_date_normalized = today
-
-        # Generate date range - use 'B' for business days
-        if frequency == "DAILY":
-            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='B')
-
-            # Explicitly ensure today is included if it's a business day
-            if today.dayofweek < 5:  # Mon=0, Fri=4
-                if len(dates) == 0 or dates[-1] < today:
-                    dates = dates.append(pd.DatetimeIndex([today]))
-        elif frequency == "WEEKLY":
-            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='W')
-        else:
-            dates = pd.date_range(start=start_date_normalized, end=end_date_normalized, freq='M')
-
-        n = len(dates)
-        if n == 0:
-            return pd.DataFrame()
-
-        # Use ticker hash for reproducible but unique series per ticker
-        # Include today's date to ensure data changes day-to-day
-        seed_str = f"{ticker}_{datetime.now().strftime('%Y%m%d')}"
-        seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16) % (2**32)
-        rng = np.random.RandomState(seed)
-
-        # Generate returns working backwards from current price
-        daily_vol = 0.02  # 2% daily volatility
-        returns = rng.normal(0.0001, daily_vol, n)
-
-        # Add some autocorrelation (momentum)
-        for i in range(1, n):
-            returns[i] += 0.1 * returns[i-1]
-
-        # Build price series backwards from current price
-        prices = np.zeros(n)
-        prices[-1] = current_price
-        for i in range(n - 2, -1, -1):
-            prices[i] = prices[i + 1] / (1 + returns[i + 1])
-
-        # Generate OHLC from close
-        high_mult = 1 + np.abs(rng.normal(0.005, 0.003, n))
-        low_mult = 1 - np.abs(rng.normal(0.005, 0.003, n))
-        open_noise = rng.normal(0, 0.003, n)
-
-        # Generate realistic open interest that builds up and declines around expiry
-        base_oi = self._simulator.get_open_interest(ticker) if self._simulator else 150000
-        oi_trend = np.linspace(0.7, 1.0, n) * base_oi  # Gradual build-up
-        oi_noise = rng.normal(0, 0.05, n) * base_oi
-        open_interest = np.maximum((oi_trend + oi_noise).astype(int), 1000)
-
-        data = {
-            "date": dates,
-            "PX_LAST": prices,
-            "PX_OPEN": prices * (1 + open_noise),
-            "PX_HIGH": prices * high_mult,
-            "PX_LOW": prices * low_mult,
-            "PX_VOLUME": rng.randint(50000, 200000, n),
-            "OPEN_INT": open_interest,
-        }
-
-        # Ensure OHLC consistency
-        df = pd.DataFrame(data)
-        df["PX_HIGH"] = df[["PX_OPEN", "PX_HIGH", "PX_LAST"]].max(axis=1)
-        df["PX_LOW"] = df[["PX_OPEN", "PX_LOW", "PX_LAST"]].min(axis=1)
-
-        df.set_index("date", inplace=True)
-
-        available_fields = [f for f in fields if f in df.columns]
-        return df[available_fields]
 
     def get_curve(self, commodity: str = "wti", num_months: int = 12) -> pd.DataFrame:
         """
@@ -1140,13 +731,8 @@ class BloombergClient:
         Note: Intraday data requires Bloomberg subscription service.
         Returns empty DataFrame if not available.
         """
-        if self.use_mock:
-            if self._simulator is None:
-                return pd.DataFrame(columns=["timestamp", "price"])
-            return self._simulator.get_intraday_history(ticker)
-
-        # For real Bloomberg, intraday bars would require subscription service
-        # Return empty DataFrame to indicate no intraday data available
+        # Intraday bars require Bloomberg subscription service
+        # Return empty DataFrame if not available
         return pd.DataFrame(columns=["timestamp", "price"])
 
     def disconnect(self):
@@ -1202,10 +788,10 @@ class BloombergSubscriptionService:
                 self._callbacks.setdefault(ticker, []).append(callback)
             return True
 
-        if self.client.use_mock or not self.subscriptions_enabled:
-            # Register for simulated updates
+        if not self.subscriptions_enabled:
+            # Subscriptions not enabled - register for polling-based updates
             self._subscriptions[ticker] = {
-                "mode": "simulated",
+                "mode": "polling",
                 "last_update": datetime.now(),
             }
             if callback:
@@ -1242,9 +828,9 @@ class BloombergSubscriptionService:
 
         except Exception as e:
             logger.warning(f"Could not subscribe to {ticker}: {e}")
-            # Fall back to simulated
+            # Fall back to polling-based updates
             self._subscriptions[ticker] = {
-                "mode": "simulated",
+                "mode": "polling",
                 "last_update": datetime.now(),
             }
             if callback:
@@ -1308,117 +894,3 @@ class BloombergSubscriptionService:
             with contextlib.suppress(builtins.BaseException):
                 self._subscription_session.stop()
             self._subscription_session = None
-
-
-# =============================================================================
-# MOCK DATA GENERATORS
-# =============================================================================
-
-class MockBloombergData:
-    """Generate comprehensive mock market data for demonstration."""
-
-    @staticmethod
-    def generate_eia_inventory_data(periods: int = 52) -> pd.DataFrame:
-        """Generate mock EIA inventory data."""
-        dates = pd.date_range(end=datetime.now(), periods=periods, freq='W-WED')
-
-        # Base inventory level around 430 million barrels
-        base = 430.0
-
-        # Add seasonality (higher in spring, lower in fall)
-        seasonal = 15 * np.sin(2 * np.pi * np.arange(periods) / 52 - np.pi/2)
-
-        # Add trend and noise
-        rng = np.random.RandomState(42)
-        trend = np.linspace(-10, 5, periods)
-        noise = rng.normal(0, 3, periods)
-
-        inventory = base + seasonal + trend + noise
-
-        # Calculate week-over-week change
-        change = np.diff(inventory, prepend=inventory[0])
-
-        # Expectations (analyst estimates) with some error
-        expectation = change + rng.normal(0, 1.5, periods)
-
-        return pd.DataFrame({
-            "date": dates,
-            "inventory_mmb": inventory,
-            "change_mmb": change,
-            "expectation_mmb": expectation,
-            "surprise_mmb": change - expectation,
-        }).set_index("date")
-
-    @staticmethod
-    def generate_opec_production_data() -> pd.DataFrame:
-        """Generate mock OPEC production data."""
-        countries = {
-            "Saudi Arabia": {"quota": 9.00, "compliance": 0.98},
-            "Russia": {"quota": 9.50, "compliance": 0.95},
-            "Iraq": {"quota": 4.00, "compliance": 0.85},
-            "UAE": {"quota": 2.90, "compliance": 1.01},
-            "Kuwait": {"quota": 2.40, "compliance": 0.99},
-            "Nigeria": {"quota": 1.38, "compliance": 0.88},
-            "Angola": {"quota": 1.28, "compliance": 0.92},
-            "Algeria": {"quota": 0.96, "compliance": 0.97},
-        }
-
-        data = []
-        for country, params in countries.items():
-            actual = params["quota"] * params["compliance"]
-            data.append({
-                "country": country,
-                "quota_mbpd": params["quota"],
-                "actual_mbpd": round(actual, 2),
-                "compliance_pct": round(params["compliance"] * 100, 1),
-            })
-
-        return pd.DataFrame(data)
-
-    @staticmethod
-    def generate_turnaround_data() -> pd.DataFrame:
-        """Generate mock refinery turnaround data."""
-        turnarounds = [
-            {
-                "region": "USGC",
-                "refinery": "Motiva Port Arthur",
-                "capacity_kbpd": 630,
-                "start_date": datetime.now() + timedelta(days=5),
-                "end_date": datetime.now() + timedelta(days=20),
-                "type": "Planned",
-            },
-            {
-                "region": "USGC",
-                "refinery": "Marathon Galveston Bay",
-                "capacity_kbpd": 585,
-                "start_date": datetime.now() + timedelta(days=10),
-                "end_date": datetime.now() + timedelta(days=35),
-                "type": "Planned",
-            },
-            {
-                "region": "NW Europe",
-                "refinery": "Shell Pernis",
-                "capacity_kbpd": 404,
-                "start_date": datetime.now() + timedelta(days=1),
-                "end_date": datetime.now() + timedelta(days=15),
-                "type": "Planned",
-            },
-            {
-                "region": "Asia",
-                "refinery": "SK Ulsan",
-                "capacity_kbpd": 840,
-                "start_date": datetime.now() + timedelta(days=35),
-                "end_date": datetime.now() + timedelta(days=55),
-                "type": "Planned",
-            },
-            {
-                "region": "USGC",
-                "refinery": "ExxonMobil Beaumont",
-                "capacity_kbpd": 369,
-                "start_date": datetime.now() - timedelta(days=5),
-                "end_date": datetime.now() + timedelta(days=10),
-                "type": "Unplanned",
-            },
-        ]
-
-        return pd.DataFrame(turnarounds)

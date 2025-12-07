@@ -173,11 +173,14 @@ with tab2:
 
     fig2.add_hline(y=0.95, line_dash='dash', line_color=CHART_COLORS['ma_fast'], annotation_text='Long-term Avg')
 
+    corr_yaxis = dict(BASE_LAYOUT['yaxis'])
+    corr_yaxis.update({'range': [0.8, 1.0], 'tickformat': '.2f'})
+
     fig2.update_layout(
         **BASE_LAYOUT,
         height=300,
         yaxis_title='Correlation',
-        yaxis=dict(**BASE_LAYOUT['yaxis'], range=[0.8, 1.0], tickformat='.2f'),
+        yaxis=corr_yaxis,
     )
 
     st.plotly_chart(fig2, width='stretch', config=get_chart_config())

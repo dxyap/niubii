@@ -28,7 +28,7 @@ class DataLoader:
     Unified data loading interface.
 
     Handles:
-    - Bloomberg API integration (real data by default)
+    - Bloomberg API integration (live data)
     - Caching layer
     - Parquet storage for historical data
     - Ticker validation and mapping
@@ -49,7 +49,6 @@ class DataLoader:
         self,
         config_dir: str = "config",
         data_dir: str = "data",
-        use_mock: bool = None
     ):
         """
         Initialize data loader.
@@ -57,26 +56,12 @@ class DataLoader:
         Args:
             config_dir: Configuration directory
             data_dir: Data storage directory
-            use_mock: Use mock data instead of Bloomberg.
-                      If None, reads BLOOMBERG_USE_MOCK env var (default: false).
         """
         self.config_dir = Path(config_dir)
         self.data_dir = Path(data_dir)
 
-        # Auto-detect mock mode from environment - DEFAULT IS FALSE (real data)
-        if use_mock is None:
-            use_mock = os.environ.get("BLOOMBERG_USE_MOCK", "false").lower() == "true"
-
-        self._use_mock = use_mock
-        self._explicit_mock = bool(use_mock)
-        self._allow_mock_fallback = os.environ.get(
-            "BLOOMBERG_ALLOW_MOCK_FALLBACK",
-            "true",
-        ).lower() != "false"
-        self._fallback_reason: str | None = None
-
         # Initialize components
-        self.bloomberg = BloombergClient(use_mock=use_mock)
+        self.bloomberg = BloombergClient()
         self.cache = DataCache(cache_dir=str(self.data_dir / "cache"))
         self.storage = ParquetStorage(base_dir=str(self.data_dir / "historical"))
 
@@ -86,32 +71,19 @@ class DataLoader:
         # Load configurations
         self._load_config()
 
-        # Determine actual mode and connection status
-        if use_mock:
-            self._data_mode = "mock"
-            self._connection_error = None
-            logger.info("DataLoader initialized in MOCK mode (development only)")
-        elif self.bloomberg.connected:
+        # Determine connection status
+        if self.bloomberg.connected:
             self._data_mode = "live"
             self._connection_error = None
             logger.info("DataLoader initialized in LIVE mode (Bloomberg connected)")
         else:
-            # Determine fallback behavior
+            self._data_mode = "disconnected"
             self._connection_error = self.bloomberg.get_connection_error()
-            if self._allow_mock_fallback:
-                self._fallback_reason = self._connection_error or "Bloomberg connection unavailable"
-                logger.warning(
-                    "Bloomberg connection unavailable, switching to simulated data: %s",
-                    self._fallback_reason,
-                )
-                self._switch_to_mock_mode(self._fallback_reason)
-            else:
-                self._data_mode = "disconnected"
-                logger.error(
-                    "DataLoader: Bloomberg not connected - %s",
-                    self._connection_error,
-                )
-                logger.error("Live Bloomberg connection required and mock fallback disabled.")
+            logger.error(
+                "DataLoader: Bloomberg not connected - %s",
+                self._connection_error,
+            )
+            logger.error("Live Bloomberg connection required.")
 
     def _load_config(self):
         """Load configuration files."""
@@ -757,10 +729,6 @@ class DataLoader:
         # Clear cache
         self.cache.clear()
 
-        # Reset price simulator session
-        if hasattr(self.bloomberg, 'simulator'):
-            self.bloomberg.simulator.reset_session()
-
         # Refresh key data
         self.get_oil_prices()
         self.get_futures_curve("wti")
@@ -772,7 +740,6 @@ class DataLoader:
     def get_connection_status(self) -> dict:
         """Get Bloomberg connection status."""
         return {
-            "mock_mode": self._use_mock,
             "connected": self.bloomberg.connected,
             "host": os.environ.get("BLOOMBERG_HOST", "localhost"),
             "port": os.environ.get("BLOOMBERG_PORT", "8194"),
@@ -780,10 +747,7 @@ class DataLoader:
             "subscribed_tickers": self.subscription_service.get_subscribed_tickers(),
             "data_mode": self._data_mode,
             "connection_error": self._connection_error,
-            "data_available": self._data_mode in ("live", "mock"),
-            "fallback_allowed": self._allow_mock_fallback,
-            "fallback_reason": self._fallback_reason,
-            "force_mock": self._explicit_mock,
+            "data_available": self._data_mode == "live",
         }
 
     def subscribe_to_core_tickers(self) -> None:
@@ -811,11 +775,11 @@ class DataLoader:
         return self._data_mode == "live"
 
     def is_data_available(self) -> bool:
-        """Check if any data source is available (live or mock)."""
-        return self._data_mode in ("live", "mock")
+        """Check if data source is available."""
+        return self._data_mode == "live"
 
     def get_data_mode(self) -> str:
-        """Get current data mode: 'live', 'mock', or 'disconnected'."""
+        """Get current data mode: 'live' or 'disconnected'."""
         return self._data_mode
 
     def get_connection_error_message(self) -> str | None:
@@ -823,40 +787,28 @@ class DataLoader:
         return self._connection_error
 
     # =========================================================================
-    # DATA MODE MANAGEMENT
+    # CONNECTION MANAGEMENT
     # =========================================================================
 
-    def try_enable_live_data(self) -> bool:
+    def try_reconnect(self) -> bool:
         """
-        Attempt to reconnect to Bloomberg live data.
+        Attempt to reconnect to Bloomberg.
 
         Returns:
             True if reconnection succeeded, False otherwise.
         """
-        if self._explicit_mock:
-            logger.info("Live data disabled because BLOOMBERG_USE_MOCK=true")
-            return False
-
-        candidate = BloombergClient(use_mock=False)
+        candidate = BloombergClient()
         if candidate.connected:
-            self._set_live_client(candidate)
-            logger.info("Successfully switched to LIVE Bloomberg data")
+            self.bloomberg = candidate
+            self._data_mode = "live"
+            self._connection_error = None
+            self._reset_subscription_service()
+            logger.info("Successfully reconnected to Bloomberg")
             return True
 
         self._connection_error = candidate.get_connection_error()
-        self._fallback_reason = self._connection_error
         logger.warning("Failed to reconnect to Bloomberg: %s", self._connection_error)
-
-        if self._allow_mock_fallback:
-            self._switch_to_mock_mode(self._connection_error)
-        else:
-            self._data_mode = "disconnected"
-
         return False
-
-    def enable_mock_mode(self, reason: str | None = None) -> None:
-        """Explicitly switch to simulated data (mock mode)."""
-        self._switch_to_mock_mode(reason or "Manual mock mode activation")
 
     # -------------------------------------------------------------------------
     # Internal helpers
@@ -868,15 +820,6 @@ class DataLoader:
             with contextlib.suppress(Exception):
                 self.subscription_service.stop()
         self.subscription_service = BloombergSubscriptionService(self.bloomberg)
-
-    def _set_live_client(self, client: BloombergClient) -> None:
-        """Set Bloomberg client to a live connection."""
-        self.bloomberg = client
-        self._use_mock = False
-        self._data_mode = "live"
-        self._connection_error = None
-        self._fallback_reason = None
-        self._reset_subscription_service()
 
     def _ensure_datetime_index(self, df: pd.DataFrame | None) -> pd.DataFrame | None:
         """Ensure dataframe index is a tz-naive DatetimeIndex for safe comparisons."""
@@ -893,13 +836,3 @@ class DataLoader:
         df = df.copy()
         df.index = index
         return df
-
-    def _switch_to_mock_mode(self, reason: str | None = None) -> None:
-        """Switch to mock Bloomberg data."""
-        self.bloomberg = BloombergClient(use_mock=True)
-        self._use_mock = True
-        self._data_mode = "mock"
-        if reason:
-            self._fallback_reason = reason
-            self._connection_error = reason
-        self._reset_subscription_service()

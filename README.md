@@ -52,7 +52,7 @@ A lightweight, **local-first** quantitative trading dashboard for oil markets. B
 
 ### Prerequisites
 - Python 3.10+
-- Bloomberg Terminal (optional - realistic simulation available)
+- Bloomberg Terminal (required for live market data)
 
 ### Installation
 
@@ -202,11 +202,10 @@ Open in browser at `http://localhost:8501`
 |------|-------------|----------|
 | **Live** | Connects to Bloomberg Terminal via BLPAPI | Production trading |
 | **Disconnected** | No data source available | Shows error messages |
-| **Mock** | Simulated prices (development only) | Development/Testing |
 
 ### Live Mode (Default)
 
-The dashboard defaults to live Bloomberg data. If Bloomberg is not connected, you will see:
+The dashboard requires live Bloomberg data. If Bloomberg is not connected, you will see:
 - Red "Disconnected" indicator in the sidebar
 - Error message explaining the connection failure
 - "N/A" or "Data Unavailable" for all price data
@@ -214,32 +213,15 @@ The dashboard defaults to live Bloomberg data. If Bloomberg is not connected, yo
 ```python
 from core.data import DataLoader
 
-# Default: requires Bloomberg Terminal
+# Requires Bloomberg Terminal
 loader = DataLoader()
 
 # Check connection status
 status = loader.get_connection_status()
-print(f"Data mode: {status['data_mode']}")  # 'live', 'mock', or 'disconnected'
+print(f"Data mode: {status['data_mode']}")  # 'live' or 'disconnected'
 print(f"Connected: {status['connected']}")
 print(f"Error: {status['connection_error']}")
 ```
-
-### Mock Mode (Development Only)
-
-⚠️ **Warning**: Mock mode displays **simulated data, NOT real market data**. Only use for development/testing.
-
-```python
-# Force mock mode for development
-loader = DataLoader(use_mock=True)
-
-# Or set environment variable
-# BLOOMBERG_USE_MOCK=true
-```
-
-Mock mode features (for development testing only):
-- Simulated tick-by-tick updates
-- Simulated term structure
-- Simulated bid/ask spreads
 
 ### Real-time Subscriptions
 
@@ -272,7 +254,6 @@ pip install blpapi
 
 2. **Configure environment (.env):**
 ```bash
-BLOOMBERG_USE_MOCK=false
 BLOOMBERG_HOST=localhost
 BLOOMBERG_PORT=8194
 BLOOMBERG_ENABLE_SUBSCRIPTIONS=true
@@ -286,7 +267,7 @@ loader = DataLoader()
 if loader.is_live_data():
     print("Connected to Bloomberg!")
 else:
-    print("Using simulation (Bloomberg not available)")
+    print("Bloomberg not available - check terminal connection")
 ```
 
 ## Performance Optimizations
@@ -384,15 +365,11 @@ BLOOMBERG_ENABLE_SUBSCRIPTIONS=true
 # =============================================================================
 # BLOOMBERG CONFIGURATION
 # =============================================================================
-# IMPORTANT: Dashboard requires Bloomberg Terminal by default
-BLOOMBERG_USE_MOCK=false          # false = live data (default), true = mock (dev only)
+# Dashboard requires Bloomberg Terminal for live market data
 BLOOMBERG_HOST=localhost          # Bloomberg API host
 BLOOMBERG_PORT=8194               # Bloomberg API port
 BLOOMBERG_TIMEOUT=30              # Request timeout (seconds)
 BLOOMBERG_ENABLE_SUBSCRIPTIONS=true  # Enable real-time subscriptions
-
-# If Bloomberg is unavailable, set BLOOMBERG_USE_MOCK=true for development
-# WARNING: Mock mode displays simulated data, NOT real market prices
 
 # =============================================================================
 # RISK LIMITS
@@ -786,7 +763,7 @@ pytest tests/test_analytics.py -v
 | Trading Module | ✅ Complete | 2 |
 | Dashboard UI | ✅ Complete | 2 |
 | Test Suite | ✅ 90+ tests | 2 |
-| Live Price Simulation | ✅ Complete | 3 |
+| Live Bloomberg Data | ✅ Complete | 3 |
 | Auto-Refresh (5s) | ✅ Complete | 3 |
 | Bloomberg Integration | ✅ Complete | 3 |
 | Ticker Validation | ✅ Complete | 3 |
@@ -843,14 +820,11 @@ pytest tests/test_analytics.py -v
 
 ### ✅ Phase 3: Live Data Integration (Complete)
 
-**Bloomberg Live Mode & Enhanced Simulation**
+**Bloomberg Live Mode**
 
 - [x] Live Bloomberg data as default mode
 - [x] Real-time subscription service for streaming updates
 - [x] Environment-based configuration (`.env`)
-- [x] Enhanced price simulator with GARCH-like volatility
-- [x] Proper term structure simulation
-- [x] Realistic bid/ask spreads
 - [x] Comprehensive test suite (64 tests)
 - [x] Full API documentation
 
@@ -1451,16 +1425,16 @@ streamlit run app/main.py
 - In-memory caching for real-time data
 - No external infrastructure required
 
+**Live Data Only:**
+- Requires Bloomberg Terminal for market data
+- No simulated or mock data
+- Production-ready from the start
+
 **Simulation Only - No Live Trading:**
 - All execution is paper trading simulation
 - No connection to real brokers or exchanges
 - Safe environment for strategy testing
 - Educational and research purposes
-
-**Bloomberg Fallback:**
-- Seamless simulation mode when Bloomberg unavailable
-- Realistic price simulation for development
-- Same API interface for mock and real data
 
 **Production Ready:**
 - Environment-based configuration
@@ -1473,11 +1447,10 @@ streamlit run app/main.py
 
 **1. Dashboard shows "Disconnected" status**
 
-The dashboard requires a Bloomberg Terminal connection by default. If disconnected:
+The dashboard requires a Bloomberg Terminal connection for live data. If disconnected:
 - Verify Bloomberg Terminal is running on localhost:8194
 - Check `BLOOMBERG_HOST` and `BLOOMBERG_PORT` in `.env`
 - Install the Bloomberg API: `pip install blpapi`
-- For development without Bloomberg, set `BLOOMBERG_USE_MOCK=true` in `.env`
 
 **2. "Data Unavailable" messages**
 
@@ -1505,20 +1478,6 @@ pip install pytest pytest-cov
 # Run tests
 pytest tests/ -v
 ```
-
-**6. How to run in development mode (without Bloomberg)**
-```bash
-# Set environment variable
-export BLOOMBERG_USE_MOCK=true
-
-# Or add to .env file
-echo "BLOOMBERG_USE_MOCK=true" >> .env
-
-# Run the dashboard
-streamlit run app/main.py
-```
-
-⚠️ Note: Development mode shows simulated data, NOT real market prices.
 
 ## Disclaimer
 
