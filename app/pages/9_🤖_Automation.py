@@ -189,7 +189,7 @@ with tab1:
                     "Unrealized P&L": f"${pos['unrealized_pnl']:,.0f}",
                     "Realized P&L": f"${pos['realized_pnl']:,.0f}",
                 })
-            st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(pos_data), width='stretch', hide_index=True)
         else:
             st.info("No open positions")
 
@@ -214,7 +214,7 @@ with tab1:
     fills = paper_engine.get_fills()
     if fills:
         fills_df = pd.DataFrame(fills[-10:])
-        st.dataframe(fills_df, use_container_width=True, hide_index=True)
+        st.dataframe(fills_df, width='stretch', hide_index=True)
     else:
         st.info("No fills yet")
 
@@ -390,7 +390,7 @@ with tab3:
                 "% of Total": f"{s.quantity/total_quantity*100:.1f}%",
             })
 
-        st.dataframe(pd.DataFrame(schedule_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(schedule_data), width='stretch', hide_index=True)
 
         # Visualization
         import plotly.graph_objects as go
@@ -429,7 +429,7 @@ with tab3:
             template="plotly_dark",
         )
 
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
 # =============================================================================
 # TAB 4: AUTOMATION RULES
@@ -531,7 +531,7 @@ with tab4:
 
     if history:
         hist_df = pd.DataFrame(history)
-        st.dataframe(hist_df, use_container_width=True, hide_index=True)
+        st.dataframe(hist_df, width='stretch', hide_index=True)
     else:
         st.info("No executions yet")
 
@@ -579,7 +579,7 @@ with tab5:
                 "Created": order.created_at.strftime("%H:%M:%S"),
             })
 
-        st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(order_data), width='stretch', hide_index=True)
 
         # Cancel buttons
         if st.button("Cancel All Orders"):
@@ -611,7 +611,7 @@ with tab5:
                 "Commission": f"${order.commission:.2f}",
             })
 
-        st.dataframe(pd.DataFrame(hist_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(hist_data), width='stretch', hide_index=True)
     else:
         st.info("No order history")
 

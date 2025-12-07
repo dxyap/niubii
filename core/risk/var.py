@@ -53,7 +53,7 @@ class VaRCalculator:
         Args:
             positions: Dict of positions {ticker: {quantity, price}}
             returns: DataFrame of historical returns
-            correlation_matrix: Optional correlation matrix
+            correlation_matrix: Optional correlation matrix aligned to tickers
 
         Returns:
             VaR calculation results
@@ -61,55 +61,62 @@ class VaRCalculator:
         if not positions:
             return {"var": 0, "method": "parametric"}
 
-        tickers = list(positions.keys())
-
-        # Calculate position values
-        position_values = []
-        for ticker in tickers:
-            pos = positions[ticker]
+        exposure_map: dict[str, float] = {}
+        for ticker, pos in positions.items():
             contract_type = ticker[:2]
             spec = self.CONTRACT_SPECS.get(contract_type, {"multiplier": 1000})
-            value = pos["quantity"] * pos["price"] * spec["multiplier"]
-            position_values.append(value)
+            exposure_map[ticker] = pos["quantity"] * pos["price"] * spec["multiplier"]
 
-        position_values = np.array(position_values)
-        portfolio_value = np.sum(np.abs(position_values))
+        if not exposure_map:
+            return {"var": 0, "method": "parametric"}
 
-        # Get returns for positions
-        available_returns = returns[[t for t in tickers if t in returns.columns]]
+        exposure_vector = np.array(list(exposure_map.values()), dtype=float)
+        portfolio_value = float(np.sum(np.abs(exposure_vector)))
+        if portfolio_value == 0:
+            return {"var": 0, "method": "parametric"}
 
-        if available_returns.empty:
-            # Use assumed volatility if no historical data
-            volatility = 0.02  # 2% daily volatility assumption
-            var = portfolio_value * volatility * stats.norm.ppf(self.confidence_level)
+        weights = exposure_vector / portfolio_value
+        ordered_tickers = list(exposure_map.keys())
+
+        assumed_vol = 0.02  # 2% daily volatility
+        vol_lookup = {}
+        for ticker in ordered_tickers:
+            if ticker in returns.columns:
+                vol = float(returns[ticker].std())
+                vol_lookup[ticker] = vol if vol > 0 else assumed_vol
+            else:
+                vol_lookup[ticker] = assumed_vol
+
+        n_assets = len(ordered_tickers)
+        cov_matrix = np.zeros((n_assets, n_assets))
+        index_map = {ticker: idx for idx, ticker in enumerate(ordered_tickers)}
+
+        if correlation_matrix is not None:
+            corr = correlation_matrix.reindex(index=ordered_tickers, columns=ordered_tickers).fillna(0)
+            np.fill_diagonal(corr.values, 1.0)
+            vol_vector = np.array([vol_lookup[t] for t in ordered_tickers])
+            cov_matrix = corr.values * np.outer(vol_vector, vol_vector)
         else:
-            # Calculate portfolio volatility
-            cov_matrix = available_returns.cov() * 252  # Annualized
+            available = [t for t in ordered_tickers if t in returns.columns]
+            if available:
+                cov_df = returns[available].cov()
+                cov_df = cov_df.reindex(index=available, columns=available).fillna(0)
+                for i, ti in enumerate(available):
+                    for j, tj in enumerate(available):
+                        cov_matrix[index_map[ti], index_map[tj]] = cov_df.iat[i, j]
 
-            # Weight vector (normalized position values)
-            weights = position_values / np.sum(np.abs(position_values))
+            for ticker in ordered_tickers:
+                idx = index_map[ticker]
+                if cov_matrix[idx, idx] == 0:
+                    cov_matrix[idx, idx] = vol_lookup[ticker] ** 2
 
-            # Ensure dimensions match
-            n_assets = len(weights)
-            cov_values = cov_matrix.values if hasattr(cov_matrix, 'values') else cov_matrix
+        cov_matrix *= 252  # annualize
+        portfolio_variance = float(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        portfolio_std = np.sqrt(portfolio_variance)
+        daily_vol = portfolio_std / np.sqrt(252)
 
-            if cov_values.shape[0] < n_assets:
-                # Pad with assumed volatility
-                missing = n_assets - cov_values.shape[0]
-                pad_vol = np.eye(missing) * 0.02**2
-                cov_values = np.pad(cov_values, ((0, missing), (0, missing)))
-                cov_values[-missing:, -missing:] = pad_vol
-
-            # Portfolio variance
-            portfolio_variance = np.dot(weights.T, np.dot(cov_values[:n_assets, :n_assets], weights))
-            portfolio_std = np.sqrt(portfolio_variance)
-
-            # Daily volatility
-            daily_vol = portfolio_std / np.sqrt(252)
-
-            # VaR calculation
-            z_score = stats.norm.ppf(self.confidence_level)
-            var = portfolio_value * daily_vol * z_score * np.sqrt(self.holding_period)
+        z_score = stats.norm.ppf(self.confidence_level)
+        var = portfolio_value * daily_vol * z_score * np.sqrt(self.holding_period)
 
         return {
             "var": round(abs(var), 2),

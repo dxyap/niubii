@@ -231,9 +231,11 @@ class DataCache:
         # Use efficient TTL caches for high-frequency data
         if cache_type == "real_time":
             self._real_time_cache.set(key, value, ttl=duration)
+            self._remember_for_fallback(key, value)
             return
         elif cache_type == "intraday":
             self._intraday_cache.set(key, value, ttl=duration)
+            self._remember_for_fallback(key, value)
             return
 
         # Disk cache
@@ -253,6 +255,11 @@ class DataCache:
                 pd.to_pickle(value, cache_file)
         except Exception as e:
             logger.warning(f"File cache write error: {e}")
+
+    def _remember_for_fallback(self, key: str, value: Any) -> None:
+        """Store a copy in the legacy memory cache for TTL fallbacks."""
+        self._memory_cache[key] = value
+        self._memory_timestamps[key] = datetime.now().timestamp()
 
     def cached(
         self,

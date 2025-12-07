@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -57,6 +58,53 @@ curve_analyzer = CurveAnalyzer()
 spread_analyzer = SpreadAnalyzer()
 fundamental_analyzer = FundamentalAnalyzer()
 
+
+def format_calendar_spread_labels(spreads_df, curve_df):
+    """Format spread labels with actual contract months when available."""
+    if spreads_df is None or curve_df is None:
+        return spreads_df
+    if spreads_df.empty or curve_df.empty:
+        return spreads_df
+
+    label_series = None
+    if "contract_month" in curve_df.columns:
+        label_series = curve_df["contract_month"]
+    elif "contract_date" in curve_df.columns:
+        label_series = pd.to_datetime(curve_df["contract_date"]).dt.strftime("%b-%y")
+    elif "ticker" in curve_df.columns:
+        label_series = curve_df["ticker"]
+
+    if label_series is None:
+        return spreads_df
+
+    label_map = {}
+    for idx, raw_label in enumerate(label_series.tolist(), start=1):
+        if pd.isna(raw_label):
+            continue
+        label_text = str(raw_label).strip()
+        if not label_text or label_text.lower() == "nan":
+            continue
+        label_map[idx] = label_text
+
+    if not label_map:
+        return spreads_df
+
+    formatted = spreads_df.copy()
+
+    def _format_label(row):
+        front_label = label_map.get(int(row.get("front_month", 0)))
+        back_label = label_map.get(int(row.get("back_month", 0)))
+        if front_label and back_label:
+            return f"{front_label} vs {back_label}"
+        return row.get("spread_name", "")
+
+    formatted["spread_name"] = formatted.apply(_format_label, axis=1)
+    if "front_contract" not in formatted.columns:
+        formatted["front_contract"] = formatted["front_month"].map(label_map)
+    if "back_contract" not in formatted.columns:
+        formatted["back_contract"] = formatted["back_month"].map(label_map)
+    return formatted
+
 # Check data mode
 connection_status = data_loader.get_connection_status()
 data_mode = connection_status.get("data_mode", "disconnected")
@@ -72,7 +120,7 @@ with header_col2:
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
-    if st.button("🔄 Refresh Now", use_container_width=True):
+    if st.button("🔄 Refresh Now", width='stretch'):
         st.session_state.last_refresh = datetime.now()
         shared_state.invalidate_context_cache()
         st.rerun()
@@ -126,7 +174,12 @@ with tab1:
     # Note: WTI uses ICE prices (ENA1 Comdty) not NYMEX (CL1)
     instruments = {
         "Brent": {"ticker": "CO1 Comdty", "name": "Brent Crude Oil (ICE)", "icon": "🇬🇧"},
-        "WTI": {"ticker": "ENA1 Comdty", "name": "WTI Crude Oil (ICE)", "icon": "🇺🇸"},
+        "WTI": {
+            "ticker": "ENA1 Comdty",
+            "name": "WTI Crude Oil (ICE)",
+            "icon": "🇺🇸",
+            "fallback_tickers": ["CL1 Comdty"],
+        },
         "Dubai": {"ticker": "DAT2 Comdty", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
 
@@ -141,6 +194,12 @@ with tab1:
         """Render price action charts for an instrument."""
         inst = instruments[instrument_key]
         ticker = inst["ticker"]
+        fallback_tickers = inst.get("fallback_tickers", [])
+        ticker_candidates: list[str] = []
+        for candidate in [ticker, *fallback_tickers]:
+            if candidate not in ticker_candidates:
+                ticker_candidates.append(candidate)
+        history_ticker_used = None
         name = inst["name"]
 
         col1, col2 = st.columns([2, 1])
@@ -155,17 +214,32 @@ with tab1:
             # Get historical data
             hist_data = None
             data_warning_shown = False
-            try:
-                hist_data = data_loader.get_historical(
-                    ticker,
-                    start_date=datetime.now() - timedelta(days=180),
-                    end_date=datetime.now()
-                )
-            except DataUnavailableError:
-                st.warning(f"No historical data available for {name}.")
-                data_warning_shown = True
-            except Exception as exc:
-                st.error(f"Failed to load history for {name}: {exc}")
+            history_errors: list[str] = []
+            for candidate in ticker_candidates:
+                try:
+                    candidate_history = data_loader.get_historical(
+                        candidate,
+                        start_date=datetime.now() - timedelta(days=180),
+                        end_date=datetime.now()
+                    )
+                    if candidate_history is not None and not candidate_history.empty:
+                        hist_data = candidate_history
+                        history_ticker_used = candidate
+                        break
+                    history_errors.append(f"{candidate}: returned no rows")
+                except DataUnavailableError as exc:
+                    history_errors.append(f"{candidate}: {exc}")
+                except Exception as exc:
+                    history_errors.append(f"{candidate}: {exc}")
+                    break
+
+            if hist_data is None:
+                attempted = ", ".join(ticker_candidates)
+                if history_errors:
+                    st.warning(f"No historical data available for {name}. Tried {attempted}.")
+                    st.caption("; ".join(history_errors))
+                else:
+                    st.info(f"Historical data unavailable for {name}.")
                 data_warning_shown = True
 
             if hist_data is not None and not hist_data.empty:
@@ -179,7 +253,9 @@ with tab1:
                     ma_periods=[20, 50],
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                if history_ticker_used and history_ticker_used != ticker:
+                    st.caption(f"Using fallback historical ticker {history_ticker_used} due to unavailable ICE data.")
 
                 # Volume and Open Interest charts side by side
                 vol_col, oi_col = st.columns(2)
@@ -188,13 +264,13 @@ with tab1:
                     st.markdown("**Volume**")
                     if 'PX_VOLUME' in hist_data.columns:
                         vol_fig = create_volume_chart(hist_data, height=120)
-                        st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(vol_fig, width='stretch', config=get_chart_config())
 
                 with oi_col:
                     st.markdown("**Open Interest**")
                     if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
                         oi_fig = create_open_interest_chart(hist_data, height=120)
-                        st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(oi_fig, width='stretch', config=get_chart_config())
                     else:
                         st.caption("Open interest data not available")
             else:
@@ -204,10 +280,17 @@ with tab1:
 
         with col2:
             # Get live price first
-            live_price = price_cache.get(ticker)
+            live_price = None
+            price_ticker_used = None
+            for candidate in ticker_candidates:
+                candidate_price = price_cache.get(candidate)
+                if candidate_price is not None:
+                    live_price = candidate_price
+                    price_ticker_used = candidate
+                    break
 
             # Display live price prominently at the top
-            if live_price:
+            if live_price is not None:
                 # Calculate change from previous close
                 prev_close = None
                 daily_change = 0
@@ -231,6 +314,8 @@ with tab1:
                     </div>""",
                     unsafe_allow_html=True
                 )
+                if price_ticker_used and price_ticker_used != ticker:
+                    st.caption(f"Live price source: {price_ticker_used} (WTI NYMEX fallback)")
 
                 # Yesterday's close
                 if prev_close:
@@ -328,15 +413,16 @@ with tab2:
                 height=400,
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Calendar spreads
             st.markdown("**Calendar Spreads (WTI)**")
             spreads = curve_analyzer.calculate_calendar_spreads(wti_curve)
+            spreads = format_calendar_spread_labels(spreads, wti_curve)
 
             st.dataframe(
                 spreads,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'spread_name': 'Spread',
@@ -345,6 +431,22 @@ with tab2:
                     'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
                 }
             )
+
+            if brent_curve is not None and not brent_curve.empty:
+                st.markdown("**Calendar Spreads (Brent)**")
+                brent_spreads = curve_analyzer.calculate_calendar_spreads(brent_curve)
+                brent_spreads = format_calendar_spread_labels(brent_spreads, brent_curve)
+                st.dataframe(
+                    brent_spreads,
+                    width='stretch',
+                    hide_index=True,
+                    column_config={
+                        'spread_name': 'Spread',
+                        'spread_value': st.column_config.NumberColumn('Value', format='$%.2f'),
+                        'front_price': st.column_config.NumberColumn('Front', format='$%.2f'),
+                        'back_price': st.column_config.NumberColumn('Back', format='$%.2f'),
+                    }
+                )
 
         with col2:
             st.markdown("**WTI Curve Analysis**")
@@ -467,15 +569,16 @@ with tab2:
                     ),
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Dubai Calendar spreads
                 st.markdown("**Calendar Spreads (Dubai)**")
                 dubai_spreads = curve_analyzer.calculate_calendar_spreads(dubai_curve)
+                dubai_spreads = format_calendar_spread_labels(dubai_spreads, dubai_curve)
 
                 st.dataframe(
                     dubai_spreads,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                     column_config={
                         'spread_name': 'Spread',
@@ -545,54 +648,74 @@ with tab2:
             else:
                 st.caption("Dubai curve data not available")
 
+
 with tab3:
     # Crack Spreads Tab
-    st.subheader("Crack Spread Analysis")
+    st.subheader("Crack Spread & Refining Margins")
+
+    # Get LIVE prices using price cache
+    wti = price_cache.get("CL1 Comdty")
+    rbob = price_cache.get("XB1 Comdty")
+    ho = price_cache.get("HO1 Comdty")
+    brent = price_cache.get("CO1 Comdty")
+    gasoil = price_cache.get("QS1 Comdty")
+    dubai = price_cache.get("DAT2 Comdty")
+
+    price_inputs = {
+        "wti": wti,
+        "gasoline": rbob,
+        "distillate": ho,
+        "brent": brent,
+        "gasoil": gasoil,
+        "dubai": dubai,
+    }
+
+    regional_keys = ["usgc_321", "nwe_312", "singapore_complex"]
+    region_results = {
+        key: spread_analyzer.calculate_regional_refining_margin(key, price_inputs)
+        for key in regional_keys
+    }
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("**3-2-1 Crack Spread (USGC)**")
 
-        # Get LIVE prices using price cache
-        wti = price_cache.get("CL1 Comdty")
-        rbob = price_cache.get("XB1 Comdty")
-        ho = price_cache.get("HO1 Comdty")
-        brent = price_cache.get("CO1 Comdty")
-
-        if wti and rbob and ho:
-            # Calculate crack spread with explicit unit specification
-            # WTI (CL1) is in $/barrel, RBOB (XB1) and HO (HO1) are in $/gallon
-            crack_321 = spread_analyzer.calculate_crack_spread(
-                crude_price=wti,
-                gasoline_price=rbob,
-                distillate_price=ho,
-                crack_type="3-2-1",
-                gasoline_unit="gallon",
-                distillate_unit="gallon"
-            )
-
-            # Get crack spread change from context
+        usgc_margin = region_results.get("usgc_321")
+        if usgc_margin:
             crack_data = context.data.crack_spread
             crack_change = crack_data.get('change', 0) if crack_data else 0
 
             st.metric(
                 "Current",
-                f"${crack_321['crack_spread']:.2f}/bbl",
+                f"${usgc_margin['margin_per_bbl']:.2f}/bbl",
                 delta=f"{crack_change:+.2f}"
             )
+            st.caption(f"Formula: {usgc_margin['formula']}")
 
             # Component breakdown visualization
             st.markdown("**Spread Components**")
-            rbob_bbl = rbob * 42
-            ho_bbl = ho * 42
+            crude_cost_total = usgc_margin["crude_price"] * usgc_margin["crude_ratio"]
+            crack_total = usgc_margin["margin_per_bbl"] * usgc_margin["crude_ratio"]
+
+            bar_labels = [f"{comp['label']}?{comp['ratio']}" for comp in usgc_margin["product_breakdown"]]
+            bar_values = [comp["value_component_raw"] for comp in usgc_margin["product_breakdown"]]
+            bar_text = [f"${comp['value_component_raw']:.2f}" for comp in usgc_margin["product_breakdown"]]
+
+            bar_labels.extend([f"{usgc_margin['crude_label']}?{usgc_margin['crude_ratio']}", "Crack"])
+            bar_values.extend([-crude_cost_total, crack_total])
+            bar_text.extend([f"-${crude_cost_total:.2f}", f"${crack_total:.2f}"])
 
             component_fig = go.Figure()
             component_fig.add_trace(go.Bar(
-                x=['RBOB×2', 'HO×1', 'WTI×3', 'Crack'],
-                y=[rbob_bbl * 2, ho_bbl, -wti * 3, crack_321['crack_spread'] * 3],
-                marker_color=[CHART_COLORS['profit'], CHART_COLORS['profit'], CHART_COLORS['loss'], CHART_COLORS['primary']],
-                text=[f"${rbob_bbl*2:.2f}", f"${ho_bbl:.2f}", f"-${wti*3:.2f}", f"${crack_321['crack_spread']*3:.2f}"],
+                x=bar_labels,
+                y=bar_values,
+                marker_color=[
+                    *(CHART_COLORS['profit'] for _ in usgc_margin["product_breakdown"]),
+                    CHART_COLORS['loss'],
+                    CHART_COLORS['primary'],
+                ],
+                text=bar_text,
                 textposition='outside',
                 textfont={"size": 12, "color": CHART_COLORS['text_primary']},
                 marker_line_width=0,
@@ -604,18 +727,21 @@ with tab3:
                 yaxis_title='$/bbl equivalent',
             )
 
-            st.plotly_chart(component_fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(component_fig, width='stretch', config=get_chart_config())
 
             # Metrics
             m_col1, m_col2, m_col3 = st.columns(3)
             with m_col1:
-                st.metric("Refining Margin", f"${crack_321['crack_spread']:.2f}/bbl")
+                st.metric("Refining Margin", f"${usgc_margin['margin_per_bbl']:.2f}/bbl")
             with m_col2:
-                st.metric("Margin %", f"{crack_321['margin_pct']:.1f}%")
+                st.metric("Margin %", f"{usgc_margin['margin_pct']:.1f}%")
             with m_col3:
-                st.metric("Product Value", f"${(rbob_bbl*2 + ho_bbl)/3:.2f}/bbl")
+                st.metric("Product Value", f"${usgc_margin['product_value_per_bbl']:.2f}/bbl")
+
+            if usgc_margin.get("source_url"):
+                st.caption(f"[Source]({usgc_margin['source_url']}) ? {usgc_margin.get('source', '')}")
         else:
-            st.warning("Price data unavailable for crack spread calculation")
+            st.warning("Price data unavailable for USGC crack spread calculation")
 
     with col2:
         st.markdown("**Live Spreads**")
@@ -631,15 +757,40 @@ with tab3:
         st.divider()
 
         st.markdown("**Live Component Prices**")
-        if wti:
+        if wti is not None:
             st.metric("WTI Crude", f"${wti:.2f}/bbl")
-        if brent:
+        if brent is not None:
             st.metric("Brent Crude", f"${brent:.2f}/bbl")
-        if rbob:
+        if dubai is not None:
+            st.metric("Dubai Swap (DAT2)", f"${dubai:.2f}/bbl")
+        if rbob is not None:
             st.metric("RBOB Gasoline", f"${rbob:.4f}/gal")
-        if ho:
+        if ho is not None:
             st.metric("Heating Oil", f"${ho:.4f}/gal")
+        if gasoil is not None:
+            st.metric("ICE Gasoil", f"${gasoil:.2f}/t")
 
+    st.divider()
+    st.markdown("**Regional Refining Margins**")
+    cards = st.columns(3)
+    for col, key in zip(cards, regional_keys):
+        result = region_results.get(key)
+        with col:
+            config = spread_analyzer.REGIONAL_REFINING_CONFIGS[key]
+            st.markdown(f"**{config['display_name']}**")
+            if result:
+                st.metric("Margin", f"${result['margin_per_bbl']:.2f}/bbl")
+                st.metric("Margin %", f"{result['margin_pct']:.1f}%")
+                st.caption(f"Crude: {result['crude_label']} @ ${result['crude_price']:.2f}/bbl")
+                for comp in result["product_breakdown"]:
+                    st.caption(f"{comp['label']}: ${comp['price_per_bbl']:.2f}/bbl ? {comp['ratio']}")
+                st.caption(f"Formula: {result['formula']}")
+                if result.get("notes"):
+                    st.caption(result["notes"])
+                if result.get("source_url"):
+                    st.caption(f"[Source]({result['source_url']})")
+            else:
+                st.warning("Price data unavailable", icon="??")
 with tab4:
     # Inventory Tab
     st.subheader("Inventory Analytics")
@@ -685,7 +836,7 @@ with tab4:
                 yaxis_tickformat='.0f',
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Weekly change
             st.markdown("**Weekly Change**")
@@ -708,7 +859,7 @@ with tab4:
                 yaxis_title='Change (MMbbl)',
             )
 
-            st.plotly_chart(change_fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(change_fig, width='stretch', config=get_chart_config())
 
         with col2:
             st.markdown("**Latest Report**")
@@ -788,14 +939,14 @@ with tab5:
                 legend={"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Compliance table
             st.markdown("**Compliance by Country**")
 
             st.dataframe(
                 opec_data,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'country': 'Country',

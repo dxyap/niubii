@@ -23,8 +23,11 @@ class TestCurveAnalyzer:
     @pytest.fixture
     def sample_curve(self):
         """Create sample curve data."""
+        months = pd.date_range("2025-01-01", periods=12, freq="MS")
         return pd.DataFrame({
             'month': range(1, 13),
+            'contract_month': [m.strftime("%b-%y") for m in months],
+            'contract_date': months,
             'price': [72.50 + i * 0.15 for i in range(12)],
             'days_to_expiry': [30 * i for i in range(1, 13)],
             'ticker': [f'CL{i} Comdty' for i in range(1, 13)],
@@ -48,6 +51,7 @@ class TestCurveAnalyzer:
         assert isinstance(spreads, pd.DataFrame)
         assert len(spreads) > 0
         assert 'spread_value' in spreads.columns
+        assert spreads['spread_name'].iloc[0] == "Jan-25 vs Feb-25"
 
     def test_calculate_roll_yield(self, sample_curve):
         """Test roll yield calculation."""
@@ -100,6 +104,33 @@ class TestSpreadAnalyzer:
         assert 'zscore' in result
         assert 'percentile' in result
         assert 'signal' in result
+
+    def test_regional_margin_usgc(self):
+        """Ensure regional refining margin returns expected value."""
+        analyzer = SpreadAnalyzer()
+        prices = {
+            "wti": 70.0,
+            "gasoline": 2.20,
+            "distillate": 2.50,
+            "brent": 75.0,
+            "gasoil": 700.0,
+            "dubai": 74.0,
+        }
+
+        result = analyzer.calculate_regional_refining_margin("usgc_321", prices)
+
+        assert result is not None
+        assert result["region"] == "US Gulf Coast"
+        assert result["margin_per_bbl"] == pytest.approx(26.6, rel=0.01)
+        assert result["product_value_per_bbl"] == pytest.approx(96.6, rel=0.01)
+
+    def test_regional_margin_missing_price(self):
+        """Regional margin should return None when inputs missing."""
+        analyzer = SpreadAnalyzer()
+        prices = {"wti": 70.0}
+
+        result = analyzer.calculate_regional_refining_margin("usgc_321", prices)
+        assert result is None
 
 
 class TestFundamentalAnalyzer:

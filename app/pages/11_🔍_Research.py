@@ -196,7 +196,7 @@ with tab1:
                 ))
 
                 fig.update_layout(height=200, margin={"l": 20, "r": 20, "t": 40, "b": 20})
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             except Exception as e:
                 st.error(f"Sentiment analyzer error: {e}")
@@ -251,7 +251,7 @@ with tab2:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             st.divider()
 
@@ -296,7 +296,7 @@ with tab2:
                         xaxis_title="Date",
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Correlation regime detection
             st.markdown("**Correlation Regime Detection**")
@@ -454,7 +454,7 @@ with tab3:
                     xaxis_title="Date",
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Regime transitions
             st.markdown("**Recent Transitions**")
@@ -472,7 +472,7 @@ with tab3:
                     for t in transitions
                 ])
 
-                st.dataframe(trans_df, use_container_width=True, hide_index=True)
+                st.dataframe(trans_df, width='stretch', hide_index=True)
 
         except Exception as e:
             st.error(f"Regime detection error: {e}")
@@ -536,7 +536,7 @@ with tab4:
                         margin={"l": 120, "r": 20, "t": 20, "b": 40},
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
                 else:
                     st.info("Click 'Run Factor Analysis' to see results")
 
@@ -568,7 +568,7 @@ with tab4:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 with col_b:
                     st.markdown("**Model Statistics**")
@@ -641,7 +641,7 @@ with tab5:
                         })
 
                     storage_df = pd.DataFrame(storage_data)
-                    st.dataframe(storage_df, use_container_width=True, hide_index=True)
+                    st.dataframe(storage_df, width='stretch', hide_index=True)
 
                     # Storage utilization chart
                     fig = go.Figure()
@@ -662,7 +662,7 @@ with tab5:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                     # Storage signal
                     signal = satellite.calculate_storage_signal()
@@ -709,7 +709,7 @@ with tab5:
                                 "Anchored": counts.get("anchored", 0),
                             })
 
-                        st.dataframe(pd.DataFrame(fleet_data), use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(fleet_data), width='stretch', hide_index=True)
 
                 with col2:
                     st.markdown("**Freight Rates**")
@@ -755,7 +755,7 @@ with tab5:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Shipping signal
                 signal = shipping.calculate_shipping_signal()
@@ -800,7 +800,7 @@ with tab5:
                             "Week Change": f"{data.get('week_change', 0):+,}",
                         })
 
-                    st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(pos_data), width='stretch', hide_index=True)
 
                 # Percentile visualization
                 if positions:
@@ -829,7 +829,7 @@ with tab5:
                         yaxis={"title": "Percentile", "range": [0, 110]},
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Positioning signal
                 signal = positioning.calculate_positioning_signal()

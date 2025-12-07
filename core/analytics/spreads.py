@@ -43,6 +43,49 @@ class SpreadAnalyzer:
         "QS": 7.45,   # Gasoil - $/tonne to $/bbl (approx)
     }
 
+    # Regional refining margin configurations (simplified).
+    REGIONAL_REFINING_CONFIGS = {
+        "usgc_321": {
+            "display_name": "US Gulf Coast 3-2-1",
+            "region": "US Gulf Coast",
+            "crude": {"key": "wti", "label": "WTI (CL1)", "unit": "barrel", "ratio": 3},
+            "products": [
+                {"key": "gasoline", "label": "RBOB Gasoline (XB1)", "unit": "gallon", "ratio": 2},
+                {"key": "distillate", "label": "NY ULSD (HO1)", "unit": "gallon", "ratio": 1},
+            ],
+            "formula": "((2 × Gasoline + 1 × Distillate) − 3 × WTI) ÷ 3",
+            "source": "U.S. EIA '3:2:1 Crack Spread' explainer (2013)",
+            "source_url": "https://www.eia.gov/todayinenergy/includes/crackspread_explain.php",
+            "notes": "Replicates the standard Gulf Coast 3-2-1 crack spread definition.",
+        },
+        "nwe_312": {
+            "display_name": "Northwest Europe 3-1-2",
+            "region": "Northwest Europe",
+            "crude": {"key": "brent", "label": "Brent (CO1)", "unit": "barrel", "ratio": 3},
+            "products": [
+                {"key": "gasoline", "label": "Eurobob proxy (RBOB)", "unit": "gallon", "ratio": 1},
+                {"key": "gasoil", "label": "ICE Gasoil (QS1)", "unit": "tonne", "ratio": 2},
+            ],
+            "formula": "((1 × Gasoline + 2 × Gasoil) − 3 × Brent) ÷ 3",
+            "source": "IEA Global Indicator Refinery Margins Methodology (Aug 2024)",
+            "source_url": "https://iea.blob.core.windows.net/assets/b6542edd-41b7-4a11-988f-4ffbc0a28e3b/IEARefineryMarginMethodologyAugust2024.pdf",
+            "notes": "Weights gasoline vs distillate output per the diesel-heavy NWE yield slate outlined by the IEA.",
+        },
+        "singapore_complex": {
+            "display_name": "Singapore Complex Margin",
+            "region": "Singapore",
+            "crude": {"key": "dubai", "label": "Dubai Swap (DAT2)", "unit": "barrel", "ratio": 3},
+            "products": [
+                {"key": "gasoline", "label": "Mogas proxy (RBOB)", "unit": "gallon", "ratio": 1.4},
+                {"key": "gasoil", "label": "Gasoil / Jet proxy (QS1)", "unit": "tonne", "ratio": 1.6},
+            ],
+            "formula": "((1.4 × Mogas + 1.6 × Gasoil) − 3 × Dubai) ÷ 3",
+            "source": "IEA Global Indicator Refinery Margins Methodology (Aug 2024)",
+            "source_url": "https://iea.blob.core.windows.net/assets/b6542edd-41b7-4a11-988f-4ffbc0a28e3b/IEARefineryMarginMethodologyAugust2024.pdf",
+            "notes": "Approximates the Singapore complex slate by grouping light products and middle distillates; heavier fuel oil components are omitted when live benchmarks are unavailable.",
+        },
+    }
+
     def __init__(self):
         """Initialize spread analyzer."""
         pass
@@ -180,6 +223,77 @@ class SpreadAnalyzer:
             "gasoline_bbl": round(gasoline_bbl, 2),
             "distillate_bbl": round(distillate_bbl, 2),
             "margin_pct": round(margin_pct, 2),
+        }
+
+    def calculate_regional_refining_margin(
+        self,
+        region_key: str,
+        prices: dict[str, float]
+    ) -> dict | None:
+        """
+        Calculate a simplified regional refining margin.
+
+        Args:
+            region_key: Configuration key (see REGIONAL_REFINING_CONFIGS)
+            prices: Mapping of price inputs keyed by commodity (e.g. 'wti', 'gasoline')
+
+        Returns:
+            Dict of refining margin metrics, or None when required prices are missing.
+        """
+        config = self.REGIONAL_REFINING_CONFIGS.get(region_key)
+        if not config:
+            raise ValueError(f"Unknown refining margin region: {region_key}")
+
+        crude_def = config["crude"]
+        crude_price = prices.get(crude_def["key"])
+        if crude_price is None:
+            return None
+
+        crude_ratio = crude_def["ratio"]
+        crude_price_bbl = self.convert_to_barrel(crude_price, crude_def["unit"])
+        crude_cost = crude_price_bbl * crude_ratio
+
+        product_contributions = []
+        total_product_value = 0.0
+
+        for product in config["products"]:
+            price = prices.get(product["key"])
+            if price is None:
+                return None
+            price_bbl = self.convert_to_barrel(price, product["unit"])
+            contribution = price_bbl * product["ratio"]
+            total_product_value += contribution
+            product_contributions.append(
+                {
+                    "label": product["label"],
+                    "ratio": product["ratio"],
+                    "price_per_bbl": round(price_bbl, 2),
+                    "price_per_bbl_raw": price_bbl,
+                    "value_component": round(contribution, 2),
+                    "value_component_raw": contribution,
+                    "unit": product["unit"],
+                }
+            )
+
+        margin = (total_product_value - crude_cost) / crude_ratio
+        product_value_per_bbl = total_product_value / crude_ratio
+        margin_pct = (margin / crude_price_bbl * 100) if crude_price_bbl else 0.0
+
+        return {
+            "region_key": region_key,
+            "display_name": config["display_name"],
+            "region": config["region"],
+            "margin_per_bbl": round(margin, 2),
+            "product_value_per_bbl": round(product_value_per_bbl, 2),
+            "margin_pct": round(margin_pct, 2),
+            "crude_price": round(crude_price_bbl, 2),
+            "crude_ratio": crude_ratio,
+            "crude_label": crude_def["label"],
+            "product_breakdown": product_contributions,
+            "formula": config["formula"],
+            "notes": config.get("notes"),
+            "source": config.get("source"),
+            "source_url": config.get("source_url"),
         }
 
     def analyze_regional_differentials(

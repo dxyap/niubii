@@ -119,13 +119,36 @@ class DashboardApp:
         # Check Bloomberg connection
         connection_status = self.data_loader.get_connection_status()
         data_mode = connection_status.get("data_mode", "disconnected")
+        fallback_allowed = connection_status.get("fallback_allowed", True)
 
         if data_mode == "live":
-            st.caption("🟢 Live market data from Bloomberg")
+            st.caption(":green_circle: Live market data from Bloomberg")
+        elif data_mode == "mock":
+            st.caption(":orange_circle: Simulated Bloomberg data (development mode)")
+            fallback_reason = connection_status.get("fallback_reason")
+            force_mock = connection_status.get("force_mock", False)
+            if fallback_reason and not force_mock:
+                st.info(f"Live Bloomberg connection unavailable: {fallback_reason}")
+                if st.button("Retry Bloomberg Connection", key="retry_live_mock"):
+                    if self.data_loader.try_enable_live_data():
+                        st.success("Bloomberg connection restored. Reloading data...")
+                    else:
+                        st.warning("Bloomberg connection still unavailable.")
+                    self._trigger_rerun()
         elif data_mode == "disconnected":
-            st.error("🔴 Bloomberg Terminal not connected. Live data required.")
+            st.error("Bloomberg Terminal not connected. Live data required.")
             st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
-            st.info("Please ensure Bloomberg Terminal is running and BLPAPI is configured.")
+            col_retry, col_mock = st.columns(2) if fallback_allowed else (st.columns(1)[0], None)
+            if col_retry.button("Retry Bloomberg Connection", key="retry_live_disconnected"):
+                if self.data_loader.try_enable_live_data():
+                    st.success("Bloomberg connection restored. Reloading data...")
+                else:
+                    st.warning("Bloomberg connection still unavailable.")
+                self._trigger_rerun()
+            if fallback_allowed and col_mock and col_mock.button("Use Simulated Data", key="enable_mock_fallback"):
+                self.data_loader.enable_mock_mode(connection_status.get("connection_error"))
+                st.info("Using simulated data until Bloomberg reconnects.")
+                self._trigger_rerun()
             st.stop()
         else:
             st.caption("Real-time quantitative analysis for oil markets")
@@ -155,7 +178,16 @@ class DashboardApp:
     @staticmethod
     def _clear_caches() -> None:
         """Clear short-lived caches when auto-refresh fires."""
+        get_historical_data_cached.clear()
         get_futures_curve_cached.clear()
+
+    @staticmethod
+    def _trigger_rerun() -> None:
+        """Trigger a Streamlit rerun (compatibility helper)."""
+        if hasattr(st, "rerun"):
+            st.rerun()
+        else:
+            st.experimental_rerun()
 
 
 def main() -> None:

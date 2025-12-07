@@ -68,6 +68,42 @@ class TestVaRCalculator:
         assert 'var' in result
         assert result['cvar'] >= result['var']  # CVaR should be >= VaR
 
+    def test_parametric_var_handles_missing_returns(self, sample_positions, sample_returns):
+        """Parametric VaR should fall back to assumed vol when data missing."""
+        positions = dict(sample_positions)
+        positions["HO1 Comdty"] = {"quantity": 20, "price": 2.45}
+
+        calc = VaRCalculator(confidence_level=0.95)
+        result = calc.calculate_parametric_var(positions, sample_returns)
+
+        assert result["var"] > 0
+        assert result["method"] == "parametric"
+
+    def test_parametric_var_uses_correlation_matrix(self, sample_returns):
+        """Ensure optional correlation matrix is incorporated."""
+        positions = {
+            "CL1 Comdty": {"quantity": 30, "price": 72.5},
+            "CO1 Comdty": {"quantity": -20, "price": 77.0},
+            "XB1 Comdty": {"quantity": 15, "price": 2.1},
+        }
+        extended_returns = sample_returns.copy()
+        extended_returns["XB1 Comdty"] = np.random.normal(0.0001, 0.03, len(sample_returns))
+
+        correlation = pd.DataFrame(
+            [
+                [1.0, 0.85, 0.40],
+                [0.85, 1.0, 0.35],
+                [0.40, 0.35, 1.0],
+            ],
+            index=list(positions.keys()),
+            columns=list(positions.keys()),
+        )
+
+        calc = VaRCalculator(confidence_level=0.95)
+        result = calc.calculate_parametric_var(positions, extended_returns, correlation)
+
+        assert result["var"] > 0
+
     def test_stress_test(self, sample_positions):
         """Test stress testing."""
         calc = VaRCalculator()

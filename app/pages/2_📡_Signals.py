@@ -153,10 +153,10 @@ if composite:
 
         st.markdown("**Actions**")
 
-        if st.button("✅ Mark as Traded", use_container_width=True):
+        if st.button("✅ Mark as Traded", width='stretch'):
             st.success("Signal marked as traded")
 
-        if st.button("❌ Dismiss Signal", use_container_width=True):
+        if st.button("❌ Dismiss Signal", width='stretch'):
             st.info("Signal dismissed")
 
 st.divider()
@@ -280,7 +280,7 @@ with tab3:
         'Result': ['--', '--', '--', '+$12,500', '-$4,200'],
     })
 
-    st.dataframe(signal_history, use_container_width=True, hide_index=True)
+    st.dataframe(signal_history, width='stretch', hide_index=True)
 
     st.divider()
 

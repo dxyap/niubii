@@ -447,7 +447,7 @@ with tab3:
                 showlegend=True,
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
         else:
             st.info("No alert data for this period")
 
@@ -475,7 +475,7 @@ with tab3:
                 yaxis_title="Count",
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
         else:
             st.info("No alert data for this period")
 
@@ -501,7 +501,7 @@ with tab3:
                 "Resolved": "✓" if record.resolved else "✗",
             })
 
-        st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(table_data), width='stretch', hide_index=True)
     else:
         st.info("No alert history for the selected filters")
 

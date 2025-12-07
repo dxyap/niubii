@@ -4,8 +4,11 @@ Signal Aggregation
 Combines signals from multiple sources into actionable trading signals.
 """
 
+import contextlib
+import json
 import logging
 import uuid
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -47,6 +50,23 @@ class TradingSignal:
             "timestamp": self.timestamp.isoformat(),
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict) -> "TradingSignal":
+        """Create TradingSignal from serialized dictionary."""
+        return cls(
+            signal_id=payload["signal_id"],
+            instrument=payload["instrument"],
+            direction=payload["direction"],
+            confidence=payload["confidence"],
+            entry_price=payload["entry_price"],
+            stop_loss=payload["stop_loss"],
+            target_price=payload["target_price"],
+            time_horizon=payload["time_horizon"],
+            source=payload["source"],
+            drivers=payload.get("drivers", []),
+            timestamp=datetime.fromisoformat(payload["timestamp"]),
+        )
+
 
 class SignalAggregator:
     """
@@ -56,12 +76,25 @@ class SignalAggregator:
     - Weighted signal combination
     - Confidence adjustment
     - Signal filtering and validation
-    - Historical signal tracking
+    - Historical signal tracking with persistence
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        history_limit: int = 500,
+        history_path: str | Path | None = "data/signals/signal_history.json",
+    ):
         """Initialize signal aggregator."""
-        self.signal_history: list[TradingSignal] = []
+        self.history_limit = history_limit
+        if isinstance(history_path, Path):
+            self.history_path = history_path
+        elif history_path:
+            self.history_path = Path(history_path)
+        else:
+            self.history_path = None
+
+        self.signal_history: deque[TradingSignal] = deque(maxlen=history_limit)
+        self._load_history()
 
         # Default source weights
         self.source_weights = {
@@ -211,6 +244,7 @@ class SignalAggregator:
 
         # Store in history
         self.signal_history.append(signal)
+        self._persist_history()
 
         return signal
 
@@ -224,14 +258,15 @@ class SignalAggregator:
         Returns:
             Performance metrics
         """
-        if not self.signal_history:
+        history = list(self.signal_history)
+        if not history:
             return {
                 "total_signals": 0,
                 "win_rate": 0,
                 "avg_confidence": 0,
             }
 
-        recent_signals = self.signal_history[-lookback:]
+        recent_signals = history[-lookback:]
 
         total = len(recent_signals)
         long_signals = len([s for s in recent_signals if s.direction == "LONG"])
@@ -284,7 +319,7 @@ class SignalAggregator:
         Returns:
             List of signal dictionaries
         """
-        return [s.to_dict() for s in self.signal_history[-n:]]
+        return [s.to_dict() for s in list(self.signal_history)[-n:]]
 
     def set_source_weights(self, weights: dict[str, float]) -> None:
         """
@@ -295,6 +330,37 @@ class SignalAggregator:
         """
         total = sum(weights.values())
         self.source_weights = {k: v/total for k, v in weights.items()}
+
+    def clear_history(self) -> None:
+        """Clear in-memory and persisted history."""
+        self.signal_history.clear()
+        if self.history_path and self.history_path.exists():
+            with contextlib.suppress(Exception):
+                self.history_path.unlink()
+
+    def _load_history(self) -> None:
+        """Load persisted history from disk if available."""
+        if not self.history_path or not self.history_path.exists():
+            return
+
+        try:
+            data = json.loads(self.history_path.read_text())
+            for entry in data[-self.history_limit:]:
+                self.signal_history.append(TradingSignal.from_dict(entry))
+        except Exception as exc:
+            logger.warning("Failed to load signal history: %s", exc)
+
+    def _persist_history(self) -> None:
+        """Persist current history to disk."""
+        if not self.history_path:
+            return
+
+        try:
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            serialized = [s.to_dict() for s in self.signal_history]
+            self.history_path.write_text(json.dumps(serialized, indent=2))
+        except Exception as exc:
+            logger.warning("Failed to persist signal history: %s", exc)
 
 
 class MLSignalGenerator:

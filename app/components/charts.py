@@ -5,6 +5,7 @@ Reusable, beautifully styled chart components for the dashboard.
 Features professional trading terminal aesthetics with high readability.
 """
 
+import contextlib
 
 import pandas as pd
 import plotly.express as px
@@ -250,8 +251,75 @@ def create_futures_curve_chart(
     """
     fig = go.Figure()
 
-    # Use contract_month labels if available, otherwise fall back to month numbers
-    x_column = 'contract_month' if 'contract_month' in curve_data.columns else 'month'
+    def _prepare_curve_df(df: pd.DataFrame):
+        """Sort curve chronologically and determine plotting columns."""
+        if df is None or df.empty:
+            return None, None, [], []
+
+        sorted_df = df.copy()
+        x_col = 'contract_month' if 'contract_month' in sorted_df.columns else 'month'
+
+        if 'contract_date' in sorted_df.columns:
+            sorted_df = sorted_df.sort_values('contract_date')
+            order_values = pd.to_datetime(sorted_df['contract_date']).tolist()
+        elif x_col == 'month':
+            sorted_df = sorted_df.sort_values('month')
+            order_values = sorted_df['month'].tolist()
+        else:
+            parsed_dates = pd.to_datetime(sorted_df[x_col], format="%b-%y", errors='coerce')
+            sorted_df = sorted_df.assign(_order_key=parsed_dates).sort_values('_order_key')
+            order_values = sorted_df['_order_key'].tolist()
+            sorted_df = sorted_df.drop(columns='_order_key')
+
+        sorted_df = sorted_df.reset_index(drop=True)
+        return sorted_df, x_col, sorted_df[x_col].tolist(), order_values
+
+    def _build_category_array(primary_labels, primary_orders, secondary_labels, secondary_orders):
+        """Build chronological category order for axis labels."""
+        pairs = []
+        for label, value in zip(primary_labels, primary_orders):
+            if label is not None:
+                pairs.append((label, value))
+        for label, value in zip(secondary_labels, secondary_orders):
+            if label is not None:
+                pairs.append((label, value))
+
+        if not pairs:
+            return []
+
+        def _normalize(value):
+            if isinstance(value, pd.Timestamp):
+                return value.value
+            if value is None:
+                return float('inf')
+            with contextlib.suppress(TypeError):
+                if pd.isna(value):
+                    return float('inf')
+            with contextlib.suppress(TypeError, ValueError):
+                return float(value)
+            return float('inf')
+
+        order_map: dict[str, float] = {}
+        for label, value in pairs:
+            normalized = _normalize(value)
+            existing = order_map.get(label)
+            if existing is None or normalized < existing:
+                order_map[label] = normalized
+
+        ordered = sorted(order_map.items(), key=lambda item: item[1])
+        return [label for label, _ in ordered]
+
+    curve_data, primary_x_column, primary_labels, primary_orders = _prepare_curve_df(curve_data)
+    if curve_data is None or curve_data.empty:
+        return fig
+
+    secondary_labels: list = []
+    secondary_orders: list = []
+    secondary_x_column = None
+    if secondary_curve is not None and not secondary_curve.empty:
+        secondary_curve, secondary_x_column, secondary_labels, secondary_orders = _prepare_curve_df(secondary_curve)
+    else:
+        secondary_curve = None
 
     # Determine y-axis range with padding for readability
     all_prices = list(curve_data['price'])
@@ -274,7 +342,7 @@ def create_futures_curve_chart(
 
     # Primary curve with area fill for depth
     fig.add_trace(go.Scatter(
-        x=curve_data[x_column],
+        x=curve_data[primary_x_column],
         y=curve_data['price'],
         name='Brent',
         mode='lines+markers',
@@ -292,7 +360,6 @@ def create_futures_curve_chart(
 
     # Secondary curve if provided
     if secondary_curve is not None:
-        secondary_x_column = 'contract_month' if 'contract_month' in secondary_curve.columns else 'month'
         fig.add_trace(go.Scatter(
             x=secondary_curve[secondary_x_column],
             y=secondary_curve['price'],
@@ -308,7 +375,36 @@ def create_futures_curve_chart(
             hovertemplate='%{x}<br>$%{y:.2f}<extra>WTI</extra>',
         ))
 
-    # Apply professional layout with adjusted y-axis
+    categoryarray = _build_category_array(
+        primary_labels,
+        primary_orders,
+        secondary_labels,
+        secondary_orders,
+    )
+    extra_layout = {
+        "yaxis": dict(
+            **BASE_LAYOUT["yaxis"],
+            range=[y_min, y_max],
+            title_text="Price ($/bbl)",
+            dtick=max(1, round(price_range / 5)),
+        ),
+        "xaxis": dict(
+            **BASE_LAYOUT["xaxis"],
+            title_text="Contract Month",
+        ),
+        "xaxis_rangeslider_visible": False,
+    }
+    if categoryarray and isinstance(categoryarray[0], str):
+        extra_layout["xaxis"].update({
+            "categoryorder": "array",
+            "categoryarray": categoryarray,
+        })
+        if len(categoryarray) > 12:
+            extra_layout["xaxis"]["tickangle"] = -45
+    elif len(curve_data) > 12:
+        extra_layout["xaxis"]["tickangle"] = -45
+
+    # Apply professional layout with adjusted axes
     fig = apply_base_layout(
         fig,
         height=height,
@@ -318,17 +414,7 @@ def create_futures_curve_chart(
             "x": 0,
             "xanchor": 'left',
         } if title else None,
-        yaxis=dict(
-            **BASE_LAYOUT["yaxis"],
-            range=[y_min, y_max],
-            title_text="Price ($/bbl)",
-            dtick=max(1, round(price_range / 5)),  # Smart tick spacing
-        ),
-        xaxis=dict(
-            **BASE_LAYOUT["xaxis"],
-            title_text="Contract Month",
-            tickangle=-45 if len(curve_data) > 12 else 0,  # Angle labels if many months
-        ),
+        **extra_layout,
     )
 
     return fig

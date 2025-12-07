@@ -17,6 +17,8 @@ from threading import Lock
 
 import numpy as np
 
+from core.data.bloomberg import TickerMapper
+
 from .base import Broker, BrokerConfig, BrokerStatus, ExecutionReport
 
 logger = logging.getLogger(__name__)
@@ -250,6 +252,14 @@ class SimulatedBroker(Broker):
 
         return base_slippage
 
+    def _get_multiplier(self, symbol: str) -> int:
+        """Resolve contract multiplier for a given symbol."""
+        ticker = symbol if " " in symbol else f"{symbol} Comdty"
+        try:
+            return TickerMapper.get_multiplier(ticker)
+        except Exception:
+            return self.sim_config.contract_multiplier
+
     def _process_fill(self, order: SimulatedOrder, quantity: int, price: float):
         """Process a fill."""
         # Calculate commission
@@ -290,12 +300,14 @@ class SimulatedBroker(Broker):
         # Update position
         self._update_position(order.symbol, order.side, quantity, price, commission)
 
-        # Update cash
-        quantity * price * self.sim_config.contract_multiplier
+        # Update cash with trade value and commissions
+        multiplier = self._get_multiplier(order.symbol)
+        trade_value = quantity * price * multiplier
         if order.side == "BUY":
-            self._cash -= commission  # Only commission for now (futures margin)
+            self._cash -= trade_value
         else:
-            self._cash -= commission
+            self._cash += trade_value
+        self._cash -= commission
 
         # Notify
         self._on_fill(report)
@@ -307,6 +319,7 @@ class SimulatedBroker(Broker):
             self._positions[symbol] = SimulatedPosition(symbol=symbol)
 
         pos = self._positions[symbol]
+        multiplier = self._get_multiplier(symbol)
         old_qty = pos.quantity
 
         if side == "BUY":
@@ -318,9 +331,9 @@ class SimulatedBroker(Broker):
         if (old_qty > 0 and side == "SELL") or (old_qty < 0 and side == "BUY"):
             close_qty = min(abs(old_qty), quantity)
             if side == "SELL":
-                realized = (price - pos.avg_price) * close_qty * self.sim_config.contract_multiplier
+                realized = (price - pos.avg_price) * close_qty * multiplier
             else:
-                realized = (pos.avg_price - price) * close_qty * self.sim_config.contract_multiplier
+                realized = (pos.avg_price - price) * close_qty * multiplier
             pos.realized_pnl += realized
 
         # Update average price
@@ -343,7 +356,8 @@ class SimulatedBroker(Broker):
         for symbol, pos in self._positions.items():
             if pos.quantity != 0 and symbol in self._prices:
                 price = self._prices[symbol]
-                pos.unrealized_pnl = (price - pos.avg_price) * pos.quantity * self.sim_config.contract_multiplier
+                multiplier = self._get_multiplier(symbol)
+                pos.unrealized_pnl = (price - pos.avg_price) * pos.quantity * multiplier
 
     def cancel_order(self, broker_order_id: str) -> bool:
         """Cancel an order."""
@@ -430,8 +444,13 @@ class SimulatedBroker(Broker):
         total_unrealized = sum(p.unrealized_pnl for p in self._positions.values())
         total_realized = sum(p.realized_pnl for p in self._positions.values())
         total_commission = sum(p.commission_paid for p in self._positions.values())
+        positions_value = 0.0
+        for symbol, pos in self._positions.items():
+            price = self._prices.get(symbol, pos.avg_price)
+            multiplier = self._get_multiplier(symbol)
+            positions_value += pos.quantity * price * multiplier
 
-        nav = self._cash + total_unrealized + total_realized - total_commission
+        nav = self._cash + positions_value
 
         return {
             "account": account or self.sim_config.default_account,
@@ -443,7 +462,7 @@ class SimulatedBroker(Broker):
             "total_commission": total_commission,
             "buying_power": self._cash * 10,  # 10x leverage assumption
             "margin_used": sum(
-                abs(p.quantity) * self._prices.get(p.symbol, 0) * self.sim_config.contract_multiplier * 0.1
+                abs(p.quantity) * self._prices.get(p.symbol, 0) * self._get_multiplier(p.symbol) * 0.1
                 for p in self._positions.values()
             ),
         }

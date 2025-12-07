@@ -10,6 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 from app.page_utils import init_page
+from core.constants import REFERENCE_PRICES
 from core.risk import RiskLimits
 from core.trading import PositionManager, TradeBlotter
 
@@ -76,6 +77,7 @@ with col1:
 
         with price_col1:
             price = st.number_input("Execution Price", min_value=0.01, value=72.50, format="%.2f")
+            st.session_state.trade_entry_price = price
 
         with price_col2:
             commission = st.number_input("Commission/Fees ($)", min_value=0.0, value=25.0, format="%.2f")
@@ -88,7 +90,7 @@ with col1:
 
         notes = st.text_area("Notes", placeholder="Trade rationale...")
 
-        submitted = st.form_submit_button("💾 Save Trade", use_container_width=True)
+        submitted = st.form_submit_button("💾 Save Trade", width='stretch')
 
         if submitted:
             ticker = instrument.split(" - ")[0]
@@ -119,12 +121,15 @@ with col2:
         current_position = int(positions_df.loc[mask, "qty"].sum())
     proposed_quantity = int(st.session_state.get("trade_entry_quantity", 10))
     current_price = ctx.price_cache.get(selected_ticker)
+    default_price = REFERENCE_PRICES.get(ticker_prefix, 72.5)
+    manual_price = st.session_state.get("trade_entry_price", default_price)
+    price_for_checks = current_price if current_price is not None else manual_price
 
     position_check = risk_limits.check_position_limit(
         ticker=selected_ticker,
         current_quantity=current_position,
         proposed_quantity=proposed_quantity,
-        price=current_price
+        price=price_for_checks
     )
 
     st.markdown("**Position Limits**")
@@ -143,7 +148,7 @@ with col2:
     multiplier = ctx.data_loader.get_multiplier(selected_ticker)
     current_var = portfolio_summary['var_estimate']
     var_limit = portfolio_summary['var_limit']
-    var_impact = proposed_quantity * (current_price or 72.5) * multiplier * 0.02 * 1.65
+    var_impact = proposed_quantity * price_for_checks * multiplier * 0.02 * 1.65
     new_var = current_var + var_impact
     var_util = new_var / var_limit * 100
 
@@ -165,7 +170,7 @@ if not todays_trades.empty:
 
     st.dataframe(
         display_trades,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             'trade_id': 'Trade ID',
@@ -187,28 +192,28 @@ st.subheader("⚡ Quick Trade Entry")
 quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
 
 with quick_col1:
-    if st.button("Buy 5 WTI", use_container_width=True):
+    if st.button("Buy 5 WTI", width='stretch'):
         price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col2:
-    if st.button("Sell 5 WTI", use_container_width=True):
+    if st.button("Sell 5 WTI", width='stretch'):
         price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col3:
-    if st.button("Buy 5 Brent", use_container_width=True):
+    if st.button("Buy 5 Brent", width='stretch'):
         price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col4:
-    if st.button("Sell 5 Brent", use_container_width=True):
+    if st.button("Sell 5 Brent", width='stretch'):
         price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")

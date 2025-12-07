@@ -130,7 +130,7 @@ class TestSignalAggregator:
 
     def test_aggregate_signals(self):
         """Test signal aggregation."""
-        aggregator = SignalAggregator()
+        aggregator = SignalAggregator(history_path=None)
 
         tech_signal = {"signal": "LONG", "confidence": 70}
         fund_signal = {"signal": "LONG", "confidence": 65}
@@ -149,7 +149,7 @@ class TestSignalAggregator:
 
     def test_get_signal_performance(self):
         """Test signal performance tracking."""
-        aggregator = SignalAggregator()
+        aggregator = SignalAggregator(history_path=None)
 
         # Generate some test signals
         for _ in range(5):
@@ -164,6 +164,36 @@ class TestSignalAggregator:
 
         assert 'total_signals' in perf
         assert perf['total_signals'] == 5
+
+    def test_signal_history_is_bounded(self):
+        """Ensure signal history deque enforces limit."""
+        aggregator = SignalAggregator(history_limit=3, history_path=None)
+
+        for _ in range(5):
+            aggregator.aggregate_signals(
+                technical_signal={"signal": "LONG", "confidence": 70},
+                fundamental_signal={"signal": "LONG", "confidence": 65},
+                instrument="CL1 Comdty",
+                current_price=72.50
+            )
+
+        assert len(aggregator.signal_history) == 3
+
+    def test_signal_history_persistence(self, tmp_path):
+        """Signal history should be persisted and reloaded."""
+        history_file = tmp_path / "history.json"
+        aggregator = SignalAggregator(history_limit=4, history_path=history_file)
+        aggregator.clear_history()
+
+        aggregator.aggregate_signals(
+            technical_signal={"signal": "LONG", "confidence": 70},
+            fundamental_signal={"signal": "LONG", "confidence": 65},
+            instrument="CL1 Comdty",
+            current_price=72.50
+        )
+
+        reloaded = SignalAggregator(history_limit=4, history_path=history_file)
+        assert len(reloaded.signal_history) == 1
 
 
 if __name__ == "__main__":

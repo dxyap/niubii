@@ -383,6 +383,60 @@ class TestDataLoader:
         assert "rbob_bbl" in crack
         assert "ho_bbl" in crack
 
+    def test_crack_spread_321_formula_accuracy(self, tmp_path, monkeypatch):
+        """Ensure crack spread calculation performs accurate unit conversion."""
+        loader = DataLoader(
+            config_dir=str(tmp_path / "config"),
+            data_dir=str(tmp_path / "data"),
+            use_mock=True
+        )
+
+        sample_batch = {
+            "CL1 Comdty": {"current": 70.0, "open": 69.0},
+            "XB1 Comdty": {"current": 2.0, "open": 1.95},
+            "HO1 Comdty": {"current": 2.5, "open": 2.45},
+        }
+        monkeypatch.setattr(loader, "get_prices_batch", lambda tickers: sample_batch)
+
+        result = loader.get_crack_spread_321()
+
+        rbob_bbl = sample_batch["XB1 Comdty"]["current"] * loader.GALLONS_PER_BARREL
+        ho_bbl = sample_batch["HO1 Comdty"]["current"] * loader.GALLONS_PER_BARREL
+        wti = sample_batch["CL1 Comdty"]["current"]
+        expected_crack = (2 * rbob_bbl + ho_bbl - 3 * wti) / 3
+
+        rbob_open = sample_batch["XB1 Comdty"]["open"] * loader.GALLONS_PER_BARREL
+        ho_open = sample_batch["HO1 Comdty"]["open"] * loader.GALLONS_PER_BARREL
+        wti_open = sample_batch["CL1 Comdty"]["open"]
+        expected_open_crack = (2 * rbob_open + ho_open - 3 * wti_open) / 3
+
+        assert result["crack"] == pytest.approx(round(expected_crack, 2))
+        assert result["change"] == pytest.approx(round(expected_crack - expected_open_crack, 2))
+
+    def test_crack_spread_211_formula_accuracy(self, tmp_path, monkeypatch):
+        """Ensure 2-1-1 crack spread follows documented formula."""
+        loader = DataLoader(
+            config_dir=str(tmp_path / "config"),
+            data_dir=str(tmp_path / "data"),
+            use_mock=True
+        )
+
+        sample_batch = {
+            "CL1 Comdty": {"current": 71.0},
+            "XB1 Comdty": {"current": 1.9},
+            "HO1 Comdty": {"current": 2.4},
+        }
+        monkeypatch.setattr(loader, "get_prices_batch", lambda tickers: sample_batch)
+
+        result = loader.get_crack_spread_211()
+
+        rbob_bbl = sample_batch["XB1 Comdty"]["current"] * loader.GALLONS_PER_BARREL
+        ho_bbl = sample_batch["HO1 Comdty"]["current"] * loader.GALLONS_PER_BARREL
+        wti = sample_batch["CL1 Comdty"]["current"]
+        expected_crack = (rbob_bbl + ho_bbl - 2 * wti) / 2
+
+        assert result["crack"] == pytest.approx(round(expected_crack, 2))
+
     def test_get_futures_curve(self, tmp_path):
         """Test getting futures curve."""
         loader = DataLoader(
@@ -440,6 +494,30 @@ class TestDataLoader:
         assert "mock_mode" in status
         assert "connected" in status
         assert status["mock_mode"] is True
+
+    def test_loader_auto_fallback_to_mock(self, tmp_path, monkeypatch):
+        """Loader should switch to mock mode if live connection is unavailable."""
+        monkeypatch.setenv("BLOOMBERG_ALLOW_MOCK_FALLBACK", "true")
+        loader = DataLoader(
+            config_dir=str(tmp_path / "config"),
+            data_dir=str(tmp_path / "data"),
+            use_mock=False,
+        )
+
+        assert loader.get_data_mode() in {"mock", "live"}
+        assert loader.is_data_available() is True
+
+    def test_loader_respects_disabled_fallback(self, tmp_path, monkeypatch):
+        """Loader remains disconnected when fallback is disabled."""
+        monkeypatch.setenv("BLOOMBERG_ALLOW_MOCK_FALLBACK", "false")
+        loader = DataLoader(
+            config_dir=str(tmp_path / "config"),
+            data_dir=str(tmp_path / "data"),
+            use_mock=False,
+        )
+
+        if loader.get_data_mode() == "disconnected":
+            assert loader.is_data_available() is False
 
 
 if __name__ == "__main__":

@@ -98,14 +98,25 @@ class CurveAnalyzer:
         spreads = []
         prices = curve_df["price"].values
 
+        if "contract_month" in curve_df.columns:
+            labels = curve_df["contract_month"].tolist()
+        elif "ticker" in curve_df.columns:
+            labels = curve_df["ticker"].tolist()
+        else:
+            labels = [f"M{i+1}" for i in range(len(curve_df))]
+
         # Standard spreads: M1-M2, M1-M3, M1-M6, M1-M12
         standard_spreads = [(0, 1), (0, 2), (0, 5), (0, 11)]
 
         for front_idx, back_idx in standard_spreads:
             if back_idx < len(prices):
                 spread_value = prices[front_idx] - prices[back_idx]
+                front_label = labels[front_idx]
+                back_label = labels[back_idx]
                 spreads.append({
-                    "spread_name": f"M{front_idx+1}-M{back_idx+1}",
+                    "spread_name": f"{front_label} vs {back_label}",
+                    "front_contract": front_label,
+                    "back_contract": back_label,
                     "front_month": front_idx + 1,
                     "back_month": back_idx + 1,
                     "spread_value": round(spread_value, 2),

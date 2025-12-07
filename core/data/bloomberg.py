@@ -1099,6 +1099,7 @@ class BloombergClient:
             data.append({
                 "month": month_number,
                 "contract_month": contract_label,
+                "contract_date": contract_date,
                 "ticker": ticker,
                 "price": current,
                 "change": round(change, 4),
@@ -1111,7 +1112,11 @@ class BloombergClient:
         if not data:
             raise DataUnavailableError(f"No valid curve data available for {commodity}")
 
-        return pd.DataFrame(data)
+        curve_df = pd.DataFrame(data)
+        if "contract_date" in curve_df.columns:
+            curve_df = curve_df.sort_values("contract_date").reset_index(drop=True)
+
+        return curve_df
 
     def get_reference_data(self, ticker: str, fields: list[str]) -> dict:
         """Get reference data for a ticker."""

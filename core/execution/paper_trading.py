@@ -17,6 +17,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+from core.data.bloomberg import TickerMapper
+
 from .brokers import ExecutionReport, SimulatedBroker, SimulatorConfig
 from .oms import Order, OrderManager, OrderSide, OrderStatus, OrderType, OrderUpdate
 
@@ -371,15 +373,30 @@ class PaperTradingEngine:
             logger.warning(f"Position limit would be exceeded: {abs(new_pos)} > {self.config.max_position_per_symbol}")
             return False
 
-        # Check gross exposure
-        {p["symbol"]: p["market_price"] for p in positions.values()}
-        total_exposure = sum(
-            abs(p["quantity"]) * p["market_price"] * self.config.contract_multiplier
-            for p in positions.values()
-        )
+        # Check gross exposure using instrument-specific multipliers
+        total_exposure = 0.0
+        symbol_seen = False
+        for sym, pos in positions.items():
+            multiplier = self._resolve_multiplier(sym)
+            price = self._estimate_price(sym, positions)
+            qty = pos.get("quantity", 0)
+            if sym == symbol:
+                qty = new_pos
+                symbol_seen = True
+                price = self._estimate_price(symbol, positions)
+            total_exposure += abs(qty) * price * multiplier
+
+        if not symbol_seen:
+            multiplier = self._resolve_multiplier(symbol)
+            price = self._estimate_price(symbol, positions)
+            total_exposure += abs(new_pos) * price * multiplier
 
         if total_exposure > self.config.max_gross_exposure:
-            logger.warning("Gross exposure limit would be exceeded")
+            logger.warning(
+                "Gross exposure limit would be exceeded: %.0f > %.0f",
+                total_exposure,
+                self.config.max_gross_exposure,
+            )
             return False
 
         return True
@@ -480,3 +497,24 @@ class PaperTradingEngine:
         # Annualized Sharpe (assuming daily data)
         sharpe = df["returns"].mean() / df["returns"].std() * np.sqrt(252)
         return sharpe
+
+    def _resolve_multiplier(self, symbol: str) -> int:
+        """Resolve contract multiplier for a symbol using ticker metadata."""
+        ticker = symbol if " " in symbol else f"{symbol} Comdty"
+        try:
+            return TickerMapper.get_multiplier(ticker)
+        except Exception:
+            return self.config.contract_multiplier
+
+    def _estimate_price(self, symbol: str, positions: dict[str, dict]) -> float:
+        """
+        Estimate a reference price for exposure checks.
+
+        Falls back to position data when broker price feed is unavailable.
+        """
+        price = self.broker.get_market_price(symbol)
+        if price is None or price == 0:
+            price = positions.get(symbol, {}).get("market_price")
+        if price is None or price == 0:
+            price = positions.get(symbol, {}).get("avg_price")
+        return price if price not in (None, 0) else 1.0
