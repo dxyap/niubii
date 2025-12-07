@@ -39,13 +39,12 @@ A lightweight, **local-first** quantitative trading dashboard for oil markets. B
 - Trade blotter with history and statistics
 - Strategy tagging and performance attribution
 
-### 🤖 Execution & Automation (Simulation Only)
+### 🤖 Execution (Simulation Only)
 - **Order Management System**: Full order lifecycle tracking (created→submitted→filled)
 - **Paper Trading Mode**: Simulated execution for strategy testing - **no real trades**
 - **Position Sizing**: Kelly criterion, volatility targeting, risk parity, ATR/VaR-based
 - **Execution Algorithms**: TWAP, VWAP, POV, Implementation Shortfall (simulation)
 - **Simulated Broker**: Realistic fills and slippage for testing purposes
-- **Automation Rules**: Signal-to-order conversion for paper trading only
 
 > 🔒 **No Live Trading**: All execution is simulated. There is no connection to real brokers or exchanges.
 
@@ -92,8 +91,7 @@ Open in browser at `http://localhost:8501`
 │   │   ├── 5_📋_Blotter.py
 │   │   ├── 6_📊_Analytics.py
 │   │   ├── 7_🤖_ML_Signals.py    # ML-powered signals
-│   │   ├── 8_🔬_Backtest.py      # Strategy backtesting
-│   │   └── 9_🤖_Automation.py    # Execution & automation
+│   │   └── 8_🔬_Backtest.py      # Strategy backtesting
 │   ├── components/          # Reusable UI components
 │   └── shared_state.py      # Session state management
 │
@@ -134,12 +132,11 @@ Open in browser at `http://localhost:8501`
 │   │   ├── metrics.py       # Performance metrics
 │   │   ├── optimization.py  # Walk-forward optimization
 │   │   └── reporting.py     # Reports & visualization
-│   ├── execution/            # Execution & Automation (Simulation Only)
+│   ├── execution/            # Execution (Simulation Only)
 │   │   ├── oms.py            # Order Management System
 │   │   ├── sizing.py         # Position sizing algorithms
 │   │   ├── algorithms.py     # TWAP, VWAP, POV, IS algorithms
 │   │   ├── paper_trading.py  # Paper trading engine (no real execution)
-│   │   ├── automation.py     # Automation rules engine (simulation only)
 │   │   └── brokers/          # Simulated broker only
 │   │       ├── base.py       # Broker interface (abstract)
 │   │       └── simulator.py  # Simulated broker (no real connections)
@@ -771,7 +768,7 @@ pytest tests/test_analytics.py -v
 | ML (Feature Engineering) | 25 | 90% |
 | Trading | 10 | 85% |
 | Backtesting | 25 | 90% |
-| Execution & Automation | 47 | 92% |
+| Execution | 35 | 92% |
 | Alerts & Notifications | 20 | 88% |
 | Research & Analytics | 25 | 85% |
 | Infrastructure (Auth/Audit) | 30 | 90% |
@@ -808,7 +805,6 @@ pytest tests/test_analytics.py -v
 | Paper Trading (Simulation) | ✅ Complete | 6 |
 | Position Sizing Algorithms | ✅ Complete | 6 |
 | Execution Algorithms (Simulated) | ✅ Complete | 6 |
-| Automation Rules (Paper Trading) | ✅ Complete | 6 |
 | Multi-channel Alerts | ✅ Complete | 7 |
 | Advanced Analytics & AI | ✅ Complete | 8 |
 | Production Hardening | ✅ Complete | 9 |
@@ -1015,13 +1011,13 @@ print(f"OOS Sharpe: {result.oos_metrics.sharpe_ratio:.2f}")
 
 ---
 
-### ✅ Phase 6: Execution & Automation (Complete - Simulation Only)
+### ✅ Phase 6: Execution (Complete - Simulation Only)
 
 **Order Management & Paper Trading**
 
 > ⚠️ **No Live Trading**: All execution is **simulated**. There is **no connection to real brokers or exchanges**. This is for strategy testing and educational purposes only.
 
-Full execution infrastructure for signal-to-order conversion and **paper trading simulation**.
+Full execution infrastructure for **paper trading simulation**.
 
 | Feature | Description | Status |
 |---------|-------------|--------|
@@ -1030,8 +1026,6 @@ Full execution infrastructure for signal-to-order conversion and **paper trading
 | Position Sizing | Kelly, volatility targeting, risk parity, ATR, VaR | ✅ Complete |
 | Execution Algorithms | TWAP, VWAP, POV, Implementation Shortfall (simulated) | ✅ Complete |
 | Simulated Broker | Abstract broker with simulation implementation only | ✅ Complete |
-| Automation Rules | Signal-based rules for paper trading only | ✅ Complete |
-| Dashboard Page | Full automation UI with paper trading | ✅ Complete |
 
 **Implementation:**
 ```
@@ -1042,12 +1036,9 @@ core/
 │   ├── sizing.py             # Position sizing algorithms
 │   ├── algorithms.py         # Execution algorithms (TWAP, VWAP, POV, IS)
 │   ├── paper_trading.py      # Paper trading engine
-│   ├── automation.py         # Automation rules engine
 │   └── brokers/
 │       ├── base.py           # Abstract broker interface
 │       └── simulator.py      # Simulated broker
-app/pages/
-├── 9_🤖_Automation.py       # Automation dashboard
 config/
 ├── execution.yaml            # Execution configuration
 ```
@@ -1144,40 +1135,6 @@ print(f"Return: {summary['return_pct']:.2f}%")
 # Stop session
 session = engine.stop_session()
 print(f"Session Sharpe: {session.sharpe_ratio:.2f}")
-```
-
-**Automation Rules:**
-
-```python
-from core.execution import (
-    AutomationEngine, RuleConfig, RuleCondition, RuleAction,
-    ConditionType, ActionType, SizingMethod, create_signal_rule
-)
-
-engine = AutomationEngine()
-
-# Create rule: Enter long on high-confidence bullish signal
-rule = create_signal_rule(
-    name="Long on Strong Signal",
-    symbol="CL1",
-    direction="LONG",
-    min_confidence=65,
-    sizing_method=SizingMethod.VOLATILITY_TARGET,
-    risk_pct=0.02,
-)
-engine.add_rule(rule)
-
-# Evaluate rules against current context
-context = {
-    "signal": {"direction": "LONG", "confidence": 72},
-    "position": {"quantity": 0},
-    "price": 75.0,
-    "volatility": 0.25,
-    "account_value": 1_000_000,
-}
-
-triggered = engine.evaluate_rules(context, execute=True)
-print(f"Triggered {len(triggered)} rules")
 ```
 
 ---
@@ -1424,12 +1381,11 @@ output = metrics.get_prometheus_output()
 ├── Walk-forward optimization
 └── Performance reporting & visualization
 
-✅ Q2 2025: Phase 6 - Execution & Automation (COMPLETE)
+✅ Q2 2025: Phase 6 - Execution (COMPLETE)
 ├── Order Management System with full lifecycle
 ├── Paper trading engine with P&L tracking
 ├── Position sizing (Kelly, vol targeting, risk parity)
 ├── Execution algorithms (TWAP, VWAP, POV, IS)
-├── Automation rules engine
 └── Broker simulation framework
 
 ✅ Q2-Q3 2025: Phase 7 - Alerts & Notifications (COMPLETE)

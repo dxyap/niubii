@@ -1,7 +1,7 @@
 # =============================================================================
-# EXECUTION & AUTOMATION CONFIGURATION
+# EXECUTION CONFIGURATION
 # =============================================================================
-# Phase 6: Order management, execution algorithms, and automated trading
+# Phase 6: Order management and execution algorithms
 
 # =============================================================================
 # ORDER MANAGEMENT SYSTEM
@@ -135,41 +135,6 @@ broker:
     account: ""
     timeout: 30
     route: "SMART"
-
-# =============================================================================
-# AUTOMATION RULES
-# =============================================================================
-automation:
-  # Engine settings
-  enabled: true
-  evaluation_interval_seconds: 10
-  
-  # Rule defaults
-  default_cooldown_minutes: 5
-  max_triggers_per_day: 10
-  
-  # Trading windows (UTC)
-  trading_windows:
-    oil_futures:
-      start: "09:00"
-      end: "16:30"
-      days: [0, 1, 2, 3, 4]  # Monday-Friday
-  
-  # Signal thresholds
-  signal_thresholds:
-    min_confidence_entry: 65
-    min_confidence_exit: 50
-    
-  # Position management
-  auto_stop_loss: true
-  default_stop_pct: 0.02
-  
-  auto_take_profit: false
-  default_target_pct: 0.04
-  
-  # Risk controls
-  max_daily_loss: 50000
-  pause_on_max_loss: true
 
 # =============================================================================
 # ALERTS & NOTIFICATIONS (Future - Phase 7)

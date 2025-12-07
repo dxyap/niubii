@@ -1,7 +1,7 @@
 """
 Execution Module Tests
 ======================
-Tests for the execution and automation system.
+Tests for the execution system.
 """
 
 import os
@@ -17,12 +17,6 @@ from core.execution.algorithms import (
     TWAPAlgorithm,
     VWAPAlgorithm,
     get_execution_algorithm,
-)
-from core.execution.automation import (
-    AutomationEngine,
-    ConditionType,
-    RuleCondition,
-    create_signal_rule,
 )
 from core.execution.brokers import BrokerStatus, SimulatedBroker, SimulatorConfig
 
@@ -639,141 +633,6 @@ class TestPaperTradingEngine:
 
         assert session is not None
         assert not engine._is_active
-
-
-# =============================================================================
-# AUTOMATION ENGINE TESTS
-# =============================================================================
-class TestAutomationEngine:
-    """Tests for the automation engine."""
-
-    @pytest.fixture
-    def temp_config(self):
-        """Create temporary config file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = os.path.join(tmpdir, "rules.json")
-            yield config_path
-
-    @pytest.fixture
-    def engine(self, temp_config):
-        """Create automation engine for testing."""
-        return AutomationEngine(config_path=temp_config)
-
-    def test_add_rule(self, engine):
-        """Test adding a rule."""
-        rule_config = create_signal_rule(
-            name="Test Rule",
-            symbol="CL1",
-            direction="LONG",
-            min_confidence=65,
-        )
-
-        rule = engine.add_rule(rule_config)
-
-        assert rule is not None
-        assert rule.config.name == "Test Rule"
-
-    def test_remove_rule(self, engine):
-        """Test removing a rule."""
-        rule_config = create_signal_rule("Test", "CL1", "LONG")
-        rule = engine.add_rule(rule_config)
-
-        success = engine.remove_rule(rule.config.rule_id)
-        assert success
-
-        assert engine.get_rule(rule.config.rule_id) is None
-
-    def test_rule_evaluation(self, engine):
-        """Test rule evaluation."""
-        rule_config = create_signal_rule(
-            name="Long Signal",
-            symbol="CL1",
-            direction="LONG",
-            min_confidence=60,
-        )
-        engine.add_rule(rule_config)
-
-        # Context that should trigger
-        context = {
-            "signal": {"direction": "LONG", "confidence": 70},
-            "position": {"quantity": 0},
-            "price": 75.0,
-            "volatility": 0.25,
-            "account_value": 1_000_000,
-        }
-
-        triggered = engine.evaluate_rules(context, execute=False)
-
-        assert len(triggered) > 0
-        assert triggered[0]["rule_name"] == "Long Signal"
-
-    def test_condition_signal_direction(self):
-        """Test signal direction condition."""
-        condition = RuleCondition(
-            condition_type=ConditionType.SIGNAL_DIRECTION,
-            required_direction="LONG",
-        )
-
-        context_match = {"signal": {"direction": "LONG"}}
-        context_no_match = {"signal": {"direction": "SHORT"}}
-
-        assert condition.evaluate(context_match)
-        assert not condition.evaluate(context_no_match)
-
-    def test_condition_signal_confidence(self):
-        """Test signal confidence condition."""
-        condition = RuleCondition(
-            condition_type=ConditionType.SIGNAL_CONFIDENCE,
-            min_confidence=65,
-        )
-
-        context_high = {"signal": {"confidence": 70}}
-        context_low = {"signal": {"confidence": 50}}
-
-        assert condition.evaluate(context_high)
-        assert not condition.evaluate(context_low)
-
-    def test_condition_no_position(self):
-        """Test no position condition."""
-        condition = RuleCondition(
-            condition_type=ConditionType.NO_POSITION,
-        )
-
-        context_flat = {"position": {"quantity": 0}}
-        context_long = {"position": {"quantity": 5}}
-
-        assert condition.evaluate(context_flat)
-        assert not condition.evaluate(context_long)
-
-    def test_rule_cooldown(self, engine):
-        """Test rule cooldown prevents rapid re-triggering."""
-        rule_config = create_signal_rule("Test", "CL1", "LONG", min_confidence=50)
-        rule_config.cooldown_minutes = 5
-        engine.add_rule(rule_config)
-
-        context = {
-            "signal": {"direction": "LONG", "confidence": 70},
-            "position": {"quantity": 0},
-            "price": 75.0,
-        }
-
-        # First trigger - execute to set last_triggered
-        first_triggered = engine.evaluate_rules(context, execute=True)
-        assert len(first_triggered) > 0
-
-        # Second trigger (within cooldown) should not fire
-        triggered = engine.evaluate_rules(context, execute=False)
-        assert len(triggered) == 0
-
-    def test_get_statistics(self, engine):
-        """Test getting automation statistics."""
-        rule_config = create_signal_rule("Test", "CL1", "LONG")
-        engine.add_rule(rule_config)
-
-        stats = engine.get_statistics()
-
-        assert stats["total_rules"] == 1
-        assert stats["active_rules"] == 1
 
 
 # =============================================================================

@@ -11,7 +11,7 @@ Submodules:
 - trading: Position management and P&L tracking
 - ml: Machine learning models and feature engineering
 - backtest: Strategy backtesting and optimization
-- execution: Order management, execution algorithms, and automation
+- execution: Order management and execution algorithms
 - alerts: Multi-channel alert system and notifications
 - research: Advanced analytics, LLM, and alternative data
 - infrastructure: Authentication, RBAC, audit logging, and monitoring

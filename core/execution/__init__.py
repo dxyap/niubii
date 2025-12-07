@@ -1,7 +1,7 @@
 """
 Execution Module
 ================
-Order management, execution algorithms, and automated trading.
+Order management and execution algorithms.
 
 This module provides:
 - Order Management System (OMS) for order lifecycle management
@@ -9,9 +9,8 @@ This module provides:
 - Execution algorithms (TWAP, VWAP, implementation shortfall)
 - Broker integration layer (simulator + real broker interfaces)
 - Paper trading mode for strategy testing
-- Automation rules engine for signal-to-order conversion
 
-Phase 6 Implementation - Execution & Automation
+Phase 6 Implementation - Execution
 """
 
 from .algorithms import (
@@ -20,14 +19,6 @@ from .algorithms import (
     ExecutionSlice,
     TWAPAlgorithm,
     VWAPAlgorithm,
-)
-from .automation import (
-    AutomationEngine,
-    AutomationRule,
-    RuleAction,
-    RuleCondition,
-    RuleConfig,
-    RuleStatus,
 )
 from .oms import (
     Order,
@@ -82,11 +73,4 @@ __all__ = [
     "PaperTradingEngine",
     "PaperTradingConfig",
     "SimulatedFill",
-    # Automation
-    "AutomationRule",
-    "RuleCondition",
-    "RuleAction",
-    "AutomationEngine",
-    "RuleConfig",
-    "RuleStatus",
 ]
