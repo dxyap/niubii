@@ -303,3 +303,37 @@ exchanges:
   HO: "NYMEX"
   QS: "ICE"
   NG: "NYMEX"
+
+satellite_inventory:
+  locations:
+    ara:
+      name: "ARA (Amsterdam-Rotterdam-Antwerp)"
+      tickers:
+        crude: "ARACRS Index"
+        gasoline: "ARAGSS Index"
+        gasoil: "ARAGAS Index"
+        fuel_oil: "ARAFLS Index"
+      capacity_mb:
+        total: 50
+        crude: 25
+        products: 25
+    fujairah:
+      name: "Fujairah, UAE"
+      tickers:
+        light: "FUJLDS Index"
+        middle: "FUJMDS Index"
+        heavy: "FUJHDS Index"
+      capacity_mb:
+        total: 42
+        crude: 20
+        products: 22
+    singapore:
+      name: "Singapore"
+      tickers:
+        light: "MASGLST Index"
+        middle: "MASGMST Index"
+        heavy: "MASGHST Index"
+      capacity_mb:
+        total: 85
+        crude: 45
+        products: 40

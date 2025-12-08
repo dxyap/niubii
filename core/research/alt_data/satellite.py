@@ -12,9 +12,71 @@ Uses Bloomberg Index tickers for:
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import yaml
+
 logger = logging.getLogger(__name__)
+
+_RESOLVED_PATH = Path(__file__).resolve()
+try:
+    _PROJECT_ROOT = _RESOLVED_PATH.parents[3]
+except IndexError:
+    _PROJECT_ROOT = _RESOLVED_PATH.parent
+CONFIG_DIR = _PROJECT_ROOT / "config"
+BLOOMBERG_TICKERS_CONFIG = CONFIG_DIR / "bloomberg_tickers.yaml"
+
+LOCATION_ALIASES = {"rotterdam": "ara"}
+
+DEFAULT_LOCATION_NAMES = {
+    "ara": "ARA (Amsterdam-Rotterdam-Antwerp)",
+    "fujairah": "Fujairah, UAE",
+    "singapore": "Singapore",
+}
+
+
+def _load_satellite_inventory_config() -> tuple[
+    dict[str, dict[str, str]],
+    dict[str, dict[str, float]],
+    dict[str, str],
+]:
+    """Load satellite inventory tickers and capacity metadata from config."""
+    if not BLOOMBERG_TICKERS_CONFIG.exists():
+        logger.warning(
+            "Bloomberg ticker config not found at %s",
+            BLOOMBERG_TICKERS_CONFIG,
+        )
+        return {}, {}, {}
+
+    try:
+        with BLOOMBERG_TICKERS_CONFIG.open("r", encoding="utf-8") as cfg_file:
+            config_data = yaml.safe_load(cfg_file) or {}
+    except Exception as exc:
+        logger.error("Failed to load satellite inventory config: %s", exc)
+        return {}, {}, {}
+
+    satellite_config = config_data.get("satellite_inventory", {})
+    locations_config = satellite_config.get("locations", {}) or {}
+
+    tickers = {}
+    capacities = {}
+    names = {}
+
+    for loc_key, loc_cfg in locations_config.items():
+        tickers[loc_key] = loc_cfg.get("tickers", {}) or {}
+        capacities[loc_key] = loc_cfg.get("capacity_mb", {}) or {}
+        loc_name = loc_cfg.get("name")
+        if loc_name:
+            names[loc_key] = loc_name
+
+    return tickers, capacities, names
+
+
+_BLOOMBERG_TICKERS, _STORAGE_CAPACITIES, _LOCATION_NAMES = _load_satellite_inventory_config()
+BLOOMBERG_INVENTORY_TICKERS = _BLOOMBERG_TICKERS
+STORAGE_CAPACITIES_MB = _STORAGE_CAPACITIES
+SATELLITE_LOCATION_NAMES = {**DEFAULT_LOCATION_NAMES, **_LOCATION_NAMES}
 
 
 @dataclass
@@ -53,68 +115,12 @@ class StorageTankData:
 
 
 # =============================================================================
-# BLOOMBERG INVENTORY TICKERS - FILL IN YOUR TICKERS HERE
+# BLOOMBERG INVENTORY TICKERS
 # =============================================================================
-# Instructions:
-#   1. Search Bloomberg for the relevant inventory/stock indices
-#   2. Replace the placeholder strings below with actual Bloomberg tickers
-#   3. Format: "TICKER Index" (e.g., "ARACRS Index")
-#   4. Units are typically in thousand barrels (kb)
-#
-# Suggested tickers to search in Bloomberg:
-#   - ARA: Search "ARA crude stocks", "ARA gasoline", "ARA gasoil", "ARA fuel oil"
-#   - Fujairah: Search "Fujairah light distillates", "FOIZ stocks", "FEDCom"
-#   - Singapore: Search "Singapore oil stocks", "MAS light distillates"
-# =============================================================================
-
-BLOOMBERG_INVENTORY_TICKERS = {
-    # -------------------------------------------------------------------------
-    # ARA (Amsterdam-Rotterdam-Antwerp) - European Hub
-    # -------------------------------------------------------------------------
-    "ara": {
-        "crude": "",       # TODO: Add ARA Crude Stocks ticker (e.g., "ARACRS Index")
-        "gasoline": "",    # TODO: Add ARA Gasoline Stocks ticker (e.g., "ARAGSS Index")
-        "gasoil": "",      # TODO: Add ARA Gasoil/Diesel Stocks ticker (e.g., "ARAGAS Index")
-        "fuel_oil": "",    # TODO: Add ARA Fuel Oil Stocks ticker (e.g., "ARAFLS Index")
-    },
-
-    # -------------------------------------------------------------------------
-    # Fujairah - Middle East Hub (UAE)
-    # -------------------------------------------------------------------------
-    "fujairah": {
-        "light": "",       # TODO: Add Fujairah Light Distillates ticker (e.g., "FUJLDS Index")
-        "middle": "",      # TODO: Add Fujairah Middle Distillates ticker (e.g., "FUJMDS Index")
-        "heavy": "",       # TODO: Add Fujairah Heavy Distillates/Residue ticker (e.g., "FUJHDS Index")
-    },
-
-    # -------------------------------------------------------------------------
-    # Singapore - Asian Hub
-    # -------------------------------------------------------------------------
-    "singapore": {
-        "light": "",       # TODO: Add Singapore Light Distillates ticker (e.g., "MASGLST Index")
-        "middle": "",      # TODO: Add Singapore Middle Distillates ticker (e.g., "MASGMST Index")
-        "heavy": "",       # TODO: Add Singapore Heavy/Fuel Oil ticker (e.g., "MASGHST Index")
-    },
-}
-
-# Estimated capacities in million barrels (for utilization calculations)
-STORAGE_CAPACITIES_MB = {
-    "ara": {
-        "total": 50,  # ARA total capacity ~50 MMbbl
-        "crude": 25,
-        "products": 25,
-    },
-    "fujairah": {
-        "total": 42,  # Fujairah capacity ~42 MMbbl
-        "crude": 20,
-        "products": 22,
-    },
-    "singapore": {
-        "total": 85,  # Singapore capacity ~85 MMbbl (major Asian hub)
-        "crude": 45,
-        "products": 40,
-    },
-}
+# Inventory tickers and capacity metadata are configured in
+# config/bloomberg_tickers.yaml under satellite_inventory.locations.
+# They are loaded at import time into BLOOMBERG_INVENTORY_TICKERS and
+# STORAGE_CAPACITIES_MB by _load_satellite_inventory_config().
 
 
 class SatelliteData:
@@ -133,18 +139,18 @@ class SatelliteData:
             "importance": "WTI delivery point",
         },
         "rotterdam": {
-            "name": "ARA (Amsterdam-Rotterdam-Antwerp)",
-            "capacity_mb": 50,
+            "name": SATELLITE_LOCATION_NAMES.get("ara", "ARA (Amsterdam-Rotterdam-Antwerp)"),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("ara", {}).get("total", 50),
             "importance": "European hub",
         },
         "singapore": {
-            "name": "Singapore",
-            "capacity_mb": 85,
+            "name": SATELLITE_LOCATION_NAMES.get("singapore", "Singapore"),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("singapore", {}).get("total", 85),
             "importance": "Asian trading hub",
         },
         "fujairah": {
-            "name": "Fujairah, UAE",
-            "capacity_mb": 42,
+            "name": SATELLITE_LOCATION_NAMES.get("fujairah", "Fujairah, UAE"),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("fujairah", {}).get("total", 42),
             "importance": "Middle East hub",
         },
         "houston": {
@@ -210,16 +216,32 @@ class SatelliteData:
                 "error": "Bloomberg connection unavailable",
             }
 
-        locations_to_fetch = (
-            [location] if location and location in ["ara", "fujairah", "singapore", "rotterdam"]
-            else ["ara", "fujairah", "singapore"]
-        )
+        configured_locations = list(BLOOMBERG_INVENTORY_TICKERS.keys()) or list(STORAGE_CAPACITIES_MB.keys())
+        if not configured_locations:
+            logger.warning("No satellite Bloomberg tickers configured in %s", BLOOMBERG_TICKERS_CONFIG)
 
-        # Map rotterdam to ara for backwards compatibility
-        if "rotterdam" in locations_to_fetch:
-            locations_to_fetch.remove("rotterdam")
-            if "ara" not in locations_to_fetch:
-                locations_to_fetch.append("ara")
+        locations_to_fetch: list[str] = []
+        if location:
+            normalized_location = LOCATION_ALIASES.get(location, location)
+            if normalized_location in configured_locations:
+                locations_to_fetch = [normalized_location]
+            else:
+                logger.warning(
+                    "Requested location %s not configured for satellite data; defaulting to all configured locations",
+                    location,
+                )
+
+        if not locations_to_fetch:
+            locations_to_fetch = configured_locations
+
+        if not locations_to_fetch:
+            return {
+                "timestamp": now.isoformat(),
+                "source": "bloomberg",
+                "provider": "bloomberg",
+                "locations": {},
+                "error": "No Bloomberg tickers configured",
+            }
 
         location_data = {}
 
@@ -228,9 +250,9 @@ class SatelliteData:
                 loc_result = self._fetch_location_data(client, loc)
                 if loc_result:
                     location_data[loc] = loc_result
-                    # Also add under "rotterdam" key for backwards compatibility
-                    if loc == "ara":
-                        location_data["rotterdam"] = loc_result
+                    for alias, normalized in LOCATION_ALIASES.items():
+                        if normalized == loc:
+                            location_data[alias] = loc_result
             except Exception as e:
                 logger.error(f"Failed to fetch {loc} inventory data: {e}")
                 continue
@@ -313,14 +335,8 @@ class SatelliteData:
             # Average weekly change
             avg_weekly_change = weekly_change_sum / count if count > 0 else 0
 
-            location_names = {
-                "ara": "ARA (Amsterdam-Rotterdam-Antwerp)",
-                "fujairah": "Fujairah, UAE",
-                "singapore": "Singapore",
-            }
-
             return {
-                "name": location_names.get(location, location),
+                "name": SATELLITE_LOCATION_NAMES.get(location, location),
                 "utilization_pct": round(utilization, 1),
                 "capacity_mb": total_capacity,
                 "estimated_volume_mb": round(total_inventory_mmb, 2),
