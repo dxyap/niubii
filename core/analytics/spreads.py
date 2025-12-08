@@ -86,6 +86,167 @@ class SpreadAnalyzer:
         },
     }
 
+    # Workbook-style refinery margin specifications (Bloomberg BNEF methodology).
+    # Derived from the "Comparison" worksheet in the Refining Margins workbook.
+    WORKBOOK_MARGIN_SPECS = {
+        "usgc": {
+            "display_name": "US Gulf Coast (WTI)",
+            "crude": {"key": "crude", "label": "WTI Swap (FSCLM)", "ticker": "FSCLM Index", "conversion": 1.0},
+            "components": [
+                {"key": "propane", "label": "Propane", "ticker": "FSM3M Index", "conversion": 0.023809523809523808},
+                {"key": "naphtha", "label": "Naphtha", "ticker": "FSNNM Index", "conversion": 8.9},
+                {"key": "gasoline", "label": "Gasoline", "ticker": "FSXBM Index", "conversion": 2.380952380952381},
+                {"key": "ulsd", "label": "ULSD", "ticker": "FSGCM Index", "conversion": 2.380952380952381},
+                {"key": "jet", "label": "Jet", "ticker": "FSGJM Index", "conversion": 2.380952380952381},
+                {"key": "gasoil", "label": "Gasoil 0.1%", "ticker": "FSC1M Index", "conversion": 7.45},
+                {"key": "fuel_oil_1", "label": "Fuel Oil 1%", "ticker": "FSN1M Index", "conversion": 1.0},
+                {"key": "fuel_oil_35", "label": "Fuel Oil 3.5%", "ticker": "FSN3M Index", "conversion": 1.0},
+                {"key": "gas_cost", "label": "Natural Gas", "ticker": "NG1 Comdty", "conversion": 0.1724137931034483, "is_cost": True},
+            ],
+            "configs": {
+                "hsk": {
+                    "display_name": "HSK WTI",
+                    "yields": {
+                        "propane": 0.0,
+                        "naphtha": 0.0908,
+                        "gasoline": 0.1985,
+                        "ulsd": 0.2139,
+                        "jet": 0.0696,
+                        "gasoil": 0.039,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.3358,
+                        "gas_cost": 0.0011,
+                        "crude": 1.0,
+                    },
+                },
+                "fcc": {
+                    "display_name": "FCC WTI",
+                    "yields": {
+                        "propane": 0.0305,
+                        "naphtha": 0.0487,
+                        "gasoline": 0.4057,
+                        "ulsd": 0.1363,
+                        "jet": 0.1084,
+                        "gasoil": 0.0881,
+                        "fuel_oil_1": 0.0107,
+                        "fuel_oil_35": 0.1564,
+                        "gas_cost": 0.0,
+                        "crude": 1.0,
+                    },
+                },
+                "coking": {
+                    "display_name": "Coking WTI",
+                    "yields": {
+                        "propane": 0.06,
+                        "naphtha": 0.1271,
+                        "gasoline": 0.3409,
+                        "ulsd": 0.316,
+                        "jet": 0.0561,
+                        "gasoil": 0.04,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.0526,
+                        "gas_cost": 0.0,
+                        "crude": 1.0,
+                    },
+                },
+            },
+        },
+        "nwe": {
+            "display_name": "Northwest Europe (Brent)",
+            "crude": {"key": "crude", "label": "Dated Brent Swap (FSDBM)", "ticker": "FSDBM Index", "conversion": 1.0},
+            "components": [
+                {"key": "propane", "label": "Propane", "ticker": "FNPAM Index", "conversion": 11.6},
+                {"key": "naphtha", "label": "Naphtha", "ticker": "FSNNM Index", "conversion": 8.99},
+                {"key": "gasoline", "label": "Gasoline", "ticker": "FSNOM Index", "conversion": 8.33},
+                {"key": "ulsd", "label": "ULSD", "ticker": "QS1 Comdty", "conversion": 7.45},
+                {"key": "jet", "label": "Jet", "ticker": "FSWJM Index", "conversion": 7.88},
+                {"key": "gasoil", "label": "Gasoil 0.1%", "ticker": "FSC1M Index", "conversion": 7.45},
+                {"key": "fuel_oil_1", "label": "Fuel Oil 1%", "ticker": "FSNLM Index", "conversion": 6.35},
+                {"key": "fuel_oil_35", "label": "Fuel Oil 3.5%", "ticker": "FSROM Index", "conversion": 6.35},
+                {"key": "gas_cost", "label": "TTF Gas", "ticker": "TTFG Index", "conversion": 0.587846724137931, "is_cost": True},
+            ],
+            "configs": {
+                "hsk": {
+                    "display_name": "HSK Brent",
+                    "yields": {
+                        "propane": 0.0364,
+                        "naphtha": 0.0367,
+                        "gasoline": 0.2202,
+                        "ulsd": 0.1927,
+                        "jet": 0.1118,
+                        "gasoil": 0.0715,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.3069,
+                        "gas_cost": 0.0017,
+                        "crude": 1.0,
+                    },
+                },
+                "fcc": {
+                    "display_name": "FCC Brent",
+                    "yields": {
+                        "propane": 0.0734,
+                        "naphtha": 0.0604,
+                        "gasoline": 0.3489,
+                        "ulsd": 0.2142,
+                        "jet": 0.1454,
+                        "gasoil": 0.035,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.1139,
+                        "gas_cost": 0.0048,
+                        "crude": 1.0,
+                    },
+                },
+            },
+        },
+        "singapore": {
+            "display_name": "Singapore (Dubai)",
+            "crude": {"key": "crude", "label": "Dubai (FSDUM)", "ticker": "FSDUM Index", "conversion": 1.0},
+            "components": [
+                {"key": "propane", "label": "Propane", "ticker": "FPFEM Index", "conversion": 11.6},
+                {"key": "naphtha", "label": "Naphtha", "ticker": "FSNPM Index", "conversion": 1.0},
+                {"key": "gasoline", "label": "Gasoline", "ticker": "FSGAM Index", "conversion": 1.0},
+                {"key": "ulsd", "label": "ULSD", "ticker": "FSG1M Index", "conversion": 1.0},
+                {"key": "jet", "label": "Jet", "ticker": "FSSKM Index", "conversion": 1.0},
+                {"key": "gasoil", "label": "Gasoil 0.05%", "ticker": "FSSGM Index", "conversion": 1.0},
+                {"key": "fuel_oil_1", "label": "Fuel Oil 1%", "ticker": "FSS1M Index", "conversion": 6.35},
+                {"key": "fuel_oil_35", "label": "Fuel Oil 3.5%", "ticker": "FSS3M Index", "conversion": 6.35},
+                {"key": "gas_cost", "label": "JKM Gas", "ticker": "JKL Comdty", "conversion": 0.1724137931034483, "is_cost": True},
+            ],
+            "configs": {
+                "hsk": {
+                    "display_name": "HSK Dubai",
+                    "yields": {
+                        "propane": 0.0236,
+                        "naphtha": 0.0581,
+                        "gasoline": 0.1058,
+                        "ulsd": 0.057,
+                        "jet": 0.1351,
+                        "gasoil": 0.1861,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.4147,
+                        "gas_cost": 0.0033,
+                        "crude": 1.0,
+                    },
+                },
+                "fcc": {
+                    "display_name": "FCC Dubai",
+                    "yields": {
+                        "propane": 0.0643,
+                        "naphtha": 0.0749,
+                        "gasoline": 0.2366,
+                        "ulsd": 0.0846,
+                        "jet": 0.1051,
+                        "gasoil": 0.1775,
+                        "fuel_oil_1": 0.0,
+                        "fuel_oil_35": 0.2684,
+                        "gas_cost": 0.0029,
+                        "crude": 1.0,
+                    },
+                },
+            },
+        },
+    }
+
     def __init__(self):
         """Initialize spread analyzer."""
         pass
@@ -295,6 +456,114 @@ class SpreadAnalyzer:
             "source": config.get("source"),
             "source_url": config.get("source_url"),
         }
+
+    def calculate_bnef_refining_margins(self, data_loader) -> dict:
+        """
+        Calculate refinery margins using the Bloomberg BNEF comparison sheet methodology.
+
+        Args:
+            data_loader: DataLoader for fetching Bloomberg prices (validation disabled for index tickers).
+
+        Returns:
+            Mapping keyed by region with config-level margin results and any fetch errors.
+        """
+        results = {}
+
+        for region_key, spec in self.WORKBOOK_MARGIN_SPECS.items():
+            region_result = {"display_name": spec["display_name"], "configs": {}}
+            component_prices: dict[str, dict] = {}
+            fetch_errors: list[str] = []
+
+            # Fetch all component prices first to avoid partial calculations.
+            all_components = list(spec["components"]) + [spec["crude"]]
+            for comp in all_components:
+                key = comp.get("key", "crude")
+                ticker = comp["ticker"]
+                try:
+                    price = data_loader.get_price(ticker, validate=False)
+                except Exception as exc:
+                    fetch_errors.append(f"{comp['label']}: {exc}")
+                    continue
+
+                if price is None:
+                    fetch_errors.append(f"{comp['label']}: no price")
+                    continue
+
+                try:
+                    per_bbl = price / comp["conversion"]
+                except Exception as exc:
+                    fetch_errors.append(f"{comp['label']}: conversion failed ({exc})")
+                    continue
+
+                component_prices[key] = {
+                    "label": comp["label"],
+                    "ticker": ticker,
+                    "conversion": comp["conversion"],
+                    "is_cost": comp.get("is_cost", False),
+                    "raw_price": float(price),
+                    "per_bbl": float(per_bbl),
+                }
+
+            if fetch_errors:
+                region_result["error"] = "; ".join(dict.fromkeys(fetch_errors))
+                results[region_key] = region_result
+                continue
+
+            if "crude" not in component_prices:
+                region_result["error"] = "Crude price unavailable"
+                results[region_key] = region_result
+                continue
+
+            crude_price = component_prices["crude"]["per_bbl"]
+
+            for cfg_key, cfg in spec["configs"].items():
+                yields_map = cfg["yields"]
+                product_value = 0.0
+                gas_cost = 0.0
+                breakdown = []
+
+                for comp in spec["components"]:
+                    key = comp["key"]
+                    price_info = component_prices.get(key)
+                    if price_info is None:
+                        continue
+
+                    weight = yields_map.get(key, 0.0)
+                    contribution = price_info["per_bbl"] * weight
+
+                    if price_info["is_cost"]:
+                        gas_cost += contribution
+                    else:
+                        product_value += contribution
+                        breakdown.append(
+                            {
+                                "label": price_info["label"],
+                                "ticker": price_info["ticker"],
+                                "price_per_bbl": round(price_info["per_bbl"], 2),
+                                "weight": weight,
+                                "contribution": round(contribution, 2),
+                            }
+                        )
+
+                crude_cost = crude_price * yields_map.get("crude", 1.0)
+                margin = product_value - crude_cost - gas_cost
+                margin_pct = (margin / crude_price * 100) if crude_price else 0.0
+
+                region_result["configs"][cfg_key] = {
+                    "display_name": cfg["display_name"],
+                    "margin_per_bbl": round(margin, 2),
+                    "margin_pct": round(margin_pct, 2),
+                    "product_value_per_bbl": round(product_value, 2),
+                    "crude_cost_per_bbl": round(crude_cost, 2),
+                    "gas_cost_per_bbl": round(gas_cost, 2),
+                    "crude_label": spec["crude"]["label"],
+                    "crude_ticker": spec["crude"]["ticker"],
+                    "product_breakdown": breakdown,
+                }
+
+            results[region_key] = region_result
+
+        return results
 
     def analyze_regional_differentials(
         self,

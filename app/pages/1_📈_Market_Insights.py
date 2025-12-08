@@ -704,6 +704,7 @@ with tab2:
         key: spread_analyzer.calculate_regional_refining_margin(key, price_inputs)
         for key in regional_keys
     }
+    comparison_margins = spread_analyzer.calculate_bnef_refining_margins(data_loader)
 
     col1, col2 = st.columns(2)
 
@@ -800,26 +801,68 @@ with tab2:
             st.metric("ICE Gasoil", f"${gasoil:.2f}/t")
 
     st.divider()
-    st.markdown("**Regional Refining Margins**")
-    cards = st.columns(3)
-    for col, key in zip(cards, regional_keys):
-        result = region_results.get(key)
-        with col:
-            config = spread_analyzer.REGIONAL_REFINING_CONFIGS[key]
-            st.markdown(f"**{config['display_name']}**")
-            if result:
-                st.metric("Margin", f"${result['margin_per_bbl']:.2f}/bbl")
-                st.metric("Margin %", f"{result['margin_pct']:.1f}%")
-                st.caption(f"Crude: {result['crude_label']} @ ${result['crude_price']:.2f}/bbl")
-                for comp in result["product_breakdown"]:
-                    st.caption(f"{comp['label']}: ${comp['price_per_bbl']:.2f}/bbl × {comp['ratio']}")
-                st.caption(f"Formula: {result['formula']}")
-                if result.get("notes"):
-                    st.caption(result["notes"])
-                if result.get("source_url"):
-                    st.caption(f"[Source]({result['source_url']})")
+    st.markdown("**Refinery Margin Comparison (BNEF workbook method)**")
+
+    comparison_rows = [
+        ("Hydroskimming (HSK)", {"usgc": "hsk", "nwe": "hsk", "singapore": "hsk"}),
+        ("Conversion (Coking/FCC)", {"usgc": "coking", "nwe": "fcc", "singapore": "fcc"}),
+    ]
+    table_data = []
+    for label, cfg_map in comparison_rows:
+        row = {"Configuration": label}
+        for region_key, region_label in [("usgc", "USGC"), ("nwe", "NWE"), ("singapore", "Singapore")]:
+            cfg_key = cfg_map.get(region_key)
+            region_data = comparison_margins.get(region_key, {})
+            cfg_data = (region_data.get("configs") or {}).get(cfg_key) if region_data else None
+            if cfg_data:
+                row[region_label] = f"${cfg_data['margin_per_bbl']:.2f}/bbl"
             else:
-                st.warning("Price data unavailable", icon="⚠")
+                row[region_label] = "-"
+        table_data.append(row)
+
+    if table_data:
+        table_df = pd.DataFrame(table_data).set_index("Configuration")
+        st.dataframe(table_df, use_container_width=True)
+
+    detail_cols = st.columns(3)
+    region_order = [
+        ("usgc", "USGC (WTI)", "coking"),
+        ("nwe", "NWE (Brent)", "fcc"),
+        ("singapore", "Singapore (Dubai)", "fcc"),
+    ]
+    for col, (region_key, title, complex_key) in zip(detail_cols, region_order):
+        region_data = comparison_margins.get(region_key, {})
+        with col:
+            st.markdown(f"**{title}**")
+            if not region_data or region_data.get("error"):
+                st.warning(region_data.get("error", "Margin data unavailable"))
+                continue
+
+            configs = region_data.get("configs", {})
+            hsk_cfg = configs.get("hsk")
+            complex_cfg = configs.get(complex_key)
+
+            if hsk_cfg:
+                st.metric("HSK Margin", f"${hsk_cfg['margin_per_bbl']:.2f}/bbl", delta=f"{hsk_cfg['margin_pct']:.1f}%")
+            if complex_cfg:
+                st.metric(f"{complex_cfg['display_name']} Margin", f"${complex_cfg['margin_per_bbl']:.2f}/bbl", delta=f"{complex_cfg['margin_pct']:.1f}%")
+
+            target_cfg = complex_cfg or hsk_cfg
+            breakdown = target_cfg.get("product_breakdown") if target_cfg else []
+            if breakdown:
+                breakdown_df = pd.DataFrame(breakdown)[["label", "price_per_bbl", "weight", "contribution"]]
+                st.dataframe(
+                    breakdown_df.rename(columns={
+                        "label": "Product",
+                        "price_per_bbl": "$/bbl",
+                        "weight": "Yield",
+                        "contribution": "Contribution",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No breakdown available for this slate.")
 
 # =============================================================================
 # TAB 3: Inventory
