@@ -139,7 +139,7 @@ with header_col2:
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
-    if st.button("🔄 Refresh Now", width='stretch'):
+    if st.button("🔄 Refresh Now", use_container_width=True):
         st.session_state.last_refresh = datetime.now()
         shared_state.invalidate_context_cache()
         st.rerun()
@@ -197,21 +197,11 @@ with tab1:
         "Dubai": {"ticker": "DAT2 Comdty", "name": "Dubai Crude Swap (M2)", "icon": "🇦🇪"},
     }
 
-    # Initialize toggle states in session state
-    if 'show_price_action' not in st.session_state:
-        st.session_state.show_price_action = True
-    if 'show_term_structure' not in st.session_state:
-        st.session_state.show_term_structure = True
-
     # ==========================================================================
     # SEGMENT 1: Price Action & Structure
     # ==========================================================================
-    seg1_col1, seg1_col2 = st.columns([6, 1])
-    with seg1_col1:
-        st.subheader("Price Action & Structure")
-    with seg1_col2:
-        show_price_action = st.toggle("", value=st.session_state.show_price_action, key="toggle_price_action")
-        st.session_state.show_price_action = show_price_action
+    st.subheader("Price Action & Structure")
+    show_price_action = True
 
     def render_price_action(instrument_key: str):
         """Render price action charts for an instrument."""
@@ -274,7 +264,7 @@ with tab1:
                     ma_periods=[20, 50],
                 )
 
-                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
                 if history_ticker_used and history_ticker_used != ticker:
                     st.caption(f"Using fallback historical ticker {history_ticker_used} due to unavailable ICE data.")
 
@@ -285,13 +275,13 @@ with tab1:
                     st.markdown("**Volume**")
                     if 'PX_VOLUME' in hist_data.columns:
                         vol_fig = create_volume_chart(hist_data, height=120)
-                        st.plotly_chart(vol_fig, width='stretch', config=get_chart_config())
+                        st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
 
                 with oi_col:
                     st.markdown("**Open Interest**")
                     if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
                         oi_fig = create_open_interest_chart(hist_data, height=120)
-                        st.plotly_chart(oi_fig, width='stretch', config=get_chart_config())
+                        st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
                     else:
                         st.caption("Open interest data not available")
             else:
@@ -424,12 +414,8 @@ with tab1:
     # ==========================================================================
     # SEGMENT 2: Term Structure
     # ==========================================================================
-    seg2_col1, seg2_col2 = st.columns([6, 1])
-    with seg2_col1:
-        st.subheader("Term Structure")
-    with seg2_col2:
-        show_term_structure = st.toggle("", value=st.session_state.show_term_structure, key="toggle_term_structure")
-        st.session_state.show_term_structure = show_term_structure
+    st.subheader("Term Structure")
+    show_term_structure = True
 
     if show_term_structure:
         # Term Structure content
@@ -454,7 +440,7 @@ with tab1:
                     height=400,
                 )
 
-                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 # Calendar spreads
                 st.markdown("**Calendar Spreads (WTI)**")
@@ -463,7 +449,7 @@ with tab1:
 
                 st.dataframe(
                     spreads,
-                    width='stretch',
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         'spread_name': 'Spread',
@@ -479,7 +465,7 @@ with tab1:
                     brent_spreads = format_calendar_spread_labels(brent_spreads, brent_curve)
                     st.dataframe(
                         brent_spreads,
-                        width='stretch',
+                        use_container_width=True,
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -610,7 +596,7 @@ with tab1:
                         ),
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                     # Dubai Calendar spreads
                     st.markdown("**Calendar Spreads (Dubai)**")
@@ -619,7 +605,7 @@ with tab1:
 
                     st.dataframe(
                         dubai_spreads,
-                        width='stretch',
+                        use_container_width=True,
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -770,7 +756,7 @@ with tab2:
                 yaxis_title='$/bbl equivalent',
             )
 
-            st.plotly_chart(component_fig, width='stretch', config=get_chart_config())
+            st.plotly_chart(component_fig, use_container_width=True, config=get_chart_config())
 
             # Metrics
             m_col1, m_col2, m_col3 = st.columns(3)
@@ -1334,14 +1320,14 @@ with tab4:
                 legend={"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
             )
 
-            st.plotly_chart(fig, width='stretch', config=get_chart_config())
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             # Compliance table
             st.markdown("**Compliance by Country**")
 
             st.dataframe(
                 opec_data,
-                width='stretch',
+                use_container_width=True,
                 hide_index=True,
                 column_config={
                     'country': 'Country',
@@ -1535,7 +1521,7 @@ with tab5:
                 ))
 
                 fig.update_layout(height=200, margin={"l": 20, "r": 20, "t": 40, "b": 20})
-                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             except Exception as e:
                 st.error(f"Sentiment analyzer error: {e}")
@@ -1590,7 +1576,7 @@ with tab6:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             st.divider()
 
@@ -1635,7 +1621,7 @@ with tab6:
                         xaxis_title="Date",
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             # Correlation regime detection
             st.markdown("**Correlation Regime Detection**")
@@ -1793,7 +1779,7 @@ with tab7:
                     xaxis_title="Date",
                 )
 
-                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             # Regime transitions
             st.markdown("**Recent Transitions**")
@@ -1811,7 +1797,7 @@ with tab7:
                     for t in transitions
                 ])
 
-                st.dataframe(trans_df, width='stretch', hide_index=True)
+                st.dataframe(trans_df, use_container_width=True, hide_index=True)
 
         except Exception as e:
             st.error(f"Regime detection error: {e}")
@@ -1875,7 +1861,7 @@ with tab8:
                         margin={"l": 120, "r": 20, "t": 20, "b": 40},
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
                 else:
                     st.info("Click 'Run Factor Analysis' to see results")
 
@@ -1907,7 +1893,7 @@ with tab8:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 with col_b:
                     st.markdown("**Model Statistics**")
@@ -1980,7 +1966,7 @@ with tab9:
                         })
 
                     storage_df = pd.DataFrame(storage_data)
-                    st.dataframe(storage_df, width='stretch', hide_index=True)
+                    st.dataframe(storage_df, use_container_width=True, hide_index=True)
 
                     # Storage utilization chart
                     fig = go.Figure()
@@ -2001,7 +1987,7 @@ with tab9:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                     # Storage signal
                     signal = satellite.calculate_storage_signal()
@@ -2048,7 +2034,7 @@ with tab9:
                                 "Anchored": counts.get("anchored", 0),
                             })
 
-                        st.dataframe(pd.DataFrame(fleet_data), width='stretch', hide_index=True)
+                        st.dataframe(pd.DataFrame(fleet_data), use_container_width=True, hide_index=True)
 
                 with col2:
                     st.markdown("**Freight Rates**")
@@ -2094,7 +2080,7 @@ with tab9:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 # Shipping signal
                 signal = shipping.calculate_shipping_signal()
@@ -2139,7 +2125,7 @@ with tab9:
                             "Week Change": f"{data.get('week_change', 0):+,}",
                         })
 
-                    st.dataframe(pd.DataFrame(pos_data), width='stretch', hide_index=True)
+                    st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
 
                 # Percentile visualization
                 if positions:
@@ -2168,7 +2154,7 @@ with tab9:
                         yaxis={"title": "Percentile", "range": [0, 110]},
                     )
 
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 # Positioning signal
                 signal = positioning.calculate_positioning_signal()
