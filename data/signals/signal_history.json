@@ -76,5 +76,39 @@
       }
     ],
     "timestamp": "2025-12-07T14:04:03.438167"
+  },
+  {
+    "signal_id": "SIG-20251208-20a33ab1",
+    "instrument": "CL1 Comdty",
+    "direction": "NEUTRAL",
+    "confidence": 30.0,
+    "entry_price": 60.21,
+    "stop_loss": 58.4,
+    "target_price": 62.02,
+    "time_horizon": "5-10 Days",
+    "source": "Composite",
+    "drivers": [
+      {
+        "source": "Technical: breakout",
+        "signal": "APPROACHING_RESISTANCE",
+        "weight": 7.0
+      },
+      {
+        "source": "Fundamental: opec",
+        "signal": "MILD_SHORT",
+        "weight": 8.0
+      },
+      {
+        "source": "Fundamental: crack_spread",
+        "signal": "LONG",
+        "weight": 8.0
+      },
+      {
+        "source": "Fundamental: turnaround",
+        "signal": "SHORT",
+        "weight": 8.0
+      }
+    ],
+    "timestamp": "2025-12-08T12:48:49.165492"
   }
 ]
