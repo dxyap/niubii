@@ -34,10 +34,15 @@ from .factors import (
 )
 from .llm import (
     AnalysisConfig,
+    GrokAI,
+    GrokConfig,
     NewsAnalyzer,
     NewsArticle,
     SentimentAnalyzer,
     SentimentResult,
+    Tweet,
+    WordCloudData,
+    get_tweet_wordcloud,
 )
 from .regimes import (
     MarketRegime,
@@ -53,6 +58,12 @@ __all__ = [
     "NewsArticle",
     "SentimentResult",
     "AnalysisConfig",
+    # GrokAI
+    "GrokAI",
+    "GrokConfig",
+    "Tweet",
+    "WordCloudData",
+    "get_tweet_wordcloud",
     # Correlations
     "CorrelationAnalyzer",
     "CrossAssetCorrelation",
