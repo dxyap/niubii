@@ -37,6 +37,15 @@ from app.components.charts import (
     create_open_interest_chart,
     create_volume_chart,
 )
+from app.components.ui_components import (
+    render_news_item,
+    render_section_header,
+    render_stat_card,
+    render_trending_topic,
+    render_info_banner,
+    render_empty_state,
+    render_badge,
+)
 from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
 from core.data.bloomberg import DataUnavailableError
 
@@ -1650,10 +1659,18 @@ with tab4:
 # TAB 5: News & Sentiment
 # =============================================================================
 with tab5:
-    st.subheader("News Feed & Social Sentiment")
+    # Page header with animation class
+    st.markdown("""
+    <div class="animate-fade-in-up">
+        <h2 style="margin-bottom: 8px;">📰 News Feed & Social Sentiment</h2>
+        <p style="color: #64748b; font-size: 14px; margin-bottom: 24px;">
+            Real-time market intelligence powered by AI analysis
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not RESEARCH_AVAILABLE:
-        st.warning(f"Research modules not fully loaded: {RESEARCH_ERROR}")
+        render_info_banner(f"Research modules not fully loaded: {RESEARCH_ERROR}", variant="warning")
     else:
         # Initialize GrokAI for tweet data
         try:
@@ -1662,7 +1679,7 @@ with tab5:
             wordcloud_data = grok.generate_wordcloud_data(tweets)
             trending_topics = grok.get_trending_topics()
         except Exception as e:
-            st.warning(f"GrokAI initialization: {e}")
+            render_info_banner(f"GrokAI initialization: {e}", variant="warning")
             tweets = []
             wordcloud_data = None
             trending_topics = []
@@ -1670,7 +1687,8 @@ with tab5:
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.markdown("### 📰 Oil Market News Feed")
+            # News Feed Section Header
+            render_section_header("Oil Market News Feed", icon="📰", subtitle="Live updates")
 
             # News feed with sample/simulated news items
             news_items = [
@@ -1722,112 +1740,107 @@ with tab5:
                     "sentiment": "bullish",
                     "impact": "HIGH"
                 },
-                {
-                    "title": "Russian Oil Exports Face New Shipping Challenges",
-                    "source": "Argus",
-                    "time": "14 hours ago",
-                    "summary": "Russian crude exports facing new shipping challenges as tanker availability tightens and insurance costs rise.",
-                    "sentiment": "bullish",
-                    "impact": "MEDIUM"
-                },
-                {
-                    "title": "Refinery Maintenance Season Winding Down",
-                    "source": "Reuters",
-                    "time": "16 hours ago",
-                    "summary": "Major refineries completing seasonal maintenance. Throughput expected to increase in coming weeks.",
-                    "sentiment": "neutral",
-                    "impact": "LOW"
-                },
             ]
 
-            # Display news feed
+            # Display news feed with enhanced UI component
             for news in news_items:
-                sentiment_icon = {"bullish": "📈", "bearish": "📉", "neutral": "➡️"}.get(news["sentiment"], "➡️")
-                impact_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(news["impact"], "⚪")
+                render_news_item(
+                    title=news["title"],
+                    source=news["source"],
+                    time=news["time"],
+                    summary=news["summary"],
+                    sentiment=news["sentiment"],
+                    impact=news["impact"],
+                )
 
-                with st.container():
-                    st.markdown(f"""
-                    <div style="padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #333; background-color: #1a1a2e;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <span style="font-weight: bold; font-size: 14px;">{news['title']}</span>
-                            <span>{sentiment_icon} {impact_color}</span>
-                        </div>
-                        <div style="font-size: 12px; color: #888; margin-bottom: 5px;">
-                            {news['source']} • {news['time']}
-                        </div>
-                        <div style="font-size: 13px; color: #ccc;">
-                            {news['summary']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-            st.divider()
+            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
             # Trending Topics Section
-            st.markdown("### 🔥 Trending Topics")
+            render_section_header("Trending Topics", icon="🔥", subtitle="What's hot")
 
             if trending_topics:
                 topic_cols = st.columns(5)
                 for idx, topic in enumerate(trending_topics[:5]):
                     with topic_cols[idx]:
-                        trend_icon = {"up": "📈", "down": "📉", "stable": "➡️"}.get(topic.get("trend", "stable"), "➡️")
-                        sentiment_color = {"bullish": "#00cc00", "bearish": "#cc0000", "neutral": "#888888"}.get(
-                            topic.get("sentiment", "neutral"), "#888888"
+                        render_trending_topic(
+                            topic=topic.get("topic", "N/A"),
+                            trend=topic.get("trend", "stable"),
+                            sentiment=topic.get("sentiment", "neutral"),
+                            volume=topic.get("mentions", "medium"),
                         )
-                        st.markdown(f"""
-                        <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #1a1a2e; border: 1px solid #333;">
-                            <div style="font-size: 20px;">{trend_icon}</div>
-                            <div style="font-weight: bold; font-size: 11px; margin-top: 5px;">{topic.get('topic', 'N/A')}</div>
-                            <div style="font-size: 10px; color: {sentiment_color};">{topic.get('sentiment', 'neutral').upper()}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+            else:
+                render_empty_state("No trending topics", "Check back later for updates", icon="📊")
 
         with col2:
-            st.markdown("### 🐦 Tweet Word Cloud")
-            st.caption("Top 100 oil market tweets powered by GrokAI")
+            # Word Cloud Section
+            st.markdown("""
+            <div class="dashboard-card" style="margin-bottom: 20px;">
+                <div class="dashboard-card-header">
+                    <span class="dashboard-card-title">🐦 Tweet Word Cloud</span>
+                </div>
+                <p style="font-size: 12px; color: #64748b; margin-bottom: 16px;">
+                    Top 100 oil market tweets powered by GrokAI
+                </p>
+            """, unsafe_allow_html=True)
 
             # Generate and display word cloud
             if wordcloud_data and wordcloud_data.words and WORDCLOUD_AVAILABLE:
                 try:
-                    # Create word cloud
+                    # Create word cloud with enhanced styling
                     wc = WordCloud(
-                        width=400,
-                        height=300,
-                        background_color='#0e1117',
-                        colormap='Blues',
+                        width=500,
+                        height=350,
+                        background_color='#0f172a',
+                        colormap='cool',
                         max_words=100,
                         min_font_size=10,
-                        max_font_size=60,
-                        random_state=42
+                        max_font_size=65,
+                        random_state=42,
+                        prefer_horizontal=0.7,
+                        margin=10,
                     )
                     wc.generate_from_frequencies(wordcloud_data.words)
 
                     # Display using matplotlib
                     import matplotlib.pyplot as plt
-                    fig, ax = plt.subplots(figsize=(8, 6))
+                    fig, ax = plt.subplots(figsize=(10, 7))
                     ax.imshow(wc, interpolation='bilinear')
                     ax.axis('off')
-                    fig.patch.set_facecolor('#0e1117')
+                    fig.patch.set_facecolor('#0f172a')
+                    plt.tight_layout(pad=0)
                     st.pyplot(fig, use_container_width=True)
                     plt.close(fig)
 
-                    st.caption(f"Based on {wordcloud_data.total_tweets} tweets")
+                    st.markdown(f"""
+                    <div style="text-align: center; margin-top: 8px;">
+                        <span class="badge badge-info">Based on {wordcloud_data.total_tweets} tweets</span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 except Exception as e:
                     st.warning(f"Word cloud generation error: {e}")
-                    # Fallback: Show top words as tags
+                    # Fallback: Show top words as styled tags
                     st.markdown("**Top Keywords:**")
-                    top_words = list(wordcloud_data.words.items())[:20]
-                    word_tags = " ".join([f"`{word}` ({count})" for word, count in top_words])
-                    st.markdown(word_tags)
+                    top_words = list(wordcloud_data.words.items())[:15]
+                    tags_html = " ".join([
+                        f'<span class="badge badge-info" style="margin: 2px;">{word}</span>'
+                        for word, count in top_words
+                    ])
+                    st.markdown(tags_html, unsafe_allow_html=True)
             elif not WORDCLOUD_AVAILABLE:
-                st.warning("WordCloud library not available. Install with: pip install wordcloud")
+                render_info_banner("WordCloud library not available", variant="warning")
             else:
-                st.info("No tweet data available for word cloud.")
+                render_empty_state("No Data", "Tweet data unavailable", icon="🐦")
 
-            st.divider()
+            st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("### 📊 Aggregate Sentiment")
+            # Aggregate Sentiment Section
+            st.markdown("""
+            <div class="dashboard-card">
+                <div class="dashboard-card-header">
+                    <span class="dashboard-card-title">📊 Aggregate Sentiment</span>
+                </div>
+            """, unsafe_allow_html=True)
 
             try:
                 sentiment_analyzer = SentimentAnalyzer()
@@ -1851,44 +1864,92 @@ with tab5:
                         sentiment_analyzer.analyze(text)
                     aggregate = sentiment_analyzer.get_aggregate_sentiment()
 
+                # Enhanced gauge with better colors
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=aggregate["avg_score"],
+                    number={'font': {'size': 36, 'color': '#f1f5f9'}, 'valueformat': '.2f'},
                     domain={'x': [0, 1], 'y': [0, 1]},
                     gauge={
-                        'axis': {'range': [-1, 1]},
-                        'bar': {'color': "#1f77b4"},
+                        'axis': {
+                            'range': [-1, 1],
+                            'tickwidth': 1,
+                            'tickcolor': '#64748b',
+                            'tickfont': {'size': 10, 'color': '#64748b'},
+                        },
+                        'bar': {'color': "#0ea5e9", 'thickness': 0.8},
+                        'bgcolor': 'rgba(30, 41, 59, 0.5)',
+                        'borderwidth': 0,
                         'steps': [
-                            {'range': [-1, -0.3], 'color': "#ffcccc"},
-                            {'range': [-0.3, 0.3], 'color': "#eeeeee"},
-                            {'range': [0.3, 1], 'color': "#ccffcc"},
+                            {'range': [-1, -0.3], 'color': "rgba(239, 68, 68, 0.2)"},
+                            {'range': [-0.3, 0.3], 'color': "rgba(100, 116, 139, 0.2)"},
+                            {'range': [0.3, 1], 'color': "rgba(0, 220, 130, 0.2)"},
                         ],
+                        'threshold': {
+                            'line': {'color': "#f1f5f9", 'width': 2},
+                            'thickness': 0.8,
+                            'value': aggregate["avg_score"]
+                        }
                     },
-                    title={'text': "Social Sentiment Score"}
+                    title={'text': "Social Sentiment", 'font': {'size': 14, 'color': '#94a3b8'}}
                 ))
 
-                fig.update_layout(height=200, margin={"l": 20, "r": 20, "t": 40, "b": 20})
+                fig.update_layout(
+                    height=220,
+                    margin={"l": 20, "r": 20, "t": 50, "b": 20},
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font={'color': '#e2e8f0'},
+                )
                 st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
-                # Show sentiment distribution
+                # Show sentiment distribution with styled badges
                 if "label_distribution" in aggregate:
-                    st.markdown("**Sentiment Distribution:**")
+                    st.markdown("""
+                    <div style="margin-top: 16px; margin-bottom: 12px;">
+                        <span style="font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">
+                            Sentiment Distribution
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
                     dist = aggregate.get("label_distribution", {})
+                    dist_html = ""
                     for label, count in dist.items():
-                        label_color = {
-                            "very_bullish": "🟢", "bullish": "🟢",
-                            "neutral": "⚪",
-                            "bearish": "🔴", "very_bearish": "🔴"
-                        }.get(label, "⚪")
-                        st.markdown(f"{label_color} {label.replace('_', ' ').title()}: {count}")
+                        badge_class = "badge-success" if "bullish" in label else ("badge-error" if "bearish" in label else "badge-info")
+                        dist_html += f'<span class="badge {badge_class}" style="margin: 2px;">{label.replace("_", " ").title()}: {count}</span> '
+                    st.markdown(f'<div style="margin-bottom: 16px;">{dist_html}</div>', unsafe_allow_html=True)
 
-                # Show signal
+                # Show signal with enhanced styling
                 signal = aggregate.get("signal", "neutral")
-                signal_colors = {"bullish": "green", "bearish": "red", "neutral": "gray"}
-                st.markdown(f"**Trading Signal:** :{signal_colors.get(signal, 'gray')}[{signal.upper()}]")
+                signal_styles = {
+                    "bullish": ("rgba(0, 220, 130, 0.15)", "#00DC82", "rgba(0, 220, 130, 0.4)"),
+                    "bearish": ("rgba(239, 68, 68, 0.15)", "#ef4444", "rgba(239, 68, 68, 0.4)"),
+                    "neutral": ("rgba(100, 116, 139, 0.15)", "#94a3b8", "rgba(100, 116, 139, 0.4)"),
+                }
+                bg, color, border = signal_styles.get(signal, signal_styles["neutral"])
+                
+                st.markdown(f"""
+                <div style="
+                    background: {bg};
+                    border: 1px solid {border};
+                    border-radius: 10px;
+                    padding: 12px 16px;
+                    text-align: center;
+                    margin-top: 8px;
+                ">
+                    <span style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">
+                        Trading Signal
+                    </span>
+                    <div style="font-size: 18px; font-weight: 700; color: {color}; margin-top: 4px;">
+                        {signal.upper()}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
             except Exception as e:
-                st.error(f"Sentiment analyzer error: {e}")
+                render_info_banner(f"Sentiment analyzer error: {e}", variant="error")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # TAB 6: Correlations
