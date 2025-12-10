@@ -7,6 +7,7 @@ High-level data loading with caching and Bloomberg integration.
 import contextlib
 import logging
 import os
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -172,6 +173,20 @@ class DataLoader:
 
         return result
 
+    def _get_price_batch_cached(self, cache_key: str, tickers: Sequence[str]) -> dict[str, dict[str, float]]:
+        """
+        Fetch a batch of prices with a short-lived real-time cache to avoid
+        duplicate Bloomberg calls during a single refresh cycle.
+        """
+        cached = self.cache.get(cache_key, cache_type="real_time")
+        if cached is not None:
+            return cached
+
+        batch = self.get_prices_batch(list(tickers))
+        if batch:
+            self.cache.set(cache_key, batch, cache_type="real_time")
+        return batch
+
     def get_oil_prices(self) -> dict[str, dict[str, float]]:
         """Get current oil prices for key benchmarks with changes (batch optimized)."""
         ticker_map = {
@@ -181,8 +196,7 @@ class DataLoader:
             "Heating Oil": "HO1 Comdty",
         }
 
-        # Batch fetch all prices at once
-        batch_prices = self.get_prices_batch(list(ticker_map.values()))
+        batch_prices = self._get_price_batch_cached("oil_prices", ticker_map.values())
 
         # Map back to friendly names
         prices = {}
@@ -205,8 +219,7 @@ class DataLoader:
             "Natural Gas": "NG1 Comdty",
         }
 
-        # Batch fetch all prices at once
-        batch_prices = self.get_prices_batch(list(ticker_map.values()))
+        batch_prices = self._get_price_batch_cached("all_oil_prices", ticker_map.values())
 
         # Map back to friendly names
         prices = {}
@@ -487,139 +500,22 @@ class DataLoader:
     # SPREAD CALCULATIONS (Optimized - single batch fetch)
     # =========================================================================
 
-    def get_wti_brent_spread(self) -> dict[str, float]:
-        """Calculate WTI-Brent spread with details (batch optimized)."""
-        # Batch fetch both tickers in one call
-        batch = self.get_prices_batch(["CL1 Comdty", "CO1 Comdty"])
-        wti_data = batch.get("CL1 Comdty", {})
-        brent_data = batch.get("CO1 Comdty", {})
-
-        wti_current = wti_data.get("current", 0)
-        brent_current = brent_data.get("current", 0)
-        wti_open = wti_data.get("open", wti_current)
-        brent_open = brent_data.get("open", brent_current)
-
-        spread = wti_current - brent_current
-        spread_open = wti_open - brent_open
-
-        return {
-            "spread": round(spread, 2),
-            "change": round(spread - spread_open, 2),
-            "wti": wti_current,
-            "brent": brent_current,
-        }
-
-    def get_crack_spread_321(self) -> dict[str, float]:
+    def _get_spread_price_batch(self) -> dict[str, dict[str, float]]:
         """
-        Calculate 3-2-1 crack spread (batch optimized).
-
-        The 3-2-1 crack spread represents the refining margin for converting
-        3 barrels of crude oil into 2 barrels of gasoline and 1 barrel of heating oil.
-
-        Formula: (2 × RBOB_$/bbl + 1 × HO_$/bbl - 3 × WTI_$/bbl) / 3
-
-        Unit conversions applied:
-        - WTI (CL1): Already in $/barrel, no conversion needed
-        - RBOB (XB1): Quoted in $/gallon, multiply by 42 to get $/barrel
-        - Heating Oil (HO1): Quoted in $/gallon, multiply by 42 to get $/barrel
-
-        Returns:
-            Dict with keys:
-            - crack: The 3-2-1 crack spread in $/barrel
-            - change: Change from session open in $/barrel
-            - wti: WTI price in $/barrel
-            - rbob_bbl: RBOB price converted to $/barrel
-            - ho_bbl: Heating oil price converted to $/barrel
+        Fetch the core spread tickers in one call with a short-lived cache to
+        avoid redundant Bloomberg round trips within a refresh cycle.
         """
-        # Batch fetch all 3 tickers in one call (was 6 separate calls before!)
-        batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
+        tickers = ("CL1 Comdty", "CO1 Comdty", "XB1 Comdty", "HO1 Comdty")
+        return self._get_price_batch_cached("core_spread_prices", tickers)
 
-        wti_data = batch.get("CL1 Comdty", {})
-        rbob_data = batch.get("XB1 Comdty", {})
-        ho_data = batch.get("HO1 Comdty", {})
-
-        # WTI is already in $/barrel
-        wti = wti_data.get("current", 0)
-
-        # Convert RBOB and HO from $/gallon to $/barrel (42 gallons per barrel)
-        rbob = rbob_data.get("current", 0) * self.GALLONS_PER_BARREL
-        ho = ho_data.get("current", 0) * self.GALLONS_PER_BARREL
-
-        # 3-2-1 crack spread: margin per barrel of crude processed
-        crack = (2 * rbob + ho - 3 * wti) / 3
-
-        # Calculate change using data already fetched
-        wti_open = wti_data.get("open", wti)
-        rbob_open = rbob_data.get("open", rbob_data.get("current", 0)) * self.GALLONS_PER_BARREL
-        ho_open = ho_data.get("open", ho_data.get("current", 0)) * self.GALLONS_PER_BARREL
-
-        crack_open = (2 * rbob_open + ho_open - 3 * wti_open) / 3
-
-        return {
-            "crack": round(crack, 2),
-            "change": round(crack - crack_open, 2),
-            "wti": wti,
-            "rbob_bbl": round(rbob, 2),
-            "ho_bbl": round(ho, 2),
-        }
-
-    def get_crack_spread_211(self) -> dict[str, float]:
-        """
-        Calculate 2-1-1 crack spread (batch optimized).
-
-        The 2-1-1 crack spread represents the refining margin for converting
-        2 barrels of crude oil into 1 barrel of gasoline and 1 barrel of heating oil.
-
-        Formula: (1 × RBOB_$/bbl + 1 × HO_$/bbl - 2 × WTI_$/bbl) / 2
-
-        Unit conversions applied:
-        - WTI (CL1): Already in $/barrel, no conversion needed
-        - RBOB (XB1): Quoted in $/gallon, multiply by 42 to get $/barrel
-        - Heating Oil (HO1): Quoted in $/gallon, multiply by 42 to get $/barrel
-
-        Returns:
-            Dict with keys:
-            - crack: The 2-1-1 crack spread in $/barrel
-            - wti: WTI price in $/barrel
-            - rbob_bbl: RBOB price converted to $/barrel
-            - ho_bbl: Heating oil price converted to $/barrel
-        """
-        # Batch fetch all 3 tickers in one call
-        batch = self.get_prices_batch(["CL1 Comdty", "XB1 Comdty", "HO1 Comdty"])
-
-        # WTI is already in $/barrel
-        wti = batch.get("CL1 Comdty", {}).get("current", 0)
-
-        # Convert RBOB and HO from $/gallon to $/barrel
-        rbob = batch.get("XB1 Comdty", {}).get("current", 0) * self.GALLONS_PER_BARREL
-        ho = batch.get("HO1 Comdty", {}).get("current", 0) * self.GALLONS_PER_BARREL
-
-        # 2-1-1 crack spread: margin per barrel of crude processed
-        crack = (rbob + ho - 2 * wti) / 2
-
-        return {
-            "crack": round(crack, 2),
-            "wti": wti,
-            "rbob_bbl": round(rbob, 2),
-            "ho_bbl": round(ho, 2),
-        }
-
-    def get_all_spreads(self) -> dict[str, dict]:
-        """
-        Get all spread data in a single optimized call.
-        Fetches WTI-Brent spread, 3-2-1 crack, and 2-1-1 crack with one batch fetch.
-        """
-        # Single batch fetch for all spread calculations
-        batch = self.get_prices_batch([
-            "CL1 Comdty", "CO1 Comdty", "XB1 Comdty", "HO1 Comdty"
-        ])
-
+    def _build_spread_payloads(self, batch: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
+        """Compute the various spreads from a shared batch payload."""
         wti_data = batch.get("CL1 Comdty", {})
         brent_data = batch.get("CO1 Comdty", {})
         rbob_data = batch.get("XB1 Comdty", {})
         ho_data = batch.get("HO1 Comdty", {})
 
-        # WTI-Brent spread
+        # WTI/Brent values
         wti_current = wti_data.get("current", 0)
         brent_current = brent_data.get("current", 0)
         wti_open = wti_data.get("open", wti_current)
@@ -628,15 +524,14 @@ class DataLoader:
         wti_brent_spread = wti_current - brent_current
         wti_brent_spread_open = wti_open - brent_open
 
-        # Crack spreads - convert product prices from $/gallon to $/barrel
+        # Convert refined products to $/bbl
         rbob_bbl = rbob_data.get("current", 0) * self.GALLONS_PER_BARREL
         ho_bbl = ho_data.get("current", 0) * self.GALLONS_PER_BARREL
-        rbob_open_bbl = rbob_data.get("open", 0) * self.GALLONS_PER_BARREL
-        ho_open_bbl = ho_data.get("open", 0) * self.GALLONS_PER_BARREL
+        rbob_open_bbl = rbob_data.get("open", rbob_data.get("current", 0)) * self.GALLONS_PER_BARREL
+        ho_open_bbl = ho_data.get("open", ho_data.get("current", 0)) * self.GALLONS_PER_BARREL
 
         crack_321 = (2 * rbob_bbl + ho_bbl - 3 * wti_current) / 3
         crack_321_open = (2 * rbob_open_bbl + ho_open_bbl - 3 * wti_open) / 3
-
         crack_211 = (rbob_bbl + ho_bbl - 2 * wti_current) / 2
 
         return {
@@ -660,6 +555,38 @@ class DataLoader:
                 "ho_bbl": round(ho_bbl, 2),
             },
         }
+
+    def get_wti_brent_spread(self) -> dict[str, float]:
+        """Calculate WTI-Brent spread with details (batch optimized)."""
+        payloads = self._build_spread_payloads(self._get_spread_price_batch())
+        return payloads["wti_brent"]
+
+    def get_crack_spread_321(self) -> dict[str, float]:
+        """
+        Calculate 3-2-1 crack spread (batch optimized).
+
+        The 3-2-1 crack spread represents the refining margin for converting
+        3 barrels of crude oil into 2 barrels of gasoline and 1 barrel of heating oil.
+        """
+        payloads = self._build_spread_payloads(self._get_spread_price_batch())
+        return payloads["crack_321"]
+
+    def get_crack_spread_211(self) -> dict[str, float]:
+        """
+        Calculate 2-1-1 crack spread (batch optimized).
+
+        The 2-1-1 crack spread represents the refining margin for converting
+        2 barrels of crude oil into 1 barrel of gasoline and 1 barrel of heating oil.
+        """
+        payloads = self._build_spread_payloads(self._get_spread_price_batch())
+        return payloads["crack_211"]
+
+    def get_all_spreads(self) -> dict[str, dict]:
+        """
+        Get all spread data in a single optimized call.
+        Fetches WTI-Brent spread, 3-2-1 crack, and 2-1-1 crack with one cached batch fetch.
+        """
+        return self._build_spread_payloads(self._get_spread_price_batch())
 
     # =========================================================================
     # MARKET SUMMARY

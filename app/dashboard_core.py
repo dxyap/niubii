@@ -245,9 +245,11 @@ class DashboardData:
         self._all_spreads = self._NOT_LOADED
 
         # Curve data
-        self._futures_curve = self._NOT_LOADED
-        self._brent_curve = self._NOT_LOADED
-        self._dubai_curve = self._NOT_LOADED
+        self._curves: dict[str, pd.DataFrame | object] = {
+            "futures_curve": self._NOT_LOADED,  # WTI
+            "brent_curve": self._NOT_LOADED,
+            "dubai_curve": self._NOT_LOADED,
+        }
 
         # Historical data (expensive - loaded lazily)
         self._wti_history = self._NOT_LOADED
@@ -317,35 +319,29 @@ class DashboardData:
             self._errors["crack_spread"] = str(e)
             return None
 
+    def _get_curve(self, key: str, commodity: str, months: int) -> pd.DataFrame | None:
+        """Shared curve loader with caching and error capture."""
+        cached = self._curves.get(key, self._NOT_LOADED)
+        if cached is self._NOT_LOADED:
+            try:
+                cached = self.data_loader.get_futures_curve(commodity, months)
+            except Exception as e:
+                self._errors[key] = str(e)
+                cached = None
+            self._curves[key] = cached
+        return cached
+
     @property
     def futures_curve(self) -> pd.DataFrame | None:
-        if self._futures_curve is self._NOT_LOADED:
-            try:
-                self._futures_curve = self.data_loader.get_futures_curve("wti", 18)
-            except Exception as e:
-                self._errors["futures_curve"] = str(e)
-                self._futures_curve = None
-        return self._futures_curve
+        return self._get_curve("futures_curve", "wti", 18)
 
     @property
     def brent_curve(self) -> pd.DataFrame | None:
-        if self._brent_curve is self._NOT_LOADED:
-            try:
-                self._brent_curve = self.data_loader.get_futures_curve("brent", 18)
-            except Exception as e:
-                self._errors["brent_curve"] = str(e)
-                self._brent_curve = None
-        return self._brent_curve
+        return self._get_curve("brent_curve", "brent", 18)
 
     @property
     def dubai_curve(self) -> pd.DataFrame | None:
-        if self._dubai_curve is self._NOT_LOADED:
-            try:
-                self._dubai_curve = self.data_loader.get_futures_curve("dubai", 18)
-            except Exception as e:
-                self._errors["dubai_curve"] = str(e)
-                self._dubai_curve = None
-        return self._dubai_curve
+        return self._get_curve("dubai_curve", "dubai", 18)
 
     @property
     def wti_history(self) -> pd.DataFrame | None:

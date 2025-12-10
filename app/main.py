@@ -23,6 +23,15 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+# Page configuration must be the first Streamlit call
+st.set_page_config(
+    page_title="Oil Trading Dashboard",
+    page_icon="🛢️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={"About": "Quantitative Oil Trading Dashboard"},
+)
+
 from app import shared_state
 from app.components.theme import apply_theme as apply_dashboard_theme
 from app.ui import (
@@ -66,16 +75,6 @@ def get_futures_curve_cached(commodity: str = "brent", num_months: int = 18):
         return data_loader.get_futures_curve(commodity, num_months)
     except Exception:
         return None
-
-
-# Page configuration must be the first Streamlit call
-st.set_page_config(
-    page_title="Oil Trading Dashboard",
-    page_icon="🛢️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={"About": "Quantitative Oil Trading Dashboard"},
-)
 
 
 class DashboardApp:

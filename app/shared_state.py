@@ -27,7 +27,7 @@ if str(project_root) not in sys.path:
 
 load_dotenv()
 
-from .dashboard_core import DashboardContext
+from .dashboard_core import DashboardContext, PortfolioAnalytics, Position
 
 if TYPE_CHECKING:
     from core.data import DataLoader
@@ -77,78 +77,32 @@ def clear_positions() -> None:
 
 
 def calculate_position_pnl(data_loader=None):
-    """Calculate P&L for all positions using current prices."""
-    if data_loader is None:
-        data_loader = get_data_loader()
+    """Calculate P&L for all positions using shared portfolio analytics."""
+    data_loader = data_loader or get_data_loader()
+    positions = [Position(**pos) for pos in get_positions()]
+    analytics = PortfolioAnalytics(positions, data_loader)
 
-    positions = get_positions()
-    results = []
+    df = analytics.positions_dataframe
+    if df.empty:
+        return []
 
-    for pos in positions:
-        current_price = data_loader.get_price(pos["ticker"])
-        entry_price = pos["entry"]
-        qty = pos["qty"]
-
-        # Contract multiplier
-        if pos["ticker"].startswith("XB") or pos["ticker"].startswith("HO"):
-            multiplier = 42000  # 42,000 gallons per contract
-        else:
-            multiplier = 1000  # 1,000 barrels per contract
-
-        # Calculate P&L
-        price_change = current_price - entry_price
-        pnl = price_change * qty * multiplier
-        pnl_pct = (price_change / entry_price * 100) if entry_price != 0 else 0
-
-        # Calculate notional
-        notional = abs(qty) * current_price * multiplier
-
-        results.append({
-            "symbol": pos["symbol"],
-            "ticker": pos["ticker"],
-            "qty": qty,
-            "entry": entry_price,
-            "current": round(current_price, 4),
-            "pnl": round(pnl, 0),
-            "pnl_pct": round(pnl_pct, 2),
-            "notional": round(notional, 0),
-            "strategy": pos["strategy"],
-            "multiplier": multiplier,
-        })
-
-    return results
+    records = df.to_dict("records")
+    for rec in records:
+        try:
+            rec["multiplier"] = data_loader.get_multiplier(rec["ticker"])
+        except Exception:
+            rec["multiplier"] = 1000
+    return records
 
 
 def get_portfolio_summary(data_loader=None):
-    """Get portfolio-level summary metrics."""
-    if data_loader is None:
-        data_loader = get_data_loader()
-
-    position_pnl = calculate_position_pnl(data_loader)
-
-    total_pnl = sum(p['pnl'] for p in position_pnl)
-    gross_exposure = sum(p['notional'] for p in position_pnl)
-
-    # Net exposure (long - short)
-    long_exposure = sum(p['notional'] for p in position_pnl if p['qty'] > 0)
-    short_exposure = sum(p['notional'] for p in position_pnl if p['qty'] < 0)
-    net_exposure = long_exposure - short_exposure
-
-    # VaR estimate (simplified: 2% of gross exposure)
-    var_estimate = gross_exposure * 0.02
-    var_limit = 375000
-
-    return {
-        "total_pnl": total_pnl,
-        "gross_exposure": gross_exposure,
-        "net_exposure": net_exposure,
-        "long_exposure": long_exposure,
-        "short_exposure": short_exposure,
-        "var_estimate": var_estimate,
-        "var_limit": var_limit,
-        "var_utilization": (var_estimate / var_limit * 100) if var_limit > 0 else 0,
-        "positions": position_pnl,
-    }
+    """Get portfolio-level summary metrics using shared analytics pipeline."""
+    data_loader = data_loader or get_data_loader()
+    positions = [Position(**pos) for pos in get_positions()]
+    analytics = PortfolioAnalytics(positions, data_loader)
+    summary = analytics.summary
+    summary["positions"] = analytics.positions_dataframe.to_dict("records")
+    return summary
 
 
 def format_pnl(value: float) -> str:

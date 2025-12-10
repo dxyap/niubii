@@ -8,9 +8,9 @@ Usage:
 
     # Initialize page with standard setup
     ctx = init_page(
-        title="📈 Market Insights",
+        title="Oil Market Insights",
         page_title="Market Insights | Oil Trading",
-        icon="📈"
+        icon="OIL",
     )
 
     # Access shared context
