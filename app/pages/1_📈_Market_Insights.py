@@ -95,6 +95,7 @@ try:
         AlternativeDataProvider,
         CorrelationAnalyzer,
         FactorModel,
+        GrokAI,
         NewsAnalyzer,
         RegimeDetector,
         SatelliteData,
@@ -105,6 +106,13 @@ try:
 except ImportError as e:
     RESEARCH_AVAILABLE = False
     RESEARCH_ERROR = str(e)
+
+# Word cloud generation
+try:
+    from wordcloud import WordCloud
+    WORDCLOUD_AVAILABLE = True
+except ImportError:
+    WORDCLOUD_AVAILABLE = False
 
 # Auto-refresh configuration
 REFRESH_INTERVAL_SECONDS = 60  # Refresh every 60 seconds
@@ -1642,134 +1650,206 @@ with tab4:
 # TAB 5: News & Sentiment
 # =============================================================================
 with tab5:
-    st.subheader("LLM-Powered News Analysis")
+    st.subheader("News Feed & Social Sentiment")
 
     if not RESEARCH_AVAILABLE:
         st.warning(f"Research modules not fully loaded: {RESEARCH_ERROR}")
     else:
+        # Initialize GrokAI for tweet data
+        try:
+            grok = GrokAI()
+            tweets = grok.get_oil_market_tweets(100)
+            wordcloud_data = grok.generate_wordcloud_data(tweets)
+            trending_topics = grok.get_trending_topics()
+        except Exception as e:
+            st.warning(f"GrokAI initialization: {e}")
+            tweets = []
+            wordcloud_data = None
+            trending_topics = []
+
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.markdown("**Analyze News Article**")
+            st.markdown("### 📰 Oil Market News Feed")
 
-            sample_articles = [
-                "OPEC+ agrees to extend production cuts through Q2 2024, citing weak global demand outlook. Saudi Arabia to maintain voluntary 1 million bpd cut.",
-                "US crude inventories rise by 5.2 million barrels, exceeding expectations of 2.1 million build. Gasoline stocks also increased.",
-                "Tensions in the Middle East escalate as conflict spreads. Oil traders monitor shipping routes through Strait of Hormuz.",
-                "China's crude imports hit record high as refineries boost processing ahead of holiday travel season.",
-                "US shale producers report increasing well productivity, with Permian basin output reaching all-time highs.",
+            # News feed with sample/simulated news items
+            news_items = [
+                {
+                    "title": "OPEC+ Extends Production Cuts Through Q2 2024",
+                    "source": "Reuters",
+                    "time": "2 hours ago",
+                    "summary": "OPEC+ agrees to extend production cuts citing weak global demand outlook. Saudi Arabia to maintain voluntary 1 million bpd cut.",
+                    "sentiment": "bullish",
+                    "impact": "HIGH"
+                },
+                {
+                    "title": "US Crude Inventories Rise More Than Expected",
+                    "source": "EIA",
+                    "time": "4 hours ago",
+                    "summary": "US crude inventories rise by 5.2 million barrels, exceeding expectations of 2.1 million build. Gasoline stocks also increased.",
+                    "sentiment": "bearish",
+                    "impact": "MEDIUM"
+                },
+                {
+                    "title": "Middle East Tensions Escalate, Oil Traders on Alert",
+                    "source": "Bloomberg",
+                    "time": "6 hours ago",
+                    "summary": "Tensions in the Middle East escalate as conflict spreads. Oil traders monitor shipping routes through Strait of Hormuz.",
+                    "sentiment": "bullish",
+                    "impact": "HIGH"
+                },
+                {
+                    "title": "China Crude Imports Hit Record High",
+                    "source": "Platts",
+                    "time": "8 hours ago",
+                    "summary": "China's crude imports hit record high as refineries boost processing ahead of holiday travel season.",
+                    "sentiment": "bullish",
+                    "impact": "MEDIUM"
+                },
+                {
+                    "title": "US Shale Production Reaches All-Time Highs",
+                    "source": "OilPrice",
+                    "time": "10 hours ago",
+                    "summary": "US shale producers report increasing well productivity, with Permian basin output reaching all-time highs.",
+                    "sentiment": "bearish",
+                    "impact": "MEDIUM"
+                },
+                {
+                    "title": "IEA Raises 2024 Oil Demand Forecast",
+                    "source": "IEA",
+                    "time": "12 hours ago",
+                    "summary": "International Energy Agency raises its oil demand growth forecast for 2024, citing stronger than expected economic activity.",
+                    "sentiment": "bullish",
+                    "impact": "HIGH"
+                },
+                {
+                    "title": "Russian Oil Exports Face New Shipping Challenges",
+                    "source": "Argus",
+                    "time": "14 hours ago",
+                    "summary": "Russian crude exports facing new shipping challenges as tanker availability tightens and insurance costs rise.",
+                    "sentiment": "bullish",
+                    "impact": "MEDIUM"
+                },
+                {
+                    "title": "Refinery Maintenance Season Winding Down",
+                    "source": "Reuters",
+                    "time": "16 hours ago",
+                    "summary": "Major refineries completing seasonal maintenance. Throughput expected to increase in coming weeks.",
+                    "sentiment": "neutral",
+                    "impact": "LOW"
+                },
             ]
 
-            use_sample = st.checkbox("Use sample article", value=True)
+            # Display news feed
+            for news in news_items:
+                sentiment_icon = {"bullish": "📈", "bearish": "📉", "neutral": "➡️"}.get(news["sentiment"], "➡️")
+                impact_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(news["impact"], "⚪")
 
-            if use_sample:
-                article_text = st.selectbox(
-                    "Select sample article",
-                    sample_articles,
-                    key="sample_article"
-                )
-            else:
-                article_text = st.text_area(
-                    "Enter article text",
-                    height=150,
-                    placeholder="Paste news article text here..."
-                )
+                with st.container():
+                    st.markdown(f"""
+                    <div style="padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #333; background-color: #1a1a2e;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <span style="font-weight: bold; font-size: 14px;">{news['title']}</span>
+                            <span>{sentiment_icon} {impact_color}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #888; margin-bottom: 5px;">
+                            {news['source']} • {news['time']}
+                        </div>
+                        <div style="font-size: 13px; color: #ccc;">
+                            {news['summary']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            if st.button("🔍 Analyze Article", type="primary") and article_text:
-                with st.spinner("Analyzing..."):
-                    try:
-                        analyzer = NewsAnalyzer(AnalysisConfig(use_llm=False))
-                        summary = analyzer.analyze_article(article_text)
+            st.divider()
 
-                        st.success("Analysis complete!")
+            # Trending Topics Section
+            st.markdown("### 🔥 Trending Topics")
 
-                        # Display results
-                        col_a, col_b, col_c = st.columns(3)
-
-                        with col_a:
-                            impact_colors = {
-                                "HIGH": "🔴",
-                                "MEDIUM": "🟡",
-                                "LOW": "🟢",
-                                "NONE": "⚪"
-                            }
-                            st.metric(
-                                "Market Impact",
-                                f"{impact_colors.get(summary.impact_level, '⚪')} {summary.impact_level}"
-                            )
-
-                        with col_b:
-                            direction_icons = {
-                                "BULLISH": "📈",
-                                "BEARISH": "📉",
-                                "NEUTRAL": "➡️"
-                            }
-                            st.metric(
-                                "Direction",
-                                f"{direction_icons.get(summary.impact_direction, '➡️')} {summary.impact_direction}"
-                            )
-
-                        with col_c:
-                            st.metric("Confidence", f"{summary.confidence:.0%}")
-
-                        st.markdown("**Summary**")
-                        st.write(summary.summary)
-
-                        if summary.key_points:
-                            st.markdown("**Key Points**")
-                            for point in summary.key_points:
-                                st.markdown(f"• {point}")
-
-                        if summary.commodities:
-                            st.markdown("**Commodities Mentioned**")
-                            st.write(", ".join(summary.commodities))
-
-                    except Exception as e:
-                        st.error(f"Analysis failed: {e}")
+            if trending_topics:
+                topic_cols = st.columns(5)
+                for idx, topic in enumerate(trending_topics[:5]):
+                    with topic_cols[idx]:
+                        trend_icon = {"up": "📈", "down": "📉", "stable": "➡️"}.get(topic.get("trend", "stable"), "➡️")
+                        sentiment_color = {"bullish": "#00cc00", "bearish": "#cc0000", "neutral": "#888888"}.get(
+                            topic.get("sentiment", "neutral"), "#888888"
+                        )
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #1a1a2e; border: 1px solid #333;">
+                            <div style="font-size: 20px;">{trend_icon}</div>
+                            <div style="font-weight: bold; font-size: 11px; margin-top: 5px;">{topic.get('topic', 'N/A')}</div>
+                            <div style="font-size: 10px; color: {sentiment_color};">{topic.get('sentiment', 'neutral').upper()}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
         with col2:
-            st.markdown("**Sentiment Analyzer**")
+            st.markdown("### 🐦 Tweet Word Cloud")
+            st.caption("Top 100 oil market tweets powered by GrokAI")
+
+            # Generate and display word cloud
+            if wordcloud_data and wordcloud_data.words and WORDCLOUD_AVAILABLE:
+                try:
+                    # Create word cloud
+                    wc = WordCloud(
+                        width=400,
+                        height=300,
+                        background_color='#0e1117',
+                        colormap='Blues',
+                        max_words=100,
+                        min_font_size=10,
+                        max_font_size=60,
+                        random_state=42
+                    )
+                    wc.generate_from_frequencies(wordcloud_data.words)
+
+                    # Display using matplotlib
+                    import matplotlib.pyplot as plt
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    ax.imshow(wc, interpolation='bilinear')
+                    ax.axis('off')
+                    fig.patch.set_facecolor('#0e1117')
+                    st.pyplot(fig, use_container_width=True)
+                    plt.close(fig)
+
+                    st.caption(f"Based on {wordcloud_data.total_tweets} tweets")
+
+                except Exception as e:
+                    st.warning(f"Word cloud generation error: {e}")
+                    # Fallback: Show top words as tags
+                    st.markdown("**Top Keywords:**")
+                    top_words = list(wordcloud_data.words.items())[:20]
+                    word_tags = " ".join([f"`{word}` ({count})" for word, count in top_words])
+                    st.markdown(word_tags)
+            elif not WORDCLOUD_AVAILABLE:
+                st.warning("WordCloud library not available. Install with: pip install wordcloud")
+            else:
+                st.info("No tweet data available for word cloud.")
+
+            st.divider()
+
+            st.markdown("### 📊 Aggregate Sentiment")
 
             try:
                 sentiment_analyzer = SentimentAnalyzer()
 
-                # Quick sentiment check
-                quick_text = st.text_input(
-                    "Quick sentiment check",
-                    placeholder="Enter text..."
-                )
-
-                if quick_text:
-                    result = sentiment_analyzer.analyze_text(quick_text)
-
-                    sentiment_colors = {
-                        "VERY_BULLISH": "#00cc00",
-                        "BULLISH": "#66ff66",
-                        "NEUTRAL": "#999999",
-                        "BEARISH": "#ff6666",
-                        "VERY_BEARISH": "#cc0000"
-                    }
-
-                    st.markdown(
-                        f"<div style='padding:10px; background-color:{sentiment_colors.get(result.sentiment.name, '#999')};'>"
-                        f"<strong>{result.sentiment.name}</strong> (Score: {result.score:.2f})</div>",
-                        unsafe_allow_html=True
-                    )
-
-                st.divider()
-
-                st.markdown("**Aggregate Sentiment**")
-
-                # Generate mock aggregate sentiment
-                texts = [
-                    "Oil prices surge on supply concerns",
-                    "OPEC to cut production",
-                    "US inventories build weighs on prices",
-                    "China demand outlook improves",
-                    "Dollar strength pressures commodities"
-                ]
-
-                aggregate = sentiment_analyzer.get_aggregate_sentiment(texts)
+                # Use tweet texts for aggregate sentiment if available
+                if tweets:
+                    tweet_texts = [tweet.text for tweet in tweets[:50]]
+                    for text in tweet_texts:
+                        sentiment_analyzer.analyze(text)
+                    aggregate = sentiment_analyzer.get_aggregate_sentiment()
+                else:
+                    # Fallback sample texts
+                    sample_texts = [
+                        "Oil prices surge on supply concerns",
+                        "OPEC to cut production",
+                        "US inventories build weighs on prices",
+                        "China demand outlook improves",
+                        "Dollar strength pressures commodities"
+                    ]
+                    for text in sample_texts:
+                        sentiment_analyzer.analyze(text)
+                    aggregate = sentiment_analyzer.get_aggregate_sentiment()
 
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
@@ -1784,11 +1864,28 @@ with tab5:
                             {'range': [0.3, 1], 'color': "#ccffcc"},
                         ],
                     },
-                    title={'text': "Sentiment Score"}
+                    title={'text': "Social Sentiment Score"}
                 ))
 
                 fig.update_layout(height=200, margin={"l": 20, "r": 20, "t": 40, "b": 20})
                 st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+
+                # Show sentiment distribution
+                if "label_distribution" in aggregate:
+                    st.markdown("**Sentiment Distribution:**")
+                    dist = aggregate.get("label_distribution", {})
+                    for label, count in dist.items():
+                        label_color = {
+                            "very_bullish": "🟢", "bullish": "🟢",
+                            "neutral": "⚪",
+                            "bearish": "🔴", "very_bearish": "🔴"
+                        }.get(label, "⚪")
+                        st.markdown(f"{label_color} {label.replace('_', ' ').title()}: {count}")
+
+                # Show signal
+                signal = aggregate.get("signal", "neutral")
+                signal_colors = {"bullish": "green", "bearish": "red", "neutral": "gray"}
+                st.markdown(f"**Trading Signal:** :{signal_colors.get(signal, 'gray')}[{signal.upper()}]")
 
             except Exception as e:
                 st.error(f"Sentiment analyzer error: {e}")
