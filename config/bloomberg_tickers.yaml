@@ -272,6 +272,9 @@ spreads:
     type: "crack"
     notes: "Bloomberg 321 crack spread index. Use FVCSM F26 Index for Jan 26, etc."
     front_month_example: "FVCSM F26 Index"
+    front_month_override:
+      ticker: "FVCSM F26 Index"
+      label: "Jan 26"
     
   wti_calendar_1_2:
     name: "WTI M1-M2 Calendar Spread"
@@ -302,36 +305,24 @@ exchanges:
   QS: "ICE"
   NG: "NYMEX"
 
-satellite_inventory:
+inventory:
   locations:
+    usgc:
+      name: "US Cushing"
+      tickers:
+        crude: "DOESCROK Index"  # Total commercial crude inventories (PADD 3)
+      capacity_mb:
+        total: 125
+        crude: 125
+        products: 0
     ara:
       name: "ARA (Amsterdam-Rotterdam-Antwerp)"
       tickers:
-        crude: "ARACRS Index"
-        gasoline: "ARAGSS Index"
-        gasoil: "ARAGAS Index"
-        fuel_oil: "ARAFLS Index"
+        crude: "DARATOTL Index"
+        gasoline: "ARASGSLN Indexara"
+        gasoil: "ARASGO Index"
+        fuel_oil: "ARASFO Index"
       capacity_mb:
-        total: 50
-        crude: 25
+        total: 95
+        crude: 70
         products: 25
-    fujairah:
-      name: "Fujairah, UAE"
-      tickers:
-        light: "FUJLDS Index"
-        middle: "FUJMDS Index"
-        heavy: "FUJHDS Index"
-      capacity_mb:
-        total: 42
-        crude: 20
-        products: 22
-    singapore:
-      name: "Singapore"
-      tickers:
-        light: "MASGLST Index"
-        middle: "MASGMST Index"
-        heavy: "MASGHST Index"
-      capacity_mb:
-        total: 85
-        crude: 45
-        products: 40

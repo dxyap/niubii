@@ -4,9 +4,8 @@ Regional Oil Inventory Data
 Real-time oil storage inventory monitoring via Bloomberg data.
 
 Uses Bloomberg Index tickers for:
+- US Gulf Coast (PADD 3): USGCTOTL (commercial crude inventories)
 - ARA (Amsterdam-Rotterdam-Antwerp): ARACRS, ARAGSS, ARAGAS, ARAFLS
-- Fujairah: FUJLDS, FUJMDS, FUJHDS
-- Singapore: MASGLST, MASGMST, MASGHST
 """
 
 import logging
@@ -27,21 +26,20 @@ except IndexError:
 CONFIG_DIR = _PROJECT_ROOT / "config"
 BLOOMBERG_TICKERS_CONFIG = CONFIG_DIR / "bloomberg_tickers.yaml"
 
-LOCATION_ALIASES = {"rotterdam": "ara"}
+LOCATION_ALIASES = {"rotterdam": "ara", "houston": "usgc"}
 
 DEFAULT_LOCATION_NAMES = {
+    "usgc": "US Gulf Coast",
     "ara": "ARA (Amsterdam-Rotterdam-Antwerp)",
-    "fujairah": "Fujairah, UAE",
-    "singapore": "Singapore",
 }
 
 
-def _load_satellite_inventory_config() -> tuple[
+def _load_inventory_config() -> tuple[
     dict[str, dict[str, str]],
     dict[str, dict[str, float]],
     dict[str, str],
 ]:
-    """Load satellite inventory tickers and capacity metadata from config."""
+    """Load inventory tickers and capacity metadata from config."""
     if not BLOOMBERG_TICKERS_CONFIG.exists():
         logger.warning(
             "Bloomberg ticker config not found at %s",
@@ -53,11 +51,11 @@ def _load_satellite_inventory_config() -> tuple[
         with BLOOMBERG_TICKERS_CONFIG.open("r", encoding="utf-8") as cfg_file:
             config_data = yaml.safe_load(cfg_file) or {}
     except Exception as exc:
-        logger.error("Failed to load satellite inventory config: %s", exc)
+        logger.error("Failed to load inventory config: %s", exc)
         return {}, {}, {}
 
-    satellite_config = config_data.get("satellite_inventory", {})
-    locations_config = satellite_config.get("locations", {}) or {}
+    inventory_config = config_data.get("inventory", {})
+    locations_config = inventory_config.get("locations", {}) or {}
 
     tickers = {}
     capacities = {}
@@ -73,7 +71,7 @@ def _load_satellite_inventory_config() -> tuple[
     return tickers, capacities, names
 
 
-_BLOOMBERG_TICKERS, _STORAGE_CAPACITIES, _LOCATION_NAMES = _load_satellite_inventory_config()
+_BLOOMBERG_TICKERS, _STORAGE_CAPACITIES, _LOCATION_NAMES = _load_inventory_config()
 BLOOMBERG_INVENTORY_TICKERS = _BLOOMBERG_TICKERS
 STORAGE_CAPACITIES_MB = _STORAGE_CAPACITIES
 SATELLITE_LOCATION_NAMES = {**DEFAULT_LOCATION_NAMES, **_LOCATION_NAMES}
@@ -85,7 +83,7 @@ class SatelliteConfig:
     provider: str = "bloomberg"  # bloomberg is the production provider
     api_key: str | None = None  # Not needed for Bloomberg
     locations: list[str] = field(default_factory=lambda: [
-        "cushing_ok", "rotterdam", "singapore", "fujairah"
+        "cushing_ok", "rotterdam", "usgc"
     ])
     refresh_hours: int = 24
 
@@ -118,9 +116,9 @@ class StorageTankData:
 # BLOOMBERG INVENTORY TICKERS
 # =============================================================================
 # Inventory tickers and capacity metadata are configured in
-# config/bloomberg_tickers.yaml under satellite_inventory.locations.
+# config/bloomberg_tickers.yaml under inventory.locations.
 # They are loaded at import time into BLOOMBERG_INVENTORY_TICKERS and
-# STORAGE_CAPACITIES_MB by _load_satellite_inventory_config().
+# STORAGE_CAPACITIES_MB by _load_inventory_config().
 
 
 class SatelliteData:
@@ -128,7 +126,7 @@ class SatelliteData:
     Regional oil inventory data provider.
 
     Production mode: Uses Bloomberg API for real inventory data.
-    Monitors oil storage levels in ARA, Fujairah, and Singapore.
+    Monitors oil storage levels in the US Gulf Coast and ARA.
     """
 
     # Major storage locations and estimated capacities
@@ -143,20 +141,10 @@ class SatelliteData:
             "capacity_mb": STORAGE_CAPACITIES_MB.get("ara", {}).get("total", 50),
             "importance": "European hub",
         },
-        "singapore": {
-            "name": SATELLITE_LOCATION_NAMES.get("singapore", "Singapore"),
-            "capacity_mb": STORAGE_CAPACITIES_MB.get("singapore", {}).get("total", 85),
-            "importance": "Asian trading hub",
-        },
-        "fujairah": {
-            "name": SATELLITE_LOCATION_NAMES.get("fujairah", "Fujairah, UAE"),
-            "capacity_mb": STORAGE_CAPACITIES_MB.get("fujairah", {}).get("total", 42),
-            "importance": "Middle East hub",
-        },
-        "houston": {
-            "name": "Houston, Texas",
-            "capacity_mb": 65,
-            "importance": "US Gulf Coast",
+        "usgc": {
+            "name": SATELLITE_LOCATION_NAMES.get("usgc", "US Gulf Coast"),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("usgc", {}).get("total", 125),
+            "importance": "US Gulf Coast crude hub",
         },
     }
 
@@ -270,7 +258,7 @@ class SatelliteData:
 
         Args:
             client: Bloomberg client
-            location: Location key (ara, fujairah, singapore)
+            location: Location key (usgc, ara)
 
         Returns:
             Dictionary with inventory data for the location
@@ -285,7 +273,7 @@ class SatelliteData:
         if not configured_tickers:
             logger.warning(
                 f"No Bloomberg tickers configured for {location}. "
-                f"Please add tickers in core/research/alt_data/satellite.py"
+                f"Add entries to config/bloomberg_tickers.yaml under inventory.locations."
             )
             return None
 
@@ -505,7 +493,7 @@ class SatelliteData:
         Get detailed product breakdown for a location.
 
         Args:
-            location: Location key (ara, fujairah, singapore)
+            location: Location key (usgc, ara)
 
         Returns:
             Detailed product inventory breakdown

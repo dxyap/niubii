@@ -215,6 +215,11 @@ class TickerMapper:
         "PGCR3MOE Index": {"name": "Dubai Crude Swap M3 (Platts)", "multiplier": 1000},
     }
 
+    # Index series that embed month codes (e.g., FVCSM F26 Index for 321 crack spread)
+    INDEX_SERIES_PREFIXES = {
+        "FVCSM": "321 Crack Spread Index",
+    }
+
     # Special ticker patterns that don't follow standard 2-char prefix
     # DAT = Dubai Average Crude, ENA = ICE WTI
     SPECIAL_PREFIXES = {
@@ -231,6 +236,12 @@ class TickerMapper:
         # Check for known index tickers
         if ticker in cls.INDEX_TICKERS:
             return True, "Valid (Index)"
+
+        # Check for known index series patterns (e.g., FVCSM crack spreads)
+        series_prefix = cls._match_index_series_ticker(ticker)
+        if series_prefix:
+            description = cls.INDEX_SERIES_PREFIXES.get(series_prefix, "Index")
+            return True, f"Valid (Index: {description})"
 
         if not ticker.endswith(" Comdty"):
             return False, "Missing ' Comdty' suffix"
@@ -257,6 +268,37 @@ class TickerMapper:
         """Get contract multiplier for a ticker."""
         parsed = cls.parse_ticker(ticker)
         return parsed.get("multiplier", 1000)
+
+    @classmethod
+    def _match_index_series_ticker(cls, ticker: str) -> str | None:
+        """
+        Return index series prefix if the ticker follows a known index pattern.
+        Handles FVCSM month-coded crack spread indexes (e.g., FVCSM F26 Index).
+        """
+        if not ticker.endswith(" Index"):
+            return None
+
+        parts = ticker.split()
+        if len(parts) != 3:
+            return None
+
+        prefix, contract_code, _ = parts
+        if prefix not in cls.INDEX_SERIES_PREFIXES:
+            return None
+
+        if len(contract_code) < 2:
+            return None
+
+        month_code = contract_code[0]
+        year_digits = contract_code[1:]
+
+        if month_code not in cls.MONTH_CODES.values():
+            return None
+
+        if not year_digits.isdigit():
+            return None
+
+        return prefix
 
 
 # =============================================================================

@@ -4,9 +4,11 @@ Market Insights & Research Page
 Comprehensive market analysis, intelligence, and AI-powered research.
 """
 
+import math
 import sys
 import time
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -14,10 +16,13 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import yaml
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+CONFIG_DIR = project_root / "config"
+BLOOMBERG_TICKERS_PATH = CONFIG_DIR / "bloomberg_tickers.yaml"
 
 from dotenv import load_dotenv
 
@@ -41,6 +46,48 @@ st.set_page_config(page_title="Market Insights | Oil Trading", page_icon="📈",
 from app.components.theme import apply_theme, get_chart_config
 
 apply_theme(st)
+
+
+@lru_cache(maxsize=1)
+def load_bloomberg_tickers_config() -> dict:
+    """Load Bloomberg ticker mappings once per session."""
+    if BLOOMBERG_TICKERS_PATH.exists():
+        try:
+            with BLOOMBERG_TICKERS_PATH.open("r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except Exception:
+            return {}
+    return {}
+
+
+def get_crack_spread_front_month_override() -> dict:
+    """Return any configured front month override for the 321 crack spread."""
+    config = load_bloomberg_tickers_config()
+    override = (
+        config.get("spreads", {})
+        .get("crack_321", {})
+        .get("front_month_override")
+    )
+    if isinstance(override, dict):
+        return {
+            "ticker": override.get("ticker"),
+            "label": override.get("label"),
+        }
+    if isinstance(override, str):
+        return {"ticker": override, "label": None}
+    return {}
+
+
+def sanitize_percentage(value, default=0.0):
+    """Convert percentage-like values to a safe float or fall back to default."""
+    try:
+        sanitized = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(sanitized):
+        return default
+    return sanitized
+
 
 # Try to load research modules
 try:
@@ -686,6 +733,10 @@ with tab2:
     # Month codes: F=Jan, G=Feb, H=Mar, J=Apr, K=May, M=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec
     CRACK_SPREAD_MONTH_CODES = ['F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z']
     CRACK_SPREAD_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    crack_front_month_override = get_crack_spread_front_month_override()
+    override_ticker = crack_front_month_override.get("ticker")
+    override_label = crack_front_month_override.get("label")
+    override_applied = False
 
     def get_crack_spread_forward_curve():
         """Fetch 321 crack spread forward curve from Bloomberg FVCSM series."""
@@ -722,6 +773,146 @@ with tab2:
 
     # Fetch the crack spread forward curve
     crack_curve = get_crack_spread_forward_curve()
+    if crack_curve is not None and not crack_curve.empty and override_ticker:
+        override_mask = crack_curve['ticker'] == override_ticker
+        if override_mask.any():
+            first_idx = int(crack_curve.index[override_mask][0])
+            crack_curve = crack_curve.loc[first_idx:].reset_index(drop=True)
+            override_applied = True
+    front_month_crack = None
+    front_month_label = None
+    front_month_ticker = None
+    if crack_curve is not None and not crack_curve.empty:
+        front_row = crack_curve.iloc[0]
+        front_month_crack = float(front_row['price'])
+        front_month_label = (
+            override_label if override_applied and override_label else front_row['contract_month']
+        )
+        front_month_ticker = front_row['ticker']
+
+    st.markdown("### 321 Crack Spread Front-Month Daily Chart")
+
+    lookback_days = 180
+    if front_month_ticker:
+        crack_history = None
+        history_error = False
+        try:
+            crack_history = data_loader.get_historical(
+                front_month_ticker,
+                start_date=datetime.now() - timedelta(days=lookback_days),
+                end_date=datetime.now(),
+                frequency="daily",
+            )
+        except Exception:
+            crack_history = None
+            st.warning(f"Unable to load history for {front_month_ticker}. Please retry.")
+            history_error = True
+
+        if crack_history is not None and not crack_history.empty:
+            crack_history = crack_history.sort_index()
+            px_last = crack_history["PX_LAST"].astype(float)
+
+            def get_price_series(column: str):
+                if column in crack_history.columns:
+                    return crack_history[column].astype(float)
+                return px_last
+
+            px_open = get_price_series("PX_OPEN")
+            px_high = get_price_series("PX_HIGH")
+            px_low = get_price_series("PX_LOW")
+            hover_texts = [
+                f"{idx:%b %d %Y}<br>"
+                f"O: ${open_price:.2f}<br>"
+                f"H: ${high_price:.2f}<br>"
+                f"L: ${low_price:.2f}<br>"
+                f"C: ${close_price:.2f}"
+                for idx, open_price, high_price, low_price, close_price in zip(
+                    crack_history.index, px_open, px_high, px_low, px_last
+                )
+            ]
+
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(
+                x=crack_history.index,
+                open=px_open,
+                high=px_high,
+                low=px_low,
+                close=px_last,
+                name="Price",
+                increasing={
+                    "line": {"color": CHART_COLORS["candle_up"], "width": 1},
+                    "fillcolor": CHART_COLORS["candle_up_fill"],
+                },
+                decreasing={
+                    "line": {"color": CHART_COLORS["candle_down"], "width": 1},
+                    "fillcolor": CHART_COLORS["candle_down_fill"],
+                },
+                hovertext=hover_texts,
+                hoverinfo="text",
+                showlegend=False,
+            ))
+
+            ma_window = 20
+            ma_series = px_last.rolling(window=ma_window).mean().dropna()
+            if not ma_series.empty:
+                fig.add_trace(go.Scatter(
+                    x=ma_series.index,
+                    y=ma_series,
+                    name=f"{ma_window}-day MA",
+                    mode="lines",
+                    line={"color": CHART_COLORS["ma_fast"], "width": 1.5, "dash": "dot"},
+                    hovertemplate="%{x|%b %d %Y}<br>$%{y:.2f}/bbl<extra>MA</extra>",
+                ))
+
+            base_layout_without_axes = {
+                key: value for key, value in BASE_LAYOUT.items()
+                if key not in {"yaxis", "xaxis"}
+            }
+            layout = {
+                **base_layout_without_axes,
+                "height": 320,
+                "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+                "title": {
+                    "text": f"{front_month_label or 'Front Month'} ({front_month_ticker})",
+                    "font": {"size": 14, "color": CHART_COLORS["text_primary"]},
+                    "x": 0,
+                    "xanchor": "left",
+                },
+                "yaxis": dict(
+                    **BASE_LAYOUT["yaxis"],
+                    title_text="$/bbl",
+                ),
+                "xaxis": dict(
+                    **BASE_LAYOUT["xaxis"],
+                    tickformat="%b %y",
+                ),
+                "showlegend": True,
+                "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
+            }
+            fig.update_layout(**layout)
+
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.caption(f"{front_month_ticker} | {lookback_days}-day daily history")
+
+            stats_cols = st.columns(3)
+            latest = px_last.iloc[-1]
+            stats_cols[0].metric("Last Close", f"${latest:.2f}/bbl")
+
+            compare_idx = max(len(px_last) - 22, 0)
+            compare_value = px_last.iloc[compare_idx]
+            change_value = latest - compare_value
+            change_pct = (change_value / compare_value * 100) if compare_value else 0
+            stats_cols[1].metric("1M Change", f"${change_value:.2f}", f"{change_pct:+.1f}%")
+
+            px_min = px_last.min()
+            px_max = px_last.max()
+            stats_cols[2].metric("Range", f"${px_min:.2f} - ${px_max:.2f}")
+        elif not history_error:
+            st.info("Historical data unavailable for the current front month crack spread.")
+    else:
+        st.info("Front month ticker unavailable for charting.")
+
+    st.divider()
 
     col1, col2 = st.columns([2, 1])
 
@@ -730,10 +921,6 @@ with tab2:
         st.caption("Source: Bloomberg FVCSM Index (321 Crack Spread)")
 
         if crack_curve is not None and not crack_curve.empty:
-            # Current (front month) crack spread
-            front_month_crack = crack_curve.iloc[0]['price']
-            front_month_label = crack_curve.iloc[0]['contract_month']
-
             # Create forward curve chart
             fig = go.Figure()
 
@@ -817,10 +1004,6 @@ with tab2:
         st.markdown("**Current 321 Crack Spread**")
 
         if crack_curve is not None and not crack_curve.empty:
-            front_month_crack = crack_curve.iloc[0]['price']
-            front_month_label = crack_curve.iloc[0]['contract_month']
-            front_month_ticker = crack_curve.iloc[0]['ticker']
-
             # Display current crack spread prominently
             st.markdown(
                 f"""<div style="background: linear-gradient(135deg, rgba(0,163,224,0.15) 0%, rgba(0,163,224,0.05) 100%);
@@ -909,114 +1092,6 @@ with tab2:
         if ho is not None:
             st.metric("Heating Oil", f"${ho:.4f}/gal")
 
-    # Component Price Charts Section
-    st.divider()
-    st.markdown("### Component Price History (60 Days)")
-
-    # Define component tickers
-    COMPONENT_TICKERS = {
-        "WTI Crude (CL1)": {"ticker": "CL1 Comdty", "unit": "$/bbl", "color": CHART_COLORS['primary']},
-        "Brent Crude (CO1)": {"ticker": "CO1 Comdty", "unit": "$/bbl", "color": CHART_COLORS['ma_fast']},
-        "RBOB Gasoline (XB1)": {"ticker": "XB1 Comdty", "unit": "$/gal", "color": CHART_COLORS['profit']},
-        "Heating Oil (HO1)": {"ticker": "HO1 Comdty", "unit": "$/gal", "color": CHART_COLORS['loss']},
-    }
-
-    # Create 2x2 grid for component charts
-    comp_col1, comp_col2 = st.columns(2)
-
-    def create_component_chart(name: str, config: dict, lookback_days: int = 60):
-        """Create a simple line chart for a component."""
-        try:
-            hist_data = data_loader.get_historical(
-                config["ticker"],
-                start_date=datetime.now() - timedelta(days=lookback_days),
-                end_date=datetime.now()
-            )
-
-            if hist_data is None or hist_data.empty:
-                return None
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=hist_data.index,
-                y=hist_data['PX_LAST'],
-                mode='lines',
-                name=name,
-                line={"color": config["color"], "width": 2},
-                fill='tozeroy',
-                fillcolor=f"rgba{tuple(list(int(config['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.1])}",
-                hovertemplate='%{x|%b %d}<br>%{y:.4f}<extra></extra>',
-            ))
-
-            # Get current and previous prices for change calculation
-            current_price = hist_data['PX_LAST'].iloc[-1]
-            prev_price = hist_data['PX_LAST'].iloc[0] if len(hist_data) > 1 else current_price
-            change_pct = ((current_price - prev_price) / prev_price * 100) if prev_price else 0
-
-            base_layout_without_axes = {
-                key: value for key, value in BASE_LAYOUT.items()
-                if key not in {"yaxis", "xaxis"}
-            }
-            fig.update_layout(
-                **base_layout_without_axes,
-                height=200,
-                margin={"l": 50, "r": 20, "t": 30, "b": 30},
-                title={
-                    "text": f"{name} ({change_pct:+.1f}%)",
-                    "font": {"size": 12, "color": CHART_COLORS["text_primary"]},
-                    "x": 0,
-                    "xanchor": 'left',
-                },
-                yaxis=dict(
-                    **BASE_LAYOUT["yaxis"],
-                    title_text=config["unit"],
-                    title_font={"size": 10},
-                ),
-                xaxis=dict(
-                    **BASE_LAYOUT["xaxis"],
-                    tickformat="%b %d",
-                ),
-                showlegend=False,
-            )
-
-            return fig, current_price, change_pct
-        except Exception:
-            return None
-
-    with comp_col1:
-        # WTI Chart
-        wti_result = create_component_chart("WTI Crude", COMPONENT_TICKERS["WTI Crude (CL1)"])
-        if wti_result:
-            fig, price, change = wti_result
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        else:
-            st.info("WTI historical data unavailable")
-
-        # RBOB Chart
-        rbob_result = create_component_chart("RBOB Gasoline", COMPONENT_TICKERS["RBOB Gasoline (XB1)"])
-        if rbob_result:
-            fig, price, change = rbob_result
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        else:
-            st.info("RBOB historical data unavailable")
-
-    with comp_col2:
-        # Brent Chart
-        brent_result = create_component_chart("Brent Crude", COMPONENT_TICKERS["Brent Crude (CO1)"])
-        if brent_result:
-            fig, price, change = brent_result
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        else:
-            st.info("Brent historical data unavailable")
-
-        # Heating Oil Chart
-        ho_result = create_component_chart("Heating Oil", COMPONENT_TICKERS["Heating Oil (HO1)"])
-        if ho_result:
-            fig, price, change = ho_result
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-        else:
-            st.info("Heating Oil historical data unavailable")
-
 # =============================================================================
 # TAB 3: Inventory
 # =============================================================================
@@ -1039,6 +1114,15 @@ with tab3:
 
     # Regional hub definitions with crude-specific data
     REGIONAL_HUBS = {
+        "usgc": {
+            "name": "US Gulf Coast",
+            "region": "North America",
+            "key": "usgc",
+            "crude_capacity_mb": 125,
+            "product_capacity_mb": 20,
+            "benchmark": "WTI/LLS",
+            "icon": "🇺🇸",
+        },
         "ara": {
             "name": "ARA (Amsterdam-Rotterdam-Antwerp)",
             "region": "Europe",
@@ -1048,36 +1132,18 @@ with tab3:
             "benchmark": "Brent",
             "icon": "🇪🇺",
         },
-        "fujairah": {
-            "name": "Fujairah",
-            "region": "Middle East",
-            "key": "fujairah",
-            "crude_capacity_mb": 30,
-            "product_capacity_mb": 12,
-            "benchmark": "Dubai/Oman",
-            "icon": "🇦🇪",
-        },
-        "singapore": {
-            "name": "Singapore",
-            "region": "Asia Pacific",
-            "key": "singapore",
-            "crude_capacity_mb": 32,
-            "product_capacity_mb": 13,
-            "benchmark": "Dubai/Tapis",
-            "icon": "🇸🇬",
-        },
     }
 
     if regional_stocks and regional_stocks.get("locations"):
         locations = regional_stocks["locations"]
 
         # Create regional crude stocks display
-        crude_cols = st.columns(3)
+        crude_cols = st.columns(len(REGIONAL_HUBS))
 
         for idx, (hub_key, hub_info) in enumerate(REGIONAL_HUBS.items()):
             with crude_cols[idx]:
                 loc_data = locations.get(hub_info["key"], {})
-                utilization = loc_data.get("utilization_pct", 0)
+                utilization = sanitize_percentage(loc_data.get("utilization_pct", 0))
                 change_week = loc_data.get("change_week_pct", 0)
                 crude_cap = hub_info["crude_capacity_mb"]
                 estimated_crude = crude_cap * utilization / 100
@@ -1099,7 +1165,8 @@ with tab3:
                     else CHART_COLORS['loss'] if utilization > 75
                     else CHART_COLORS['ma_fast']
                 )
-                st.progress(min(utilization / 100, 1.0))
+                progress_value = max(0.0, min(utilization / 100, 1.0))
+                st.progress(progress_value)
                 st.caption(f"Utilization: {utilization:.1f}% of {crude_cap} MMbbl capacity")
 
                 # Signal interpretation
@@ -1123,7 +1190,7 @@ with tab3:
 
         for hub_key, hub_info in REGIONAL_HUBS.items():
             loc_data = locations.get(hub_info["key"], {})
-            util = loc_data.get("utilization_pct", 50)
+            util = sanitize_percentage(loc_data.get("utilization_pct", 50), default=50)
             hub_names.append(hub_info["name"])
             crude_volumes.append(hub_info["crude_capacity_mb"] * util / 100)
             utilizations.append(util)
@@ -1210,12 +1277,15 @@ with tab3:
         st.markdown("""
         **To enable regional inventory data:**
         1. Ensure Bloomberg Terminal is connected
-        2. Configure tickers in `core/research/alt_data/satellite.py`
+        2. Configure tickers in `config/bloomberg_tickers.yaml` (`inventory.locations`)
+
+        **Centralized ticker config**
+        - All Bloomberg-connected regional inventory tickers default to this config file
+        - Add the USGC / ARA tickers under their respective location keys
 
         **Bloomberg Tickers to search:**
+        - **USGC**: USGCTOTL Index (PADD 3 commercial crude)
         - **ARA**: Crude stocks, Gasoline, Gasoil, Fuel Oil indices
-        - **Fujairah**: Light/Middle/Heavy distillate indices (FEDCom data)
-        - **Singapore**: MAS light/middle/heavy distillate indices
         """)
 
     st.divider()
@@ -1508,13 +1578,14 @@ with tab4:
                 hovertemplate='Actual: %{y:.2f} mb/d<extra></extra>',
             ))
 
-            fig.update_layout(
+            opec_layout = {
                 **BASE_LAYOUT,
-                height=400,
-                barmode='group',
-                yaxis_title='Production (mb/d)',
-                legend={"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
-            )
+                "height": 400,
+                "barmode": 'group',
+                "yaxis_title": 'Production (mb/d)',
+                "legend": {"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
+            }
+            fig.update_layout(**opec_layout)
 
             st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
@@ -1810,12 +1881,13 @@ with tab6:
 
                     fig.add_hline(y=0, line_dash="dash", line_color="gray")
 
-                    fig.update_layout(
+                    corr_layout = {
                         **BASE_LAYOUT,
-                        height=300,
-                        yaxis={"title": "Correlation", "range": [-1, 1]},
-                        xaxis_title="Date",
-                    )
+                        "height": 300,
+                        "yaxis": {"title": "Correlation", "range": [-1, 1]},
+                        "xaxis_title": "Date",
+                    }
+                    fig.update_layout(**corr_layout)
 
                     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
@@ -1964,16 +2036,17 @@ with tab7:
                     hovertemplate='%{text}<br>%{x}<extra></extra>'
                 ))
 
-                fig.update_layout(
+                regime_layout = {
                     **BASE_LAYOUT,
-                    height=300,
-                    yaxis={
+                    "height": 300,
+                    "yaxis": {
                         "title": "Regime",
                         "ticktext": ["Crisis", "Trend Down", "Low Vol", "Ranging", "High Vol", "Trend Up"],
                         "tickvals": [-3, -2, -1, 0, 1, 2],
                     },
-                    xaxis_title="Date",
-                )
+                    "xaxis_title": "Date",
+                }
+                fig.update_layout(**regime_layout)
 
                 st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
@@ -2050,12 +2123,13 @@ with tab8:
                         ]
                     ))
 
-                    fig.update_layout(
+                    exposure_layout = {
                         **BASE_LAYOUT,
-                        height=350,
-                        xaxis_title="Exposure (Beta)",
-                        margin={"l": 120, "r": 20, "t": 20, "b": 40},
-                    )
+                        "height": 350,
+                        "xaxis_title": "Exposure (Beta)",
+                        "margin": {"l": 120, "r": 20, "t": 20, "b": 40},
+                    }
+                    fig.update_layout(**exposure_layout)
 
                     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
                 else:
@@ -2152,9 +2226,10 @@ with tab9:
                     storage_data = []
 
                     for loc, data in locations.items():
+                        utilization_pct = sanitize_percentage(data.get("utilization_pct", 0))
                         storage_data.append({
                             "Location": data.get("name", loc),
-                            "Utilization": f"{data.get('utilization_pct', 0):.1f}%",
+                            "Utilization": f"{utilization_pct:.1f}%",
                             "Volume (MB)": data.get("estimated_volume_mb", 0),
                             "Capacity (MB)": data.get("capacity_mb", 0),
                             "Week Change": f"{data.get('change_week_pct', 0):+.1f}%",
@@ -2168,7 +2243,7 @@ with tab9:
                     fig = go.Figure()
 
                     for loc, data in locations.items():
-                        util = data.get("utilization_pct", 0)
+                        util = sanitize_percentage(data.get("utilization_pct", 0))
                         fig.add_trace(go.Bar(
                             x=[data.get("name", loc)],
                             y=[util],
@@ -2176,12 +2251,13 @@ with tab9:
                             marker_color="#ff7f0e" if util > 70 else ("#1f77b4" if util < 50 else "#2ca02c")
                         ))
 
-                    fig.update_layout(
+                    storage_layout = {
                         **BASE_LAYOUT,
-                        height=300,
-                        yaxis={"title": "Utilization %", "range": [0, 100]},
-                        showlegend=False,
-                    )
+                        "height": 300,
+                        "yaxis": {"title": "Utilization %", "range": [0, 100]},
+                        "showlegend": False,
+                    }
+                    fig.update_layout(**storage_layout)
 
                     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
@@ -2344,11 +2420,12 @@ with tab9:
                     fig.add_hline(y=80, line_dash="dash", line_color="red", annotation_text="Extreme Long")
                     fig.add_hline(y=20, line_dash="dash", line_color="green", annotation_text="Extreme Short")
 
-                    fig.update_layout(
+                    cot_layout = {
                         **BASE_LAYOUT,
-                        height=300,
-                        yaxis={"title": "Percentile", "range": [0, 110]},
-                    )
+                        "height": 300,
+                        "yaxis": {"title": "Percentile", "range": [0, 110]},
+                    }
+                    fig.update_layout(**cot_layout)
 
                     st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
