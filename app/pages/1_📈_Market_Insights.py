@@ -909,6 +909,114 @@ with tab2:
         if ho is not None:
             st.metric("Heating Oil", f"${ho:.4f}/gal")
 
+    # Component Price Charts Section
+    st.divider()
+    st.markdown("### Component Price History (60 Days)")
+
+    # Define component tickers
+    COMPONENT_TICKERS = {
+        "WTI Crude (CL1)": {"ticker": "CL1 Comdty", "unit": "$/bbl", "color": CHART_COLORS['primary']},
+        "Brent Crude (CO1)": {"ticker": "CO1 Comdty", "unit": "$/bbl", "color": CHART_COLORS['ma_fast']},
+        "RBOB Gasoline (XB1)": {"ticker": "XB1 Comdty", "unit": "$/gal", "color": CHART_COLORS['profit']},
+        "Heating Oil (HO1)": {"ticker": "HO1 Comdty", "unit": "$/gal", "color": CHART_COLORS['loss']},
+    }
+
+    # Create 2x2 grid for component charts
+    comp_col1, comp_col2 = st.columns(2)
+
+    def create_component_chart(name: str, config: dict, lookback_days: int = 60):
+        """Create a simple line chart for a component."""
+        try:
+            hist_data = data_loader.get_historical(
+                config["ticker"],
+                start_date=datetime.now() - timedelta(days=lookback_days),
+                end_date=datetime.now()
+            )
+
+            if hist_data is None or hist_data.empty:
+                return None
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=hist_data.index,
+                y=hist_data['PX_LAST'],
+                mode='lines',
+                name=name,
+                line={"color": config["color"], "width": 2},
+                fill='tozeroy',
+                fillcolor=f"rgba{tuple(list(int(config['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.1])}",
+                hovertemplate='%{x|%b %d}<br>%{y:.4f}<extra></extra>',
+            ))
+
+            # Get current and previous prices for change calculation
+            current_price = hist_data['PX_LAST'].iloc[-1]
+            prev_price = hist_data['PX_LAST'].iloc[0] if len(hist_data) > 1 else current_price
+            change_pct = ((current_price - prev_price) / prev_price * 100) if prev_price else 0
+
+            base_layout_without_axes = {
+                key: value for key, value in BASE_LAYOUT.items()
+                if key not in {"yaxis", "xaxis"}
+            }
+            fig.update_layout(
+                **base_layout_without_axes,
+                height=200,
+                margin={"l": 50, "r": 20, "t": 30, "b": 30},
+                title={
+                    "text": f"{name} ({change_pct:+.1f}%)",
+                    "font": {"size": 12, "color": CHART_COLORS["text_primary"]},
+                    "x": 0,
+                    "xanchor": 'left',
+                },
+                yaxis=dict(
+                    **BASE_LAYOUT["yaxis"],
+                    title_text=config["unit"],
+                    title_font={"size": 10},
+                ),
+                xaxis=dict(
+                    **BASE_LAYOUT["xaxis"],
+                    tickformat="%b %d",
+                ),
+                showlegend=False,
+            )
+
+            return fig, current_price, change_pct
+        except Exception:
+            return None
+
+    with comp_col1:
+        # WTI Chart
+        wti_result = create_component_chart("WTI Crude", COMPONENT_TICKERS["WTI Crude (CL1)"])
+        if wti_result:
+            fig, price, change = wti_result
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        else:
+            st.info("WTI historical data unavailable")
+
+        # RBOB Chart
+        rbob_result = create_component_chart("RBOB Gasoline", COMPONENT_TICKERS["RBOB Gasoline (XB1)"])
+        if rbob_result:
+            fig, price, change = rbob_result
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        else:
+            st.info("RBOB historical data unavailable")
+
+    with comp_col2:
+        # Brent Chart
+        brent_result = create_component_chart("Brent Crude", COMPONENT_TICKERS["Brent Crude (CO1)"])
+        if brent_result:
+            fig, price, change = brent_result
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        else:
+            st.info("Brent historical data unavailable")
+
+        # Heating Oil Chart
+        ho_result = create_component_chart("Heating Oil", COMPONENT_TICKERS["Heating Oil (HO1)"])
+        if ho_result:
+            fig, price, change = ho_result
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        else:
+            st.info("Heating Oil historical data unavailable")
+
 # =============================================================================
 # TAB 3: Inventory
 # =============================================================================

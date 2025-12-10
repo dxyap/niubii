@@ -267,13 +267,11 @@ spreads:
     
   crack_321:
     name: "3-2-1 Crack Spread"
-    calculation: "(2 * XB1 * 42 + HO1 * 42 - 3 * CL1) / 3"
+    base_ticker: "FVCSM"
+    ticker_format: "FVCSM {month_code}{year_code} Index"
     type: "crack"
-    
-  crack_211:
-    name: "2-1-1 Crack Spread"
-    calculation: "(XB1 * 42 + HO1 * 42 - 2 * CL1) / 2"
-    type: "crack"
+    notes: "Bloomberg 321 crack spread index. Use FVCSM F26 Index for Jan 26, etc."
+    front_month_example: "FVCSM F26 Index"
     
   wti_calendar_1_2:
     name: "WTI M1-M2 Calendar Spread"
