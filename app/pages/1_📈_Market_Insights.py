@@ -680,189 +680,234 @@ with tab1:
 # =============================================================================
 with tab2:
     # Crack Spreads Tab
-    st.subheader("Crack Spread & Refining Margins")
+    st.subheader("321 Crack Spread")
 
-    # Get LIVE prices using price cache
-    wti = price_cache.get("CL1 Comdty")
-    rbob = price_cache.get("XB1 Comdty")
-    ho = price_cache.get("HO1 Comdty")
-    brent = price_cache.get("CO1 Comdty")
-    gasoil = price_cache.get("QS1 Comdty")
-    dubai = price_cache.get("DAT2 Comdty")
+    # Bloomberg 321 Crack Spread tickers (FVCSM series)
+    # Month codes: F=Jan, G=Feb, H=Mar, J=Apr, K=May, M=Jun, N=Jul, Q=Aug, U=Sep, V=Oct, X=Nov, Z=Dec
+    CRACK_SPREAD_MONTH_CODES = ['F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z']
+    CRACK_SPREAD_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    price_inputs = {
-        "wti": wti,
-        "gasoline": rbob,
-        "distillate": ho,
-        "brent": brent,
-        "gasoil": gasoil,
-        "dubai": dubai,
-    }
+    def get_crack_spread_forward_curve():
+        """Fetch 321 crack spread forward curve from Bloomberg FVCSM series."""
+        curve_data = []
+        current_year = datetime.now().year
+        current_month = datetime.now().month
 
-    regional_keys = ["usgc_321", "nwe_312", "singapore_complex"]
-    region_results = {
-        key: spread_analyzer.calculate_regional_refining_margin(key, price_inputs)
-        for key in regional_keys
-    }
-    comparison_margins = spread_analyzer.calculate_bnef_refining_margins(data_loader)
+        # Fetch next 12 months of crack spread contracts
+        for i in range(12):
+            month_idx = (current_month - 1 + i) % 12
+            year = current_year + ((current_month - 1 + i) // 12)
+            year_code = str(year)[-2:]  # Last 2 digits of year
 
-    col1, col2 = st.columns(2)
+            month_code = CRACK_SPREAD_MONTH_CODES[month_idx]
+            month_name = CRACK_SPREAD_MONTH_NAMES[month_idx]
+
+            ticker = f"FVCSM {month_code}{year_code} Index"
+            contract_label = f"{month_name} {year_code}"
+
+            try:
+                price = data_loader.get_price(ticker, validate=False)
+                if price is not None:
+                    curve_data.append({
+                        'ticker': ticker,
+                        'contract_month': contract_label,
+                        'month_idx': i,
+                        'price': float(price),
+                    })
+            except Exception:
+                # Skip contracts that aren't available
+                pass
+
+        return pd.DataFrame(curve_data) if curve_data else None
+
+    # Fetch the crack spread forward curve
+    crack_curve = get_crack_spread_forward_curve()
+
+    col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.markdown("**3-2-1 Crack Spread (USGC)**")
+        st.markdown("**321 Crack Spread Forward Curve**")
+        st.caption("Source: Bloomberg FVCSM Index (321 Crack Spread)")
 
-        usgc_margin = region_results.get("usgc_321")
-        if usgc_margin:
-            crack_data = context.data.crack_spread
-            crack_change = crack_data.get('change', 0) if crack_data else 0
+        if crack_curve is not None and not crack_curve.empty:
+            # Current (front month) crack spread
+            front_month_crack = crack_curve.iloc[0]['price']
+            front_month_label = crack_curve.iloc[0]['contract_month']
 
-            st.metric(
-                "Current",
-                f"${usgc_margin['margin_per_bbl']:.2f}/bbl",
-                delta=f"{crack_change:+.2f}"
-            )
-            st.caption(f"Formula: {usgc_margin['formula']}")
+            # Create forward curve chart
+            fig = go.Figure()
 
-            # Component breakdown visualization
-            st.markdown("**Spread Components**")
-            crude_cost_total = usgc_margin["crude_price"] * usgc_margin["crude_ratio"]
-            crack_total = usgc_margin["margin_per_bbl"] * usgc_margin["crude_ratio"]
-
-            bar_labels = [f"{comp['label']}×{comp['ratio']}" for comp in usgc_margin["product_breakdown"]]
-            bar_values = [comp["value_component_raw"] for comp in usgc_margin["product_breakdown"]]
-            bar_text = [f"${comp['value_component_raw']:.2f}" for comp in usgc_margin["product_breakdown"]]
-
-            bar_labels.extend([f"{usgc_margin['crude_label']}×{usgc_margin['crude_ratio']}", "Crack"])
-            bar_values.extend([-crude_cost_total, crack_total])
-            bar_text.extend([f"-${crude_cost_total:.2f}", f"${crack_total:.2f}"])
-
-            component_fig = go.Figure()
-            component_fig.add_trace(go.Bar(
-                x=bar_labels,
-                y=bar_values,
-                marker_color=[
-                    *(CHART_COLORS['profit'] for _ in usgc_margin["product_breakdown"]),
-                    CHART_COLORS['loss'],
-                    CHART_COLORS['primary'],
-                ],
-                text=bar_text,
-                textposition='outside',
-                textfont={"size": 12, "color": CHART_COLORS['text_primary']},
-                marker_line_width=0,
+            # Crack spread curve
+            fig.add_trace(go.Scatter(
+                x=crack_curve['contract_month'],
+                y=crack_curve['price'],
+                name='321 Crack Spread',
+                mode='lines+markers',
+                line={"color": CHART_COLORS['primary'], "width": 3, "shape": 'spline'},
+                marker={
+                    "size": 10,
+                    "color": CHART_COLORS['primary'],
+                    "line": {"width": 2, "color": 'white'},
+                    "symbol": 'circle',
+                },
+                fill='tozeroy',
+                fillcolor='rgba(0, 163, 224, 0.15)',
+                hovertemplate='%{x}<br>$%{y:.2f}/bbl<extra>321 Crack</extra>',
             ))
 
-            component_fig.update_layout(
-                **BASE_LAYOUT,
-                height=250,
-                yaxis_title='$/bbl equivalent',
+            # Get price range for y-axis scaling
+            price_min = crack_curve['price'].min()
+            price_max = crack_curve['price'].max()
+            price_range = price_max - price_min
+            y_min = max(0, price_min - (price_range * 0.2))
+            y_max = price_max + (price_range * 0.2)
+
+            if price_range < 2:
+                mid = (price_min + price_max) / 2
+                y_min = max(0, mid - 3)
+                y_max = mid + 3
+
+            base_layout_without_axes = {
+                key: value for key, value in BASE_LAYOUT.items()
+                if key not in {"yaxis", "xaxis"}
+            }
+            fig.update_layout(
+                **base_layout_without_axes,
+                height=400,
+                title={
+                    "text": "321 Crack Spread Forward Curve",
+                    "font": {"size": 14, "color": CHART_COLORS["text_primary"]},
+                    "x": 0,
+                    "xanchor": 'left',
+                },
+                yaxis=dict(
+                    **BASE_LAYOUT["yaxis"],
+                    range=[y_min, y_max],
+                    title_text="Crack Spread ($/bbl)",
+                    dtick=max(1, round(price_range / 5)),
+                ),
+                xaxis=dict(
+                    **BASE_LAYOUT["xaxis"],
+                    title_text="Contract Month",
+                    tickangle=-45 if len(crack_curve) > 8 else 0,
+                ),
+                showlegend=False,
             )
 
-            st.plotly_chart(component_fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
-            # Metrics
-            m_col1, m_col2, m_col3 = st.columns(3)
-            with m_col1:
-                st.metric("Refining Margin", f"${usgc_margin['margin_per_bbl']:.2f}/bbl")
-            with m_col2:
-                st.metric("Margin %", f"{usgc_margin['margin_pct']:.1f}%")
-            with m_col3:
-                st.metric("Product Value", f"${usgc_margin['product_value_per_bbl']:.2f}/bbl")
-
-            if usgc_margin.get("source_url"):
-                st.caption(f"[Source]({usgc_margin['source_url']}) — {usgc_margin.get('source', '')}")
+            # Forward curve data table
+            st.markdown("**Forward Curve Data**")
+            display_df = crack_curve[['contract_month', 'price', 'ticker']].copy()
+            display_df.columns = ['Contract', 'Price ($/bbl)', 'Bloomberg Ticker']
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'Contract': st.column_config.TextColumn('Contract'),
+                    'Price ($/bbl)': st.column_config.NumberColumn('Price', format='$%.2f'),
+                    'Bloomberg Ticker': st.column_config.TextColumn('Ticker'),
+                }
+            )
         else:
-            st.warning("Price data unavailable for USGC crack spread calculation")
+            st.warning("321 Crack spread data unavailable from Bloomberg (FVCSM series)")
 
     with col2:
-        st.markdown("**Live Spreads**")
+        st.markdown("**Current 321 Crack Spread**")
 
-        # Calculate LIVE regional differentials
-        if wti and brent:
-            brent_wti_spread = brent - wti
-            spread_data = context.data.wti_brent_spread
-            spread_change = spread_data.get('change', 0) if spread_data else 0
+        if crack_curve is not None and not crack_curve.empty:
+            front_month_crack = crack_curve.iloc[0]['price']
+            front_month_label = crack_curve.iloc[0]['contract_month']
+            front_month_ticker = crack_curve.iloc[0]['ticker']
 
-            st.metric("Brent-WTI", f"${brent_wti_spread:.2f}", delta=f"{spread_change:+.2f}")
+            # Display current crack spread prominently
+            st.markdown(
+                f"""<div style="background: linear-gradient(135deg, rgba(0,163,224,0.15) 0%, rgba(0,163,224,0.05) 100%);
+                padding: 20px; border-radius: 8px; border-left: 4px solid #00A3E0; margin-bottom: 16px;">
+                <div style="color: #94A3B8; font-size: 12px; margin-bottom: 4px;">CURRENT ({front_month_label})</div>
+                <div style="color: #E2E8F0; font-size: 32px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;">${front_month_crack:.2f}/bbl</div>
+                <div style="color: #64748B; font-size: 11px; margin-top: 4px;">{front_month_ticker}</div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+
+            st.divider()
+
+            # Curve structure analysis
+            st.markdown("**Curve Structure**")
+
+            if len(crack_curve) >= 2:
+                # M1-M2 spread
+                m1 = crack_curve.iloc[0]['price']
+                m2 = crack_curve.iloc[1]['price']
+                m1_m2_spread = m1 - m2
+
+                st.metric(
+                    "M1-M2 Spread",
+                    f"${m1_m2_spread:.2f}",
+                    delta="Backwardation" if m1_m2_spread > 0 else "Contango",
+                    delta_color="normal" if m1_m2_spread > 0 else "inverse"
+                )
+
+            if len(crack_curve) >= 6:
+                # M1-M6 spread
+                m6 = crack_curve.iloc[5]['price']
+                m1_m6_spread = m1 - m6
+                st.metric("M1-M6 Spread", f"${m1_m6_spread:.2f}")
+
+            if len(crack_curve) >= 12:
+                # M1-M12 spread
+                m12 = crack_curve.iloc[11]['price']
+                m1_m12_spread = m1 - m12
+                st.metric("M1-M12 Spread", f"${m1_m12_spread:.2f}")
+
+            st.divider()
+
+            # Curve statistics
+            st.markdown("**Curve Statistics**")
+            avg_crack = crack_curve['price'].mean()
+            max_crack = crack_curve['price'].max()
+            min_crack = crack_curve['price'].min()
+
+            st.text(f"Avg: ${avg_crack:.2f}/bbl")
+            st.text(f"Max: ${max_crack:.2f}/bbl")
+            st.text(f"Min: ${min_crack:.2f}/bbl")
+
+            # Determine curve structure
+            if len(crack_curve) >= 3:
+                front_avg = crack_curve.head(3)['price'].mean()
+                back_avg = crack_curve.tail(3)['price'].mean()
+                if front_avg > back_avg * 1.02:
+                    structure = "Backwardation"
+                    st.success(f"📈 {structure}")
+                elif back_avg > front_avg * 1.02:
+                    structure = "Contango"
+                    st.warning(f"📉 {structure}")
+                else:
+                    structure = "Flat"
+                    st.info(f"➡️ {structure}")
+
+        else:
+            st.info("Crack spread data not available")
 
         st.divider()
 
-        st.markdown("**Live Component Prices**")
+        # Live component prices for reference
+        wti = price_cache.get("CL1 Comdty")
+        rbob = price_cache.get("XB1 Comdty")
+        ho = price_cache.get("HO1 Comdty")
+        brent = price_cache.get("CO1 Comdty")
+
+        st.markdown("**Reference Prices**")
         if wti is not None:
             st.metric("WTI Crude", f"${wti:.2f}/bbl")
         if brent is not None:
             st.metric("Brent Crude", f"${brent:.2f}/bbl")
-        if dubai is not None:
-            st.metric("Dubai Swap (DAT2)", f"${dubai:.2f}/bbl")
         if rbob is not None:
             st.metric("RBOB Gasoline", f"${rbob:.4f}/gal")
         if ho is not None:
             st.metric("Heating Oil", f"${ho:.4f}/gal")
-        if gasoil is not None:
-            st.metric("ICE Gasoil", f"${gasoil:.2f}/t")
-
-    st.divider()
-    st.markdown("**Refinery Margin Comparison (BNEF workbook method)**")
-
-    comparison_rows = [
-        ("Hydroskimming (HSK)", {"usgc": "hsk", "nwe": "hsk", "singapore": "hsk"}),
-        ("Conversion (Coking/FCC)", {"usgc": "coking", "nwe": "fcc", "singapore": "fcc"}),
-    ]
-    table_data = []
-    for label, cfg_map in comparison_rows:
-        row = {"Configuration": label}
-        for region_key, region_label in [("usgc", "USGC"), ("nwe", "NWE"), ("singapore", "Singapore")]:
-            cfg_key = cfg_map.get(region_key)
-            region_data = comparison_margins.get(region_key, {})
-            cfg_data = (region_data.get("configs") or {}).get(cfg_key) if region_data else None
-            if cfg_data:
-                row[region_label] = f"${cfg_data['margin_per_bbl']:.2f}/bbl"
-            else:
-                row[region_label] = "-"
-        table_data.append(row)
-
-    if table_data:
-        table_df = pd.DataFrame(table_data).set_index("Configuration")
-        st.dataframe(table_df, use_container_width=True)
-
-    detail_cols = st.columns(3)
-    region_order = [
-        ("usgc", "USGC (WTI)", "coking"),
-        ("nwe", "NWE (Brent)", "fcc"),
-        ("singapore", "Singapore (Dubai)", "fcc"),
-    ]
-    for col, (region_key, title, complex_key) in zip(detail_cols, region_order):
-        region_data = comparison_margins.get(region_key, {})
-        with col:
-            st.markdown(f"**{title}**")
-            if not region_data or region_data.get("error"):
-                st.warning(region_data.get("error", "Margin data unavailable"))
-                continue
-
-            configs = region_data.get("configs", {})
-            hsk_cfg = configs.get("hsk")
-            complex_cfg = configs.get(complex_key)
-
-            if hsk_cfg:
-                st.metric("HSK Margin", f"${hsk_cfg['margin_per_bbl']:.2f}/bbl", delta=f"{hsk_cfg['margin_pct']:.1f}%")
-            if complex_cfg:
-                st.metric(f"{complex_cfg['display_name']} Margin", f"${complex_cfg['margin_per_bbl']:.2f}/bbl", delta=f"{complex_cfg['margin_pct']:.1f}%")
-
-            target_cfg = complex_cfg or hsk_cfg
-            breakdown = target_cfg.get("product_breakdown") if target_cfg else []
-            if breakdown:
-                breakdown_df = pd.DataFrame(breakdown)[["label", "price_per_bbl", "weight", "contribution"]]
-                st.dataframe(
-                    breakdown_df.rename(columns={
-                        "label": "Product",
-                        "price_per_bbl": "$/bbl",
-                        "weight": "Yield",
-                        "contribution": "Contribution",
-                    }),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.caption("No breakdown available for this slate.")
 
 # =============================================================================
 # TAB 3: Inventory
