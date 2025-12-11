@@ -153,7 +153,7 @@ with tab2:
                                 margin={"l": 150, "r": 20, "t": 20, "b": 40},
                             )
 
-                            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                            st.plotly_chart(fig, width='stretch', config=get_chart_config())
                 except Exception as e:
                     st.error(f"Error loading model: {e}")
 
@@ -201,7 +201,7 @@ with tab3:
                             margin={"l": 180, "r": 20, "t": 20, "b": 40},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 with col2:
                     st.markdown("**Feature Statistics**")

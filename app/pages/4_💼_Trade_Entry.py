@@ -90,7 +90,7 @@ with col1:
 
         notes = st.text_area("Notes", placeholder="Trade rationale...")
 
-        submitted = st.form_submit_button("💾 Save Trade", use_container_width=True)
+        submitted = st.form_submit_button("💾 Save Trade", width='stretch')
 
         if submitted:
             ticker = instrument.split(" - ")[0]
@@ -170,7 +170,7 @@ if not todays_trades.empty:
 
     st.dataframe(
         display_trades,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             'trade_id': 'Trade ID',
@@ -192,28 +192,28 @@ st.subheader("⚡ Quick Trade Entry")
 quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
 
 with quick_col1:
-    if st.button("Buy 5 WTI", use_container_width=True):
+    if st.button("Buy 5 WTI", width='stretch'):
         price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col2:
-    if st.button("Sell 5 WTI", use_container_width=True):
+    if st.button("Sell 5 WTI", width='stretch'):
         price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col3:
-    if st.button("Buy 5 Brent", use_container_width=True):
+    if st.button("Buy 5 Brent", width='stretch'):
         price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col4:
-    if st.button("Sell 5 Brent", use_container_width=True):
+    if st.button("Sell 5 Brent", width='stretch'):
         price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")

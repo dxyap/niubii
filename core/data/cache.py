@@ -30,6 +30,162 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def is_market_hours() -> bool:
+    """
+    Check if oil markets are currently open.
+    
+    Oil futures trade nearly 24 hours on weekdays:
+    - CME/NYMEX: Sunday 5pm - Friday 4pm CT (with daily break 4pm-5pm CT)
+    - ICE: Sunday 7pm - Friday 5pm ET
+    
+    Returns True during weekday trading hours, False on weekends.
+    """
+    now = datetime.now()
+    # Weekend: Saturday (5) or Sunday (6)
+    return now.weekday() < 5
+
+
+def get_smart_ttl(base_ttl: int, market_hours_multiplier: float = 1.0, off_hours_multiplier: float = 10.0) -> int:
+    """
+    Return TTL adjusted for market hours.
+    
+    During market hours, use base TTL (data changes frequently).
+    During off-hours/weekends, use extended TTL (data is static).
+    
+    Args:
+        base_ttl: Base TTL in seconds
+        market_hours_multiplier: Multiplier during market hours (default 1.0)
+        off_hours_multiplier: Multiplier during off-hours (default 10.0)
+    
+    Returns:
+        Adjusted TTL in seconds
+    """
+    if is_market_hours():
+        return int(base_ttl * market_hours_multiplier)
+    return int(base_ttl * off_hours_multiplier)
+
+
+class RequestDeduplicator:
+    """
+    Coalesces identical Bloomberg API requests within a time window.
+    
+    When multiple callers request the same data simultaneously, only one
+    Bloomberg API call is made and the result is shared. This prevents
+    redundant API calls during dashboard refresh cycles.
+    
+    Thread-safe implementation using locks and condition variables.
+    """
+    
+    def __init__(self, window_seconds: float = 0.5):
+        """
+        Initialize request deduplicator.
+        
+        Args:
+            window_seconds: Time window for coalescing identical requests
+        """
+        self._window = window_seconds
+        self._pending: dict[str, dict] = {}  # key -> {result, error, complete, waiters}
+        self._lock = threading.Lock()
+        self._stats = {"hits": 0, "misses": 0, "errors": 0}
+    
+    def execute(self, key: str, fetch_fn: Callable[[], Any]) -> Any:
+        """
+        Execute fetch function with deduplication.
+        
+        If another caller is already fetching the same key, wait for their
+        result instead of making a duplicate API call.
+        
+        Args:
+            key: Unique identifier for this request (e.g., ticker + fields)
+            fetch_fn: Function to call if no pending request exists
+            
+        Returns:
+            Result from fetch_fn (shared if deduplicated)
+            
+        Raises:
+            Exception: Re-raises any exception from fetch_fn
+        """
+        with self._lock:
+            # Check if there's a pending request for this key
+            if key in self._pending:
+                pending = self._pending[key]
+                if not pending["complete"]:
+                    # Wait for the pending request to complete
+                    self._stats["hits"] += 1
+                    condition = pending["condition"]
+                    # Release lock while waiting
+                    condition.wait(timeout=30.0)  # 30s timeout
+                    
+                # Return the cached result or re-raise error
+                if pending.get("error"):
+                    raise pending["error"]
+                return pending["result"]
+            
+            # No pending request - we'll be the one to fetch
+            self._stats["misses"] += 1
+            condition = threading.Condition(self._lock)
+            self._pending[key] = {
+                "result": None,
+                "error": None,
+                "complete": False,
+                "condition": condition,
+                "timestamp": datetime.now().timestamp(),
+            }
+        
+        # Execute fetch outside the lock
+        try:
+            result = fetch_fn()
+            
+            with self._lock:
+                self._pending[key]["result"] = result
+                self._pending[key]["complete"] = True
+                self._pending[key]["condition"].notify_all()
+            
+            # Schedule cleanup after window expires
+            self._schedule_cleanup(key)
+            return result
+            
+        except Exception as e:
+            with self._lock:
+                self._pending[key]["error"] = e
+                self._pending[key]["complete"] = True
+                self._pending[key]["condition"].notify_all()
+                self._stats["errors"] += 1
+            
+            self._schedule_cleanup(key)
+            raise
+    
+    def _schedule_cleanup(self, key: str) -> None:
+        """Remove pending entry after window expires."""
+        def cleanup():
+            import time
+            time.sleep(self._window)
+            with self._lock:
+                if key in self._pending:
+                    del self._pending[key]
+        
+        # Run cleanup in background thread
+        cleanup_thread = threading.Thread(target=cleanup, daemon=True)
+        cleanup_thread.start()
+    
+    def get_stats(self) -> dict:
+        """Get deduplication statistics."""
+        with self._lock:
+            total = self._stats["hits"] + self._stats["misses"]
+            hit_rate = self._stats["hits"] / total if total > 0 else 0
+            return {
+                **self._stats,
+                "total_requests": total,
+                "hit_rate": round(hit_rate, 3),
+                "pending_count": len(self._pending),
+            }
+    
+    def clear(self) -> None:
+        """Clear all pending requests."""
+        with self._lock:
+            self._pending.clear()
+
+
 class TTLCache:
     """
     Thread-safe in-memory cache with TTL expiration.

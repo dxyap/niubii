@@ -21,6 +21,7 @@ load_dotenv()
 
 from app import shared_state
 from app.components.theme import COLORS, apply_theme, get_chart_config
+from app.main import get_connection_status_cached
 
 # Import alerts modules
 from core.alerts import (
@@ -63,8 +64,8 @@ data_loader = context.data_loader
 
 st.title("🔔 Alerts & Notifications")
 
-# Connection status
-connection_status = data_loader.get_connection_status()
+# Connection status (using cached version to reduce API calls)
+connection_status = get_connection_status_cached()
 data_mode = connection_status.get("data_mode", "disconnected")
 
 if data_mode == "disconnected":
@@ -447,7 +448,7 @@ with tab3:
                 showlegend=True,
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
         else:
             st.info("No alert data for this period")
 
@@ -475,7 +476,7 @@ with tab3:
                 yaxis_title="Count",
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
         else:
             st.info("No alert data for this period")
 
@@ -501,7 +502,7 @@ with tab3:
                 "Resolved": "✓" if record.resolved else "✗",
             })
 
-        st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(table_data), width='stretch', hide_index=True)
     else:
         st.info("No alert history for the selected filters")
 

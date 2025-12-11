@@ -21,6 +21,7 @@ load_dotenv()
 
 from app import shared_state
 from app.components.theme import apply_theme, get_chart_config
+from app.main import get_connection_status_cached, get_historical_data_cached
 
 # Import backtest modules
 from core.backtest import (
@@ -54,8 +55,8 @@ apply_theme(st)
 context = shared_state.get_dashboard_context(lookback_days=365)
 data_loader = context.data_loader
 
-# Check connection
-connection_status = data_loader.get_connection_status()
+# Check connection (using cached version to reduce API calls)
+connection_status = get_connection_status_cached()
 data_mode = connection_status.get("data_mode", "disconnected")
 
 st.title("🔬 Strategy Backtesting")
@@ -129,7 +130,7 @@ with st.sidebar:
     slippage = st.number_input("Slippage (bps)", 0.0, 10.0, 1.0, 0.5)
 
 # Main content
-run_backtest = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
+run_backtest = st.button("🚀 Run Backtest", type="primary", width='stretch')
 
 if run_backtest or "backtest_result" in st.session_state:
     if run_backtest:
@@ -235,12 +236,12 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Equity curve
                 fig = create_equity_chart(result, height=400)
                 if fig:
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Drawdown chart
                 fig = create_drawdown_chart(result, height=200)
                 if fig:
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             with col2:
                 st.markdown("**Risk-Adjusted Returns**")
@@ -267,12 +268,12 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Trade analysis chart
                 fig = create_trade_analysis_chart(result, height=350)
                 if fig:
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Returns distribution
                 fig = create_returns_distribution(result, height=250)
                 if fig:
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             with col2:
                 st.markdown("**Trade Statistics**")
@@ -294,7 +295,7 @@ if run_backtest or "backtest_result" in st.session_state:
             if not result.trades.empty:
                 st.dataframe(
                     result.trades.tail(20),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                     column_config={
                         "pnl": st.column_config.NumberColumn("P&L", format="$%.2f"),
@@ -308,7 +309,7 @@ if run_backtest or "backtest_result" in st.session_state:
             # Monthly returns heatmap
             fig = create_monthly_heatmap(result, height=400)
             if fig:
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Monthly summary table
             st.markdown("**Monthly Statistics**")
@@ -324,7 +325,7 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Add color coding
                 st.dataframe(
                     monthly_stats.tail(12),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                 )
 

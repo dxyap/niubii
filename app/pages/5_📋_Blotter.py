@@ -67,7 +67,7 @@ with tab1:
 
     st.dataframe(
         positions_df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             'Symbol': st.column_config.TextColumn('Symbol'),
@@ -156,7 +156,7 @@ with tab1:
             xaxis_title='Time',
         )
 
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width='stretch', config=get_chart_config())
     else:
         st.info("Collecting intraday price data...")
 
@@ -185,7 +185,7 @@ with tab2:
 
         st.dataframe(
             trades[available_cols],
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config={
                 'trade_date': st.column_config.DateColumn('Date'),
@@ -221,7 +221,7 @@ with tab2:
 
         with export_col1:
             csv = trades.to_csv(index=False)
-            st.download_button("📥 Export CSV", csv, "trades.csv", "text/csv", use_container_width=True)
+            st.download_button("📥 Export CSV", csv, "trades.csv", "text/csv", width='stretch')
     else:
         st.info("No trades found for the selected period")
 
@@ -235,7 +235,7 @@ with tab3:
         'Net P&L': ['+$144,150', '+$97,550', '+$177,175', '+$184,425'],
     })
 
-    st.dataframe(monthly_pnl, use_container_width=True, hide_index=True)
+    st.dataframe(monthly_pnl, width='stretch', hide_index=True)
 
     st.subheader("P&L by Strategy")
 
@@ -274,7 +274,7 @@ with tab3:
             yaxis_tickformat='$,.0f',
         )
 
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
     st.subheader("Performance Metrics (MTD)")
 

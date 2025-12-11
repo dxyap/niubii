@@ -4,7 +4,9 @@ Streamlit dashboard structured with reusable services for clarity and performanc
 
 Performance Optimizations:
 - Batch API calls for price fetching
+- Request deduplication for concurrent identical requests
 - Streamlit caching for expensive operations
+- Market-hours aware TTL for smart cache expiration
 - Auto-refresh using st.fragment (non-blocking)
 - Lazy loading of historical data
 """
@@ -22,6 +24,17 @@ from dotenv import load_dotenv
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# Export cached functions for use by other pages
+__all__ = [
+    "get_historical_data_cached",
+    "get_futures_curve_cached",
+    "get_oil_prices_cached",
+    "get_all_oil_prices_cached",
+    "get_all_spreads_cached",
+    "get_connection_status_cached",
+    "get_term_structure_cached",
+]
 
 # Page configuration must be the first Streamlit call
 st.set_page_config(
@@ -45,6 +58,12 @@ from app.ui import (
 
 # =============================================================================
 # STREAMLIT CACHING FOR EXPENSIVE OPERATIONS
+# =============================================================================
+# These cached functions reduce Bloomberg API calls by caching results at the
+# Streamlit layer. TTLs are tuned based on how frequently the data changes:
+# - Real-time prices: 60 seconds (balance freshness vs. API calls)
+# - Historical data: 300 seconds (rarely changes intraday)
+# - Connection status: 30 seconds (doesn't change often)
 # =============================================================================
 
 
@@ -75,6 +94,70 @@ def get_futures_curve_cached(commodity: str = "brent", num_months: int = 18):
         return data_loader.get_futures_curve(commodity, num_months)
     except Exception:
         return None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_oil_prices_cached():
+    """
+    Cache oil prices with 1-minute TTL.
+    Prices change throughout the day but 60s cache significantly
+    reduces API calls during dashboard navigation.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_oil_prices()
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_all_oil_prices_cached():
+    """
+    Cache all oil prices (extended list) with 1-minute TTL.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_all_oil_prices()
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_all_spreads_cached():
+    """
+    Cache all spreads (WTI-Brent, 3-2-1 crack, 2-1-1 crack) with 1-minute TTL.
+    Fetches all spreads in a single optimized batch call.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_all_spreads()
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_connection_status_cached():
+    """
+    Cache connection status with 30-second TTL.
+    Status rarely changes, no need to check every render.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_connection_status()
+    except Exception:
+        return {"connected": False, "data_mode": "disconnected"}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_term_structure_cached(commodity: str = "wti"):
+    """
+    Cache term structure analysis with 1-minute TTL.
+    """
+    data_loader = shared_state.get_data_loader()
+    try:
+        return data_loader.get_term_structure(commodity)
+    except Exception:
+        return {"structure": "Unknown", "slope": 0}
 
 
 class DashboardApp:

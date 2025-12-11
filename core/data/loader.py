@@ -19,7 +19,7 @@ from .bloomberg import (
     BloombergSubscriptionService,
     TickerMapper,
 )
-from .cache import DataCache, ParquetStorage
+from .cache import DataCache, ParquetStorage, RequestDeduplicator, get_smart_ttl
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,10 @@ class DataLoader:
         self.bloomberg = BloombergClient()
         self.cache = DataCache(cache_dir=str(self.data_dir / "cache"))
         self.storage = ParquetStorage(base_dir=str(self.data_dir / "historical"))
+
+        # Request deduplicator to prevent redundant Bloomberg API calls
+        # within a short time window (e.g., during dashboard refresh)
+        self._deduplicator = RequestDeduplicator(window_seconds=1.0)
 
         # Initialize subscription service for real-time updates
         self.subscription_service = BloombergSubscriptionService(self.bloomberg)
@@ -126,57 +130,95 @@ class DataLoader:
     # =========================================================================
 
     def get_price(self, ticker: str, validate: bool = True) -> float:
-        """Get current price for ticker."""
+        """
+        Get current price for ticker.
+        
+        Uses request deduplication to prevent redundant API calls within
+        a short time window (useful during dashboard refresh cycles).
+        """
         if validate:
             valid, msg = self.validate_ticker(ticker)
             if not valid:
                 logger.warning(f"Invalid ticker {ticker}: {msg}")
 
-        return self.bloomberg.get_price(ticker)
+        # Use deduplicator to coalesce identical requests
+        dedupe_key = f"price:{ticker}"
+        return self._deduplicator.execute(
+            dedupe_key,
+            lambda: self.bloomberg.get_price(ticker)
+        )
 
     def get_price_with_change(self, ticker: str) -> dict[str, float]:
-        """Get current price with change from open."""
-        return self.bloomberg.get_price_with_change(ticker)
+        """
+        Get current price with change from open.
+        
+        Uses request deduplication to prevent redundant API calls.
+        """
+        dedupe_key = f"price_change:{ticker}"
+        return self._deduplicator.execute(
+            dedupe_key,
+            lambda: self.bloomberg.get_price_with_change(ticker)
+        )
 
     def get_prices(self, tickers: list[str]) -> pd.DataFrame:
-        """Get current prices for multiple tickers."""
-        return self.bloomberg.get_prices(tickers)
+        """
+        Get current prices for multiple tickers.
+        
+        Uses request deduplication - the same batch request within the
+        deduplication window will return the cached result.
+        """
+        # Create a stable key from sorted tickers
+        dedupe_key = f"prices:{','.join(sorted(tickers))}"
+        return self._deduplicator.execute(
+            dedupe_key,
+            lambda: self.bloomberg.get_prices(tickers)
+        )
 
     def get_prices_batch(self, tickers: list[str]) -> dict[str, dict[str, float]]:
         """
         Get prices with changes for multiple tickers in a single batch call.
         Much more efficient than calling get_price_with_change() for each ticker.
 
+        Uses request deduplication to prevent redundant API calls.
+
         Returns:
             Dict mapping ticker to price data dict
         """
-        fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
-        df = self.bloomberg.get_prices(tickers, fields)
+        # Create a stable key from sorted tickers
+        dedupe_key = f"prices_batch:{','.join(sorted(tickers))}"
+        
+        def fetch_batch():
+            fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
+            df = self.bloomberg.get_prices(tickers, fields)
 
-        result = {}
-        for ticker in tickers:
-            if ticker in df.index:
-                row = df.loc[ticker]
-                current = row.get("PX_LAST", 0)
-                open_price = row.get("PX_OPEN", current)
-                change = current - open_price if current and open_price else 0
-                change_pct = (change / open_price * 100) if open_price else 0
+            result = {}
+            for ticker in tickers:
+                if ticker in df.index:
+                    row = df.loc[ticker]
+                    current = row.get("PX_LAST", 0)
+                    open_price = row.get("PX_OPEN", current)
+                    change = current - open_price if current and open_price else 0
+                    change_pct = (change / open_price * 100) if open_price else 0
 
-                result[ticker] = {
-                    "current": current,
-                    "open": open_price,
-                    "change": round(change, 4),
-                    "change_pct": round(change_pct, 4),
-                    "high": row.get("PX_HIGH", current),
-                    "low": row.get("PX_LOW", current),
-                }
+                    result[ticker] = {
+                        "current": current,
+                        "open": open_price,
+                        "change": round(change, 4),
+                        "change_pct": round(change_pct, 4),
+                        "high": row.get("PX_HIGH", current),
+                        "low": row.get("PX_LOW", current),
+                    }
 
-        return result
+            return result
+        
+        return self._deduplicator.execute(dedupe_key, fetch_batch)
 
     def _get_price_batch_cached(self, cache_key: str, tickers: Sequence[str]) -> dict[str, dict[str, float]]:
         """
         Fetch a batch of prices with a short-lived real-time cache to avoid
         duplicate Bloomberg calls during a single refresh cycle.
+        
+        Uses market-hours aware TTL for smarter cache expiration.
         """
         cached = self.cache.get(cache_key, cache_type="real_time")
         if cached is not None:
@@ -184,6 +226,8 @@ class DataLoader:
 
         batch = self.get_prices_batch(list(tickers))
         if batch:
+            # Use smart TTL - longer during off-hours when prices don't change
+            ttl = get_smart_ttl(60)  # Base 60s, extended during off-hours
             self.cache.set(cache_key, batch, cache_type="real_time")
         return batch
 
@@ -375,6 +419,8 @@ class DataLoader:
     ) -> pd.DataFrame:
         """
         Get futures curve data.
+        
+        Uses request deduplication to prevent redundant API calls.
 
         Args:
             commodity: 'wti', 'brent', etc.
@@ -383,7 +429,11 @@ class DataLoader:
         Returns:
             DataFrame with curve data including changes
         """
-        return self.bloomberg.get_curve(commodity, num_months)
+        dedupe_key = f"curve:{commodity}:{num_months}"
+        return self._deduplicator.execute(
+            dedupe_key,
+            lambda: self.bloomberg.get_curve(commodity, num_months)
+        )
 
     def get_calendar_spreads(self, commodity: str = "wti") -> pd.DataFrame:
         """Calculate calendar spreads from curve."""
@@ -675,6 +725,20 @@ class DataLoader:
             "data_mode": self._data_mode,
             "connection_error": self._connection_error,
             "data_available": self._data_mode == "live",
+        }
+
+    def get_api_efficiency_stats(self) -> dict:
+        """
+        Get API efficiency statistics including deduplication metrics.
+        
+        Useful for monitoring and debugging API call patterns.
+        
+        Returns:
+            Dict with cache stats and deduplication metrics
+        """
+        return {
+            "deduplicator": self._deduplicator.get_stats(),
+            "cache": self.cache.get_stats(),
         }
 
     def subscribe_to_core_tickers(self) -> None:

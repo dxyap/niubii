@@ -46,6 +46,7 @@ from app.components.ui_components import (
     render_empty_state,
     render_badge,
 )
+from app.main import get_connection_status_cached
 from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
 from core.data.bloomberg import DataUnavailableError
 
@@ -187,8 +188,8 @@ def format_calendar_spread_labels(spreads_df, curve_df):
         formatted["back_contract"] = formatted["back_month"].map(label_map)
     return formatted
 
-# Check data mode
-connection_status = data_loader.get_connection_status()
+# Check data mode (using cached version to reduce redundant calls)
+connection_status = get_connection_status_cached()
 data_mode = connection_status.get("data_mode", "disconnected")
 
 # Header with live status and controls
@@ -203,7 +204,7 @@ with header_col2:
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
-    if st.button("🔄 Refresh Now", use_container_width=True):
+    if st.button("🔄 Refresh Now", width='stretch'):
         st.session_state.last_refresh = datetime.now()
         shared_state.invalidate_context_cache()
         st.rerun()
@@ -328,7 +329,7 @@ with tab1:
                     ma_periods=[20, 50],
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
                 if history_ticker_used and history_ticker_used != ticker:
                     st.caption(f"Using fallback historical ticker {history_ticker_used} due to unavailable ICE data.")
 
@@ -339,13 +340,13 @@ with tab1:
                     st.markdown("**Volume**")
                     if 'PX_VOLUME' in hist_data.columns:
                         vol_fig = create_volume_chart(hist_data, height=120)
-                        st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(vol_fig, width='stretch', config=get_chart_config())
 
                 with oi_col:
                     st.markdown("**Open Interest**")
                     if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
                         oi_fig = create_open_interest_chart(hist_data, height=120)
-                        st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(oi_fig, width='stretch', config=get_chart_config())
                     else:
                         st.caption("Open interest data not available")
             else:
@@ -504,7 +505,7 @@ with tab1:
                     height=400,
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Calendar spreads
                 st.markdown("**Calendar Spreads (WTI)**")
@@ -513,7 +514,7 @@ with tab1:
 
                 st.dataframe(
                     spreads,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                     column_config={
                         'spread_name': 'Spread',
@@ -529,7 +530,7 @@ with tab1:
                     brent_spreads = format_calendar_spread_labels(brent_spreads, brent_curve)
                     st.dataframe(
                         brent_spreads,
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -660,7 +661,7 @@ with tab1:
                         ),
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                     # Dubai Calendar spreads
                     st.markdown("**Calendar Spreads (Dubai)**")
@@ -669,7 +670,7 @@ with tab1:
 
                     st.dataframe(
                         dubai_spreads,
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -756,12 +757,15 @@ with tab2:
     override_applied = False
 
     def get_crack_spread_forward_curve():
-        """Fetch 321 crack spread forward curve from Bloomberg FVCSM series."""
-        curve_data = []
+        """Fetch 321 crack spread forward curve from Bloomberg FVCSM series.
+        
+        Optimized: Uses batch API call instead of individual fetches (12 calls -> 1 call).
+        """
         current_year = datetime.now().year
         current_month = datetime.now().month
 
-        # Fetch next 12 months of crack spread contracts
+        # Build list of tickers and metadata for next 12 months
+        ticker_info = []
         for i in range(12):
             month_idx = (current_month - 1 + i) % 12
             year = current_year + ((current_month - 1 + i) // 12)
@@ -772,19 +776,35 @@ with tab2:
 
             ticker = f"FVCSM {month_code}{year_code} Index"
             contract_label = f"{month_name} {year_code}"
+            ticker_info.append({
+                'ticker': ticker,
+                'contract_month': contract_label,
+                'month_idx': i,
+            })
 
-            try:
-                price = data_loader.get_price(ticker, validate=False)
-                if price is not None:
+        # Batch fetch all prices in a single API call
+        tickers = [t['ticker'] for t in ticker_info]
+        try:
+            prices_df = data_loader.get_prices(tickers)
+        except Exception:
+            return None
+
+        if prices_df is None or prices_df.empty:
+            return None
+
+        # Build curve data from batch results
+        curve_data = []
+        for info in ticker_info:
+            ticker = info['ticker']
+            if ticker in prices_df.index:
+                price = prices_df.loc[ticker].get('PX_LAST')
+                if price is not None and not pd.isna(price):
                     curve_data.append({
                         'ticker': ticker,
-                        'contract_month': contract_label,
-                        'month_idx': i,
+                        'contract_month': info['contract_month'],
+                        'month_idx': info['month_idx'],
                         'price': float(price),
                     })
-            except Exception:
-                # Skip contracts that aren't available
-                pass
 
         return pd.DataFrame(curve_data) if curve_data else None
 
@@ -908,7 +928,7 @@ with tab2:
             }
             fig.update_layout(**layout)
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
             st.caption(f"{front_month_ticker} | {lookback_days}-day daily history")
 
             stats_cols = st.columns(3)
@@ -998,7 +1018,7 @@ with tab2:
                 showlegend=False,
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Forward curve data table
             st.markdown("**Forward Curve Data**")
@@ -1006,7 +1026,7 @@ with tab2:
             display_df.columns = ['Contract', 'Price ($/bbl)', 'Bloomberg Ticker']
             st.dataframe(
                 display_df,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'Contract': st.column_config.TextColumn('Contract'),
@@ -1238,7 +1258,7 @@ with tab3:
             showlegend=False,
         )
 
-        st.plotly_chart(fig_regional, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig_regional, width='stretch', config=get_chart_config())
 
         # Weekly changes chart
         col_change1, col_change2 = st.columns([2, 1])
@@ -1266,7 +1286,7 @@ with tab3:
                 showlegend=False,
             )
 
-            st.plotly_chart(fig_changes, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig_changes, width='stretch', config=get_chart_config())
 
         with col_change2:
             st.markdown("**Global Summary**")
@@ -1353,7 +1373,7 @@ with tab3:
                 yaxis_tickformat='.0f',
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Weekly change
             st.markdown("**Weekly Change**")
@@ -1376,7 +1396,7 @@ with tab3:
                 yaxis_title='Change (MMbbl)',
             )
 
-            st.plotly_chart(change_fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(change_fig, width='stretch', config=get_chart_config())
 
         with col2:
             st.markdown("**Latest Report**")
@@ -1481,7 +1501,7 @@ with tab3:
             # Display as styled dataframe
             st.dataframe(
                 df_products,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     "Product": st.column_config.TextColumn("Product", width="small"),
@@ -1544,7 +1564,7 @@ with tab3:
         yaxis_title='Product Stocks (MMbbl)',
     )
 
-    st.plotly_chart(fig_products, use_container_width=True, config=get_chart_config())
+    st.plotly_chart(fig_products, width='stretch', config=get_chart_config())
 
     # Data sources note
     st.caption("""
@@ -1604,14 +1624,14 @@ with tab4:
             }
             fig.update_layout(**opec_layout)
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Compliance table
             st.markdown("**Compliance by Country**")
 
             st.dataframe(
                 opec_data,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'country': 'Country',
@@ -1808,7 +1828,7 @@ with tab5:
                     ax.axis('off')
                     fig.patch.set_facecolor('#0f172a')
                     plt.tight_layout(pad=0)
-                    st.pyplot(fig, use_container_width=True)
+                    st.pyplot(fig, width='stretch')
                     plt.close(fig)
 
                     st.markdown(f"""
@@ -1900,7 +1920,7 @@ with tab5:
                     paper_bgcolor='rgba(0,0,0,0)',
                     font={'color': '#e2e8f0'},
                 )
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Show sentiment distribution with styled badges
                 if "label_distribution" in aggregate:
@@ -1961,7 +1981,7 @@ with tab6:
         st.warning("Research modules not available")
     else:
         try:
-            correlation_analyzer = CorrelationAnalyzer()
+            correlation_analyzer = CorrelationAnalyzer(data_loader=data_loader)
 
             col1, col2 = st.columns([1, 1])
 
@@ -2001,7 +2021,9 @@ with tab6:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    else:
+                        st.warning("Unable to fetch correlation data. Please check Bloomberg connection.")
 
             st.divider()
 
@@ -2021,9 +2043,9 @@ with tab6:
                     days=365
                 )
 
-                if rolling_data:
-                    dates = [r.date for r in rolling_data]
-                    correlations = [r.correlation for r in rolling_data]
+                if rolling_data and hasattr(rolling_data, 'dates'):
+                    dates = rolling_data.dates
+                    correlations = rolling_data.correlations
 
                     fig = go.Figure()
 
@@ -2047,7 +2069,9 @@ with tab6:
                     }
                     fig.update_layout(**corr_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                else:
+                    st.info(f"No rolling correlation data available for {asset1} vs {asset2}")
 
             # Correlation regime detection
             st.markdown("**Correlation Regime Detection**")
@@ -2206,7 +2230,7 @@ with tab7:
                 }
                 fig.update_layout(**regime_layout)
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
             # Regime transitions
             st.markdown("**Recent Transitions**")
@@ -2224,7 +2248,7 @@ with tab7:
                     for t in transitions
                 ])
 
-                st.dataframe(trans_df, use_container_width=True, hide_index=True)
+                st.dataframe(trans_df, width='stretch', hide_index=True)
 
         except Exception as e:
             st.error(f"Regime detection error: {e}")
@@ -2289,7 +2313,7 @@ with tab8:
                     }
                     fig.update_layout(**exposure_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
                 else:
                     st.info("Click 'Run Factor Analysis' to see results")
 
@@ -2321,7 +2345,7 @@ with tab8:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 with col_b:
                     st.markdown("**Model Statistics**")
@@ -2395,7 +2419,7 @@ with tab9:
                         })
 
                     storage_df = pd.DataFrame(storage_data)
-                    st.dataframe(storage_df, use_container_width=True, hide_index=True)
+                    st.dataframe(storage_df, width='stretch', hide_index=True)
 
                     # Storage utilization chart
                     fig = go.Figure()
@@ -2417,7 +2441,7 @@ with tab9:
                     }
                     fig.update_layout(**storage_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                     # Storage signal
                     signal = satellite.calculate_storage_signal()
@@ -2464,7 +2488,7 @@ with tab9:
                                 "Anchored": counts.get("anchored", 0),
                             })
 
-                        st.dataframe(pd.DataFrame(fleet_data), use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(fleet_data), width='stretch', hide_index=True)
 
                 with col2:
                     st.markdown("**Freight Rates**")
@@ -2510,7 +2534,7 @@ with tab9:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Shipping signal
                 signal = shipping.calculate_shipping_signal()
@@ -2555,7 +2579,7 @@ with tab9:
                             "Week Change": f"{data.get('week_change', 0):+,}",
                         })
 
-                    st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(pos_data), width='stretch', hide_index=True)
 
                 # Percentile visualization
                 if positions:
@@ -2585,7 +2609,7 @@ with tab9:
                     }
                     fig.update_layout(**cot_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
 
                 # Positioning signal
                 signal = positioning.calculate_positioning_signal()
