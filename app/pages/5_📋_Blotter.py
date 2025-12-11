@@ -2,6 +2,7 @@
 Trade Blotter Page
 ==================
 Trade history and position monitor with live P&L.
+Enhanced with visual P&L displays and position breakdown.
 """
 
 from datetime import datetime, timedelta
@@ -13,6 +14,12 @@ import streamlit as st
 
 from app import shared_state
 from app.components.charts import BASE_LAYOUT, CHART_COLORS
+from app.components.ui_components import (
+    render_compact_stats,
+    render_mini_pnl_card,
+    render_pnl_display,
+    render_position_heat_strip,
+)
 from app.page_utils import get_chart_config, init_page
 from core.trading import PnLCalculator, PositionManager, TradeBlotter
 
@@ -45,6 +52,19 @@ with tab1:
 
     portfolio = ctx.portfolio.summary
     position_pnl = portfolio['positions']
+
+    # Position Heat Strip - Quick visual overview
+    if position_pnl:
+        position_data = [
+            {
+                "symbol": p.get("symbol", p.get("ticker", "???")),
+                "qty": p.get("qty", 0),
+                "pnl": p.get("pnl", 0),
+            }
+            for p in position_pnl
+        ]
+        render_position_heat_strip(position_data)
+        st.markdown("")  # Spacing
 
     positions_display = []
     for pos in position_pnl:
@@ -83,40 +103,69 @@ with tab1:
 
     st.divider()
 
-    # P&L Summary
-    col1, col2, col3, col4 = st.columns(4)
-
+    # P&L Summary with enhanced visuals
     total_unrealized = portfolio['total_pnl']
     total_realized = 39128
     total_commission = 485
     net_pnl = total_unrealized + total_realized - total_commission
-
-    with col1:
-        st.metric(
-            "Unrealized P&L",
-            shared_state.format_pnl(total_unrealized),
-            delta_color="normal" if total_unrealized >= 0 else "inverse"
+    
+    # Prominent Net P&L display
+    col_main, col_details = st.columns([1, 2])
+    
+    with col_main:
+        render_pnl_display(
+            value=net_pnl,
+            label="Net P&L (MTD)",
+            show_percentage=False,
         )
-    with col2:
-        st.metric("Realized P&L", shared_state.format_pnl(total_realized))
-    with col3:
-        st.metric("Commissions", f"-${total_commission:,}")
-    with col4:
-        st.metric("Net P&L", shared_state.format_pnl(net_pnl))
+    
+    with col_details:
+        pnl_col1, pnl_col2, pnl_col3 = st.columns(3)
+        
+        with pnl_col1:
+            render_mini_pnl_card(
+                label="Unrealized",
+                value=total_unrealized,
+                sub_text="Open positions",
+            )
+        with pnl_col2:
+            render_mini_pnl_card(
+                label="Realized",
+                value=total_realized,
+                sub_text="Closed trades",
+            )
+        with pnl_col3:
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+                border-radius: 10px;
+                padding: 14px;
+                border: 1px solid rgba(51, 65, 85, 0.5);
+                text-align: center;
+            ">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+                    Commissions
+                </div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; color: #f59e0b;">
+                    -${total_commission:,}
+                </div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">Transaction costs</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    # Exposure Summary
+    # Exposure Summary with compact stats
     st.divider()
-    exp_col1, exp_col2, exp_col3, exp_col4 = st.columns(4)
-
-    with exp_col1:
-        st.metric("Gross Exposure", f"${portfolio['gross_exposure']/1e6:.2f}M")
-    with exp_col2:
-        net_label = "Long" if portfolio['net_exposure'] > 0 else "Short"
-        st.metric("Net Exposure", f"${abs(portfolio['net_exposure'])/1e6:.2f}M ({net_label})")
-    with exp_col3:
-        st.metric("VaR (95%, 1-Day)", f"${portfolio['var_estimate']:,.0f}")
-    with exp_col4:
-        st.metric("VaR Utilization", f"{portfolio['var_utilization']:.0f}%")
+    st.markdown("**Exposure & Risk Summary**")
+    
+    net_label = "Long" if portfolio['net_exposure'] > 0 else "Short"
+    var_color = "#00DC82" if portfolio['var_utilization'] < 75 else "#f59e0b" if portfolio['var_utilization'] < 90 else "#ef4444"
+    
+    render_compact_stats([
+        {"label": "Gross Exposure", "value": f"${portfolio['gross_exposure']/1e6:.2f}M"},
+        {"label": "Net Exposure", "value": f"${abs(portfolio['net_exposure'])/1e6:.2f}M ({net_label})"},
+        {"label": "VaR (95%)", "value": f"${portfolio['var_estimate']:,.0f}"},
+        {"label": "VaR Util", "value": f"{portfolio['var_utilization']:.0f}%", "color": var_color},
+    ])
 
     # Intraday P&L chart
     st.subheader("Intraday P&L")
@@ -278,20 +327,69 @@ with tab3:
 
     st.subheader("Performance Metrics (MTD)")
 
+    # Performance metrics in a more visual format
+    st.markdown("""
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+    """, unsafe_allow_html=True)
+    
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
     with metric_col1:
-        st.metric("Sharpe Ratio", "1.82")
-        st.metric("Win Rate", "60%")
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.6); border-radius: 10px; padding: 16px; border: 1px solid rgba(51, 65, 85, 0.5);">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 12px;">Risk-Adjusted</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="color: #94a3b8; font-size: 12px;">Sharpe</span>
+                <span style="color: #00DC82; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">1.82</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8; font-size: 12px;">Sortino</span>
+                <span style="color: #00DC82; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">2.45</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with metric_col2:
-        st.metric("Sortino Ratio", "2.45")
-        st.metric("Profit Factor", "2.1")
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.6); border-radius: 10px; padding: 16px; border: 1px solid rgba(51, 65, 85, 0.5);">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 12px;">Win Metrics</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="color: #94a3b8; font-size: 12px;">Win Rate</span>
+                <span style="color: #f1f5f9; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">60%</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8; font-size: 12px;">Profit Factor</span>
+                <span style="color: #00DC82; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">2.1x</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with metric_col3:
-        st.metric("Max Drawdown", "-$32,500")
-        st.metric("Avg Trade", "+$3,928")
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.6); border-radius: 10px; padding: 16px; border: 1px solid rgba(51, 65, 85, 0.5);">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 12px;">Drawdown</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="color: #94a3b8; font-size: 12px;">Max DD</span>
+                <span style="color: #FF5252; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">-$32,500</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8; font-size: 12px;">Avg Trade</span>
+                <span style="color: #00DC82; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">+$3,928</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with metric_col4:
-        st.metric("Best Trade", "+$32,500")
-        st.metric("Worst Trade", "-$12,800")
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.6); border-radius: 10px; padding: 16px; border: 1px solid rgba(51, 65, 85, 0.5);">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 12px;">Best/Worst</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="color: #94a3b8; font-size: 12px;">Best</span>
+                <span style="color: #00DC82; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">+$32,500</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8; font-size: 12px;">Worst</span>
+                <span style="color: #FF5252; font-weight: 600; font-family: 'IBM Plex Mono', monospace;">-$12,800</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)

@@ -308,21 +308,21 @@ exchanges:
 inventory:
   locations:
     usgc:
-      name: "US Cushing"
+      name: "US Gulf Coast"
       tickers:
-        crude: "DOESCROK Index"  # Total commercial crude inventories (PADD 3)
+        crude: "DOESCROK Index"  # USGC Crude Oil Inventory
       capacity_mb:
-        total: 125
-        crude: 125
+        total: 400
+        crude: 400
         products: 0
     ara:
       name: "ARA (Amsterdam-Rotterdam-Antwerp)"
       tickers:
-        crude: "DARATOTL Index"
-        gasoline: "ARASGSLN Indexara"
+        crude: "DARATOTL Index"  # ARA Crude Oil Total Inventory
+        gasoline: "ARASGSLN Index"
         gasoil: "ARASGO Index"
         fuel_oil: "ARASFO Index"
       capacity_mb:
-        total: 95
-        crude: 70
-        products: 25
+        total: 100
+        crude: 100
+        products: 0

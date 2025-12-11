@@ -1,5 +1,6 @@
 """
 Reusable view/controller classes for the Streamlit dashboard.
+Optimized for at-a-glance trader insights.
 """
 
 from __future__ import annotations
@@ -12,7 +13,15 @@ import pandas as pd
 import streamlit as st
 
 from app.components.charts import create_candlestick_chart, create_futures_curve_chart
-from app.components.theme import get_chart_config
+from app.components.theme import COLORS, get_chart_config
+from app.components.ui_components import (
+    render_compact_stats,
+    render_market_pulse,
+    render_mini_pnl_card,
+    render_pnl_display,
+    render_position_heat_strip,
+    render_risk_traffic_light,
+)
 from app.dashboard_core import DashboardContext, PortfolioAnalytics
 
 
@@ -188,7 +197,7 @@ class SidebarView:
 
 
 class KeyMetricsView:
-    """Render the top-level metrics row."""
+    """Render the top-level metrics row with enhanced visual hierarchy."""
 
     def __init__(self, context: DashboardContext):
         self.context = context
@@ -199,7 +208,32 @@ class KeyMetricsView:
         crack = self.context.data.crack_spread
         summary = self.context.portfolio.summary
 
+        # Extract price data
+        wti_data = prices.get("WTI", {})
+        brent_data = prices.get("Brent", {})
+        
+        wti_price = wti_data.get("current", 0) if wti_data else 0
+        wti_change = wti_data.get("change_pct", 0) if wti_data else 0
+        brent_price = brent_data.get("current", 0) if brent_data else 0
+        brent_change = brent_data.get("change_pct", 0) if brent_data else 0
+        
+        spread_val = spread.get("spread", 0) if spread else 0
+        spread_change = spread.get("change", 0) if spread else 0
+        
+        # Render market pulse header
+        render_market_pulse(
+            wti_price=wti_price,
+            wti_change=wti_change,
+            brent_price=brent_price,
+            brent_change=brent_change,
+            spread=spread_val,
+            spread_change=spread_change,
+            structure=self.context.data.curve_metrics().get("structure", "Flat"),
+        )
+        
+        # Detailed metrics row below
         col1, col2, col3, col4, col5 = st.columns(5)
+        
         with col1:
             _render_price_metric("WTI Crude", prices.get("WTI"))
         with col2:
@@ -302,74 +336,107 @@ class MarketOverviewView:
 
 
 class PortfolioView:
-    """Portfolio and risk rendering logic."""
+    """Portfolio and risk rendering logic with enhanced visualizations."""
 
     def __init__(self, context: DashboardContext):
         self.context = context
 
     def render_positions(self) -> None:
         st.subheader("Position Summary")
-        table = self.context.portfolio.formatted_table()
-
-        if table.empty:
+        summary = self.context.portfolio.summary
+        positions = summary.get("positions", [])
+        
+        if not positions:
             st.info("No active positions.")
             return
+        
+        # Render position heat strip for quick overview
+        position_data = [
+            {
+                "symbol": p.get("symbol", p.get("ticker", "???")),
+                "qty": p.get("qty", 0),
+                "pnl": p.get("pnl", 0),
+            }
+            for p in positions
+        ]
+        render_position_heat_strip(position_data)
+        
+        st.markdown("")  # Spacing
+        
+        # Detailed table
+        table = self.context.portfolio.formatted_table()
+        if not table.empty:
+            st.dataframe(
+                table,
+                width='stretch',
+                hide_index=True,
+                column_config={
+                    "Symbol": st.column_config.TextColumn("Symbol"),
+                    "Qty": st.column_config.NumberColumn("Qty", format="%d"),
+                    "Entry": st.column_config.NumberColumn("Entry", format="$%.2f"),
+                    "Current": st.column_config.NumberColumn("Current", format="$%.2f"),
+                    "P&L": st.column_config.TextColumn("P&L"),
+                },
+            )
 
-        st.dataframe(
-            table,
-            width='stretch',
-            hide_index=True,
-            column_config={
-                "Symbol": st.column_config.TextColumn("Symbol"),
-                "Qty": st.column_config.NumberColumn("Qty", format="%d"),
-                "Entry": st.column_config.NumberColumn("Entry", format="$%.2f"),
-                "Current": st.column_config.NumberColumn("Current", format="$%.2f"),
-                "P&L": st.column_config.TextColumn("P&L"),
-            },
-        )
-
-        total_pnl = self.context.portfolio.summary["total_pnl"]
-        color = "#22c55e" if total_pnl >= 0 else "#ef4444"
-        st.markdown(
-            f"<h3 style='color:{color}; font-family: IBM Plex Mono, monospace;'>"
-            f"Total P&L: {PortfolioAnalytics.format_pnl(total_pnl)}</h3>",
-            unsafe_allow_html=True,
+        # Prominent P&L display
+        total_pnl = summary["total_pnl"]
+        pnl_return_pct = summary.get("pnl_return_pct", 0)
+        render_pnl_display(
+            value=total_pnl,
+            label="Total Unrealized P&L",
+            show_percentage=True,
+            percentage=pnl_return_pct,
         )
 
     def render_risk(self, curve_structure: str) -> None:
         st.divider()
         st.subheader("Risk Summary")
         summary = self.context.portfolio.summary
+        
+        # Traffic light risk indicator
+        var_util = summary["var_utilization"]
+        gross_util = summary["gross_exposure"] / 20000000 * 100  # Assuming $20M limit
+        drawdown_pct = abs(min(summary["total_pnl"], 0)) / 1000000 * 100  # Rough drawdown
+        
+        render_risk_traffic_light(
+            var_utilization=var_util,
+            exposure_utilization=gross_util,
+            drawdown_pct=drawdown_pct,
+        )
+        
+        st.markdown("")  # Spacing
+        
+        # VaR progress bar
         st.progress(
-            summary["var_utilization"] / 100,
+            min(summary["var_utilization"] / 100, 1.0),
             text=f"VaR Utilization: {summary['var_utilization']:.0f}%",
         )
 
-        risk_metrics = {
-            "VaR (95%, 1-day)": f"${summary['var_estimate']:,.0f}",
-            "VaR Limit": f"${summary['var_limit']:,.0f}",
-            "Gross Exposure": f"${summary['gross_exposure'] / 1e6:.1f}M",
-            "Net Position": f"{summary['net_contracts']:.0f} contracts",
-        }
-        for label, value in risk_metrics.items():
-            st.text(f"{label}: {value}")
+        # Compact risk metrics
+        render_compact_stats([
+            {"label": "VaR (95%)", "value": f"${summary['var_estimate']:,.0f}"},
+            {"label": "VaR Limit", "value": f"${summary['var_limit']:,}"},
+            {"label": "Gross Exp", "value": f"${summary['gross_exposure'] / 1e6:.1f}M"},
+            {"label": "Net Pos", "value": f"{summary['net_contracts']:.0f} lots"},
+        ])
 
         alerts = self.context.generate_alerts(curve_structure, summary["var_utilization"])
         st.divider()
         st.subheader("Active Alerts")
         if not alerts:
-            st.success("No active alerts.")
+            st.success("✅ No active alerts")
             return
 
         for alert in alerts:
             severity = alert["severity"]
             message = alert["message"]
             if severity == "warning":
-                st.warning(message)
+                st.warning(f"⚠️ {message}")
             elif severity == "critical":
-                st.error(message)
+                st.error(f"🚨 {message}")
             else:
-                st.info(message)
+                st.info(f"ℹ️ {message}")
 
 
 class ActivityFeedView:

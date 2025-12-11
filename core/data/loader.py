@@ -21,7 +21,14 @@ from .bloomberg import (
     BloombergSubscriptionService,
     TickerMapper,
 )
-from .cache import DataCache, ParquetStorage, RequestDeduplicator, get_smart_ttl
+from .cache import (
+    DataCache,
+    ParquetStorage,
+    RequestDeduplicator,
+    get_smart_ttl,
+    is_market_hours,
+    set_weekend_closed_days,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +95,7 @@ class LoaderSettings:
     structure_threshold: float
     curve_months: int
     weekend_closed_days: frozenset[int]
+    timezone: str
 
     @classmethod
     def load(cls, config_dir: Path, gallons_default: int) -> "LoaderSettings":
@@ -136,6 +144,7 @@ class LoaderSettings:
 
         weekend_days = market_hours_cfg.get("weekend_closed_days", [5, 6])
         weekend_closed_days = frozenset(int(day) for day in weekend_days)
+        timezone = str(raw.get("timezone", "Asia/Singapore"))
 
         return cls(
             gallons_per_barrel=int(pricing_cfg.get("gallons_per_barrel", gallons_default)),
@@ -152,12 +161,12 @@ class LoaderSettings:
             structure_threshold=float(market_cfg.get("structure_threshold", 0.05)),
             curve_months=int(market_cfg.get("default_curve_months", 12)),
             weekend_closed_days=weekend_closed_days,
+            timezone=timezone,
         )
 
     def is_market_open(self, when: datetime | None = None) -> bool:
         """Check market hours based on configured closed days."""
-        reference = when or datetime.now()
-        return reference.weekday() not in self.weekend_closed_days
+        return is_market_hours(when)
 
 
 class DataLoader:
@@ -202,6 +211,9 @@ class DataLoader:
         # Backward compatibility: expose previous attribute name
         self.loader_settings = self.settings
 
+        # Configure global market hours from settings
+        set_weekend_closed_days(self.settings.weekend_closed_days)
+
         # Initialize components
         self.bloomberg = BloombergClient()
         self.cache = DataCache(cache_dir=str(self.data_dir / "cache"))
@@ -235,16 +247,85 @@ class DataLoader:
         """Load configuration files."""
         self.instruments = {}
         self.tickers = {}
+        self._bloomberg_config = {}
 
         instruments_file = self.config_dir / "instruments.yaml"
         if instruments_file.exists():
             with open(instruments_file) as f:
-                self.instruments = yaml.safe_load(f)
+                self.instruments = yaml.safe_load(f) or {}
 
         tickers_file = self.config_dir / "bloomberg_tickers.yaml"
         if tickers_file.exists():
             with open(tickers_file) as f:
-                self.tickers = yaml.safe_load(f)
+                self._bloomberg_config = yaml.safe_load(f) or {}
+                self.tickers = self._bloomberg_config
+
+    # =========================================================================
+    # CONFIGURATION ACCESS METHODS
+    # =========================================================================
+
+    def get_bloomberg_config(self) -> dict:
+        """
+        Get the full Bloomberg tickers configuration.
+        
+        Use this instead of loading bloomberg_tickers.yaml directly in pages.
+        This ensures configuration is loaded once and cached.
+        
+        Returns:
+            Dict containing all Bloomberg ticker configurations
+        """
+        return self._bloomberg_config
+
+    def get_spread_config(self, spread_name: str) -> dict | None:
+        """
+        Get configuration for a specific spread from bloomberg_tickers.yaml.
+        
+        Args:
+            spread_name: Name of the spread (e.g., 'crack_321', 'wti_brent')
+            
+        Returns:
+            Spread configuration dict or None if not found
+        """
+        spreads = self._bloomberg_config.get("spreads", {})
+        return spreads.get(spread_name)
+
+    def get_front_month_override(self, spread_name: str) -> dict | None:
+        """
+        Get front month ticker override for a spread.
+        
+        Useful for spreads like crack_321 that need specific contract months.
+        
+        Args:
+            spread_name: Name of the spread
+            
+        Returns:
+            Dict with 'ticker' and optionally 'label' keys, or None
+        """
+        spread_config = self.get_spread_config(spread_name)
+        if not spread_config:
+            return None
+        
+        override = spread_config.get("front_month_override")
+        if isinstance(override, dict):
+            return {
+                "ticker": override.get("ticker"),
+                "label": override.get("label"),
+            }
+        if isinstance(override, str):
+            return {"ticker": override, "label": None}
+        return None
+
+    def get_eia_tickers(self) -> dict:
+        """Get EIA fundamental data tickers."""
+        return self._bloomberg_config.get("eia_tickers", {})
+
+    def get_opec_tickers(self) -> dict:
+        """Get OPEC data tickers."""
+        return self._bloomberg_config.get("opec_tickers", {})
+
+    def get_index_tickers(self) -> dict:
+        """Get financial index tickers (DXY, VIX, etc.)."""
+        return self._bloomberg_config.get("indices", {})
 
     # =========================================================================
     # TICKER UTILITIES
@@ -853,6 +934,7 @@ class DataLoader:
             "data_mode": self._data_mode,
             "connection_error": self._connection_error,
             "data_available": self._data_mode == "live",
+            "timezone": self.settings.timezone,
         }
 
     def get_api_efficiency_stats(self) -> dict:

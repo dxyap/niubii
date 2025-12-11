@@ -1,7 +1,7 @@
 """
 Trading Signals Page
 ====================
-Signal generation and display.
+Signal generation and display with enhanced visual indicators.
 """
 
 from datetime import datetime, timedelta
@@ -9,14 +9,19 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
+from app.components.ui_components import (
+    render_compact_stats,
+    render_progress_ring,
+    render_signal_indicator,
+)
 from app.page_utils import COLORS, init_page
 from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
 
 # Initialize page
 ctx = init_page(
-    title="Trading Signals",
+    title="📡 Trading Signals",
     page_title="Signals | Oil Trading",
-    icon="SIG",
+    icon="📡",
     lookback_days=120,
 )
 
@@ -83,28 +88,41 @@ if composite:
     with col1:
         st.subheader("🎯 Active Signal - WTI Crude Oil")
 
-        # Signal card
-        direction_color = COLORS["success"] if composite.direction == "LONG" else COLORS["error"] if composite.direction == "SHORT" else "#94a3b8"
-        direction_icon = "🟢" if composite.direction == "LONG" else "🔴" if composite.direction == "SHORT" else "⚪"
+        # Enhanced signal indicator
+        render_signal_indicator(
+            direction=composite.direction,
+            confidence=composite.confidence,
+            instrument="WTI Crude Oil",
+            entry_price=composite.entry_price,
+        )
 
-        st.markdown(f"""
-        <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(51, 65, 85, 0.6)); border-radius: 12px; padding: 24px; border-left: 4px solid {direction_color}; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <h2 style="margin: 0; color: {direction_color}; font-family: 'Outfit', sans-serif;">{direction_icon} {composite.direction}</h2>
-            <p style="color: #94a3b8; margin: 8px 0 0 0; font-family: 'IBM Plex Mono', monospace;">Confidence: {composite.confidence}%</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("")  # Spacing
 
-        st.divider()
-
-        # Trade levels
+        # Trade levels with better styling
         level_col1, level_col2, level_col3 = st.columns(3)
 
         with level_col1:
-            st.metric("Entry Zone", f"${composite.entry_price:.2f}")
+            entry_color = COLORS.get("profit", "#00DC82") if composite.direction == "LONG" else COLORS.get("loss", "#FF5252")
+            st.markdown(f"""
+            <div style="background: rgba(30, 41, 59, 0.6); border-radius: 10px; padding: 16px; border: 1px solid rgba(51, 65, 85, 0.5); text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">Entry Zone</div>
+                <div style="font-size: 24px; font-weight: 700; color: {entry_color}; font-family: 'IBM Plex Mono', monospace;">${composite.entry_price:.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
         with level_col2:
-            st.metric("Stop Loss", f"${composite.stop_loss:.2f}")
+            st.markdown(f"""
+            <div style="background: rgba(239, 68, 68, 0.1); border-radius: 10px; padding: 16px; border: 1px solid rgba(239, 68, 68, 0.3); text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">Stop Loss</div>
+                <div style="font-size: 24px; font-weight: 700; color: #FF5252; font-family: 'IBM Plex Mono', monospace;">${composite.stop_loss:.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
         with level_col3:
-            st.metric("Target", f"${composite.target_price:.2f}")
+            st.markdown(f"""
+            <div style="background: rgba(0, 220, 130, 0.1); border-radius: 10px; padding: 16px; border: 1px solid rgba(0, 220, 130, 0.3); text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">Target</div>
+                <div style="font-size: 24px; font-weight: 700; color: #00DC82; font-family: 'IBM Plex Mono', monospace;">${composite.target_price:.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.divider()
 
@@ -125,39 +143,39 @@ if composite:
             """, unsafe_allow_html=True)
 
     with col2:
-        st.subheader("📈 Confidence Gauge")
+        st.subheader("📈 Signal Confidence")
 
         confidence = composite.confidence
-        confidence_color = COLORS["success"] if confidence > 70 else COLORS["warning"] if confidence > 50 else "#94a3b8"
+        confidence_color = COLORS.get("success", "#00DC82") if confidence > 70 else COLORS.get("warning", "#f59e0b") if confidence > 50 else "#94a3b8"
 
-        st.markdown(f"""
-        <div style="text-align: center; padding: 24px; background: rgba(30, 41, 59, 0.4); border-radius: 12px;">
-            <div style="font-size: 64px; font-weight: 700; color: {confidence_color}; font-family: 'IBM Plex Mono', monospace;">
-                {confidence:.0f}%
-            </div>
-            <p style="color: #94a3b8; margin-top: 8px; font-family: 'Outfit', sans-serif;">Signal Confidence</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Circular confidence gauge
+        render_progress_ring(
+            value=confidence,
+            max_value=100,
+            label="Confidence",
+            color=confidence_color,
+            size=140,
+        )
 
-        st.progress(confidence / 100)
+        st.markdown("")  # Spacing
 
-        st.divider()
+        # Signal details in compact format
+        render_compact_stats([
+            {"label": "Signal ID", "value": composite.signal_id[:8]},
+            {"label": "Generated", "value": composite.timestamp.strftime('%H:%M:%S')},
+            {"label": "Horizon", "value": composite.time_horizon},
+        ])
 
-        st.markdown("**Signal Details**")
-        st.text(f"Signal ID: {composite.signal_id}")
-        st.text(f"Generated: {composite.timestamp.strftime('%H:%M:%S')}")
-        st.text(f"Time Horizon: {composite.time_horizon}")
-        st.text(f"Source: {composite.source}")
+        st.markdown("")  # Spacing
 
-        st.divider()
-
-        st.markdown("**Actions**")
-
-        if st.button("✅ Mark as Traded", width='stretch'):
-            st.success("Signal marked as traded")
-
-        if st.button("❌ Dismiss Signal", width='stretch'):
-            st.info("Signal dismissed")
+        # Action buttons with better styling
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("✅ Traded", use_container_width=True, type="primary"):
+                st.success("Signal marked as traded")
+        with col_btn2:
+            if st.button("❌ Dismiss", use_container_width=True):
+                st.info("Signal dismissed")
 
 st.divider()
 

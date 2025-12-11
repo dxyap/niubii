@@ -114,7 +114,7 @@ def init_page(
     render_status_bar(
         data_mode=data_mode,
         last_refresh=st.session_state.get("last_refresh"),
-        timezone=connection_status.get("timezone") or os.getenv("DATA_TIMEZONE", "UTC"),
+        timezone=connection_status.get("timezone") or os.getenv("DATA_TIMEZONE", "Asia/Singapore"),
         latency_ms=connection_status.get("latency_ms"),
     )
 
@@ -162,7 +162,7 @@ def render_live_status_bar(ctx: PageContext) -> None:
 def render_status_bar(
     data_mode: str,
     last_refresh: datetime | None,
-    timezone: str = "UTC",
+    timezone: str = "Asia/Singapore",
     latency_ms: float | int | None = None,
 ) -> None:
     """

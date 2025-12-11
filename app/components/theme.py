@@ -3,6 +3,7 @@ Dashboard Theme
 ===============
 Shared styling for all dashboard pages.
 Professional trading terminal aesthetics with enhanced chart support.
+Optimized for at-a-glance insights for oil traders.
 """
 
 DASHBOARD_THEME_CSS = """
@@ -29,19 +30,29 @@ DASHBOARD_THEME_CSS = """
         --accent-blue-light: #38bdf8;
         --accent-purple: #8b5cf6;
         --accent-cyan: #06b6d4;
+        --accent-gold: #fbbf24;
         
         --success: #00DC82;
         --success-bg: rgba(0, 220, 130, 0.1);
+        --success-gradient: linear-gradient(135deg, rgba(0, 220, 130, 0.2) 0%, rgba(0, 220, 130, 0.05) 100%);
         --warning: #f59e0b;
         --warning-bg: rgba(245, 158, 11, 0.1);
+        --warning-gradient: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.05) 100%);
         --error: #ef4444;
         --error-bg: rgba(239, 68, 68, 0.1);
+        --error-gradient: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.05) 100%);
+        
+        /* P&L specific colors */
+        --pnl-profit: #00DC82;
+        --pnl-loss: #FF5252;
+        --pnl-neutral: #94a3b8;
         
         --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
         --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
         --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
         --shadow-glow-blue: 0 0 20px rgba(14, 165, 233, 0.3);
         --shadow-glow-green: 0 0 20px rgba(0, 220, 130, 0.3);
+        --shadow-glow-red: 0 0 20px rgba(255, 82, 82, 0.3);
         
         --radius-sm: 6px;
         --radius-md: 10px;
@@ -595,6 +606,373 @@ DASHBOARD_THEME_CSS = """
             font-size: 12px;
         }
     }
+
+    /* ========== TRADER QUICK-GLANCE COMPONENTS ========== */
+    
+    /* Market Pulse Header - Shows market state at a glance */
+    .market-pulse {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+        margin-bottom: 20px;
+        box-shadow: var(--shadow-md);
+    }
+    
+    .market-pulse-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .market-pulse-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        font-weight: 600;
+    }
+    
+    .market-pulse-value {
+        font-size: 20px;
+        font-weight: 700;
+        font-family: 'IBM Plex Mono', monospace;
+        color: var(--text-primary);
+    }
+    
+    .market-pulse-change {
+        font-size: 12px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+    
+    /* P&L Display - Large format for quick visibility */
+    .pnl-display {
+        text-align: center;
+        padding: 24px;
+        border-radius: var(--radius-lg);
+        backdrop-filter: blur(10px);
+    }
+    
+    .pnl-display.profit {
+        background: var(--success-gradient);
+        border: 1px solid rgba(0, 220, 130, 0.3);
+        box-shadow: var(--shadow-glow-green);
+    }
+    
+    .pnl-display.loss {
+        background: var(--error-gradient);
+        border: 1px solid rgba(255, 82, 82, 0.3);
+        box-shadow: var(--shadow-glow-red);
+    }
+    
+    .pnl-display.neutral {
+        background: var(--bg-card);
+        border: 1px solid var(--border-light);
+    }
+    
+    .pnl-value {
+        font-size: 42px;
+        font-weight: 700;
+        font-family: 'IBM Plex Mono', monospace;
+        line-height: 1.1;
+    }
+    
+    .pnl-value.profit { color: var(--pnl-profit); }
+    .pnl-value.loss { color: var(--pnl-loss); }
+    .pnl-value.neutral { color: var(--pnl-neutral); }
+    
+    .pnl-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-muted);
+        margin-top: 8px;
+    }
+    
+    /* Position Heat Strip - Visual position status */
+    .position-heat-strip {
+        display: flex;
+        gap: 8px;
+        padding: 12px;
+        background: var(--bg-card);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-light);
+        overflow-x: auto;
+    }
+    
+    .position-chip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 16px;
+        border-radius: var(--radius-md);
+        min-width: 90px;
+        transition: all var(--transition-fast);
+    }
+    
+    .position-chip:hover {
+        transform: translateY(-2px);
+    }
+    
+    .position-chip.long {
+        background: linear-gradient(135deg, rgba(0, 220, 130, 0.2) 0%, rgba(0, 220, 130, 0.05) 100%);
+        border: 1px solid rgba(0, 220, 130, 0.3);
+    }
+    
+    .position-chip.short {
+        background: linear-gradient(135deg, rgba(255, 82, 82, 0.2) 0%, rgba(255, 82, 82, 0.05) 100%);
+        border: 1px solid rgba(255, 82, 82, 0.3);
+    }
+    
+    .position-chip-symbol {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: 0.03em;
+    }
+    
+    .position-chip-qty {
+        font-size: 14px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+    
+    .position-chip.long .position-chip-qty { color: var(--pnl-profit); }
+    .position-chip.short .position-chip-qty { color: var(--pnl-loss); }
+    
+    .position-chip-pnl {
+        font-size: 10px;
+        font-family: 'IBM Plex Mono', monospace;
+        margin-top: 2px;
+    }
+    
+    /* Signal Indicator - Bold signal display */
+    .signal-indicator {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 24px;
+        border-radius: var(--radius-lg);
+        backdrop-filter: blur(10px);
+    }
+    
+    .signal-indicator.long {
+        background: linear-gradient(135deg, rgba(0, 220, 130, 0.15) 0%, rgba(0, 220, 130, 0.03) 100%);
+        border-left: 4px solid var(--pnl-profit);
+    }
+    
+    .signal-indicator.short {
+        background: linear-gradient(135deg, rgba(255, 82, 82, 0.15) 0%, rgba(255, 82, 82, 0.03) 100%);
+        border-left: 4px solid var(--pnl-loss);
+    }
+    
+    .signal-indicator.neutral {
+        background: var(--bg-card);
+        border-left: 4px solid var(--text-muted);
+    }
+    
+    .signal-direction {
+        font-size: 28px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .signal-direction.long { color: var(--pnl-profit); }
+    .signal-direction.short { color: var(--pnl-loss); }
+    .signal-direction.neutral { color: var(--text-muted); }
+    
+    .signal-confidence {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .signal-confidence-value {
+        font-size: 24px;
+        font-weight: 700;
+        font-family: 'IBM Plex Mono', monospace;
+        color: var(--text-primary);
+    }
+    
+    .signal-confidence-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+    }
+    
+    /* Risk Traffic Light */
+    .risk-traffic-light {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+    }
+    
+    .traffic-light-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        transition: all var(--transition-normal);
+    }
+    
+    .traffic-light-dot.green {
+        background: var(--success);
+        box-shadow: 0 0 12px rgba(0, 220, 130, 0.6);
+    }
+    
+    .traffic-light-dot.yellow {
+        background: var(--warning);
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+    }
+    
+    .traffic-light-dot.red {
+        background: var(--error);
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+        animation: pulse-red 1.5s infinite;
+    }
+    
+    .traffic-light-dot.inactive {
+        background: var(--text-dim);
+        opacity: 0.3;
+        box-shadow: none;
+    }
+    
+    @keyframes pulse-red {
+        0%, 100% { 
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+        }
+        50% { 
+            box-shadow: 0 0 24px rgba(239, 68, 68, 0.9);
+        }
+    }
+    
+    .traffic-light-text {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    /* Quick Action Buttons */
+    .quick-action-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    
+    .quick-action-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-light);
+        background: var(--bg-card);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+    
+    .quick-action-btn:hover {
+        border-color: var(--accent-blue);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-glow-blue);
+    }
+    
+    .quick-action-btn.buy {
+        border-color: rgba(0, 220, 130, 0.3);
+    }
+    
+    .quick-action-btn.buy:hover {
+        border-color: var(--pnl-profit);
+        box-shadow: var(--shadow-glow-green);
+    }
+    
+    .quick-action-btn.sell {
+        border-color: rgba(255, 82, 82, 0.3);
+    }
+    
+    .quick-action-btn.sell:hover {
+        border-color: var(--pnl-loss);
+        box-shadow: var(--shadow-glow-red);
+    }
+    
+    /* Mini Sparkline Container */
+    .sparkline-container {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: var(--radius-sm);
+    }
+    
+    /* Data Freshness Indicator */
+    .data-freshness {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--text-dim);
+    }
+    
+    .data-freshness-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+    }
+    
+    .data-freshness-dot.fresh {
+        background: var(--success);
+    }
+    
+    .data-freshness-dot.stale {
+        background: var(--warning);
+    }
+    
+    .data-freshness-dot.old {
+        background: var(--error);
+    }
+    
+    /* Compact Stats Row */
+    .compact-stats-row {
+        display: flex;
+        gap: 16px;
+        padding: 12px 16px;
+        background: var(--bg-card);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-light);
+        flex-wrap: wrap;
+    }
+    
+    .compact-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .compact-stat-label {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-dim);
+    }
+    
+    .compact-stat-value {
+        font-size: 14px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', monospace;
+        color: var(--text-primary);
+    }
 </style>
 """
 
@@ -621,6 +999,16 @@ COLORS = {
     "error": "#FF5252",
     "info": "#00A3E0",
 
+    # P&L specific colors
+    "profit": "#00DC82",
+    "loss": "#FF5252",
+    "neutral": "#94a3b8",
+    
+    # Position colors
+    "long": "#00DC82",
+    "short": "#FF5252",
+    "flat": "#64748b",
+
     # Candlestick colors (solid fills)
     "candle_up": "#00DC82",
     "candle_down": "#FF5252",
@@ -629,12 +1017,14 @@ COLORS = {
     "text": "#e2e8f0",
     "text_muted": "#94a3b8",
     "text_bright": "#f8fafc",
+    "text_dim": "#64748b",
 
     # Background colors
     "background": "#0f172a",
     "surface": "#1e293b",
     "surface_light": "#334155",
     "border": "#334155",
+    "card": "rgba(30, 41, 59, 0.6)",
 
     # Chart colors
     "chart_bg": "rgba(15, 23, 42, 0.8)",
@@ -644,6 +1034,20 @@ COLORS = {
     "ma_fast": "#FFB020",
     "ma_slow": "#A855F7",
     "ma_long": "#06B6D4",
+    
+    # Signal colors
+    "signal_long": "#00DC82",
+    "signal_short": "#FF5252",
+    "signal_neutral": "#94a3b8",
+    
+    # Risk traffic light
+    "risk_green": "#00DC82",
+    "risk_yellow": "#f59e0b",
+    "risk_red": "#ef4444",
+    
+    # Accent
+    "gold": "#fbbf24",
+    "cyan": "#06b6d4",
 }
 
 

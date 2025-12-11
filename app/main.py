@@ -216,7 +216,7 @@ class DashboardApp:
         render_status_bar(
             data_mode=data_mode,
             last_refresh=self.refresh_controller.last_refresh,
-            timezone=connection_status.get("timezone", "UTC"),
+            timezone=connection_status.get("timezone", "Asia/Singapore"),
             latency_ms=connection_status.get("latency_ms"),
         )
 

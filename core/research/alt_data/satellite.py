@@ -130,6 +130,7 @@ class SatelliteData:
     """
 
     # Major storage locations and estimated capacities
+    # Capacities loaded from config/bloomberg_tickers.yaml inventory.locations
     LOCATIONS = {
         "cushing_ok": {
             "name": "Cushing, Oklahoma",
@@ -138,12 +139,12 @@ class SatelliteData:
         },
         "rotterdam": {
             "name": SATELLITE_LOCATION_NAMES.get("ara", "ARA (Amsterdam-Rotterdam-Antwerp)"),
-            "capacity_mb": STORAGE_CAPACITIES_MB.get("ara", {}).get("total", 50),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("ara", {}).get("crude", 100),  # ARA crude capacity
             "importance": "European hub",
         },
         "usgc": {
             "name": SATELLITE_LOCATION_NAMES.get("usgc", "US Gulf Coast"),
-            "capacity_mb": STORAGE_CAPACITIES_MB.get("usgc", {}).get("total", 125),
+            "capacity_mb": STORAGE_CAPACITIES_MB.get("usgc", {}).get("crude", 400),  # USGC crude capacity
             "importance": "US Gulf Coast crude hub",
         },
     }
@@ -278,7 +279,8 @@ class SatelliteData:
             return None
 
         capacity = STORAGE_CAPACITIES_MB.get(location, {})
-        total_capacity = capacity.get("total", 50)
+        # Use crude capacity for crude inventory calculations
+        total_capacity = capacity.get("crude", capacity.get("total", 50))
 
         try:
             # Get all configured tickers for this location
@@ -402,7 +404,8 @@ class SatelliteData:
 
                     # Convert kb to utilization percentage
                     capacity = STORAGE_CAPACITIES_MB.get(location_key, {})
-                    total_capacity_kb = capacity.get("total", 50) * 1000
+                    # Use crude capacity for crude inventory calculations
+                    total_capacity_kb = capacity.get("crude", capacity.get("total", 50)) * 1000
                     utilization = (value / total_capacity_kb) * 100 if total_capacity_kb > 0 else 0
 
                     trends.append({

@@ -8,6 +8,8 @@ Performance optimizations:
 - TTL-based expiration
 - Thread-safe operations
 - Efficient memory management
+- Request deduplication for concurrent identical requests
+- Market-hours aware TTL for smart cache expiration
 """
 
 import contextlib
@@ -30,7 +32,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def is_market_hours() -> bool:
+# =============================================================================
+# MARKET HOURS UTILITIES (Single source of truth)
+# =============================================================================
+
+# Default weekend days (Saturday=5, Sunday=6)
+_WEEKEND_CLOSED_DAYS: frozenset[int] = frozenset({5, 6})
+
+
+def set_weekend_closed_days(days: frozenset[int]) -> None:
+    """
+    Configure which days markets are closed.
+    Called by DataLoader on initialization with values from config.
+    """
+    global _WEEKEND_CLOSED_DAYS
+    _WEEKEND_CLOSED_DAYS = days
+
+
+def is_market_hours(when: datetime | None = None) -> bool:
     """
     Check if oil markets are currently open.
     
@@ -38,14 +57,22 @@ def is_market_hours() -> bool:
     - CME/NYMEX: Sunday 5pm - Friday 4pm CT (with daily break 4pm-5pm CT)
     - ICE: Sunday 7pm - Friday 5pm ET
     
-    Returns True during weekday trading hours, False on weekends.
+    Args:
+        when: Optional datetime to check (defaults to now)
+    
+    Returns:
+        True during weekday trading hours, False on weekends.
     """
-    now = datetime.now()
-    # Weekend: Saturday (5) or Sunday (6)
-    return now.weekday() < 5
+    reference = when or datetime.now()
+    return reference.weekday() not in _WEEKEND_CLOSED_DAYS
 
 
-def get_smart_ttl(base_ttl: int, market_hours_multiplier: float = 1.0, off_hours_multiplier: float = 10.0) -> int:
+def get_smart_ttl(
+    base_ttl: int,
+    market_hours_multiplier: float = 1.0,
+    off_hours_multiplier: float = 10.0,
+    when: datetime | None = None,
+) -> int:
     """
     Return TTL adjusted for market hours.
     
@@ -56,11 +83,12 @@ def get_smart_ttl(base_ttl: int, market_hours_multiplier: float = 1.0, off_hours
         base_ttl: Base TTL in seconds
         market_hours_multiplier: Multiplier during market hours (default 1.0)
         off_hours_multiplier: Multiplier during off-hours (default 10.0)
+        when: Optional datetime to check (defaults to now)
     
     Returns:
         Adjusted TTL in seconds
     """
-    if is_market_hours():
+    if is_market_hours(when):
         return int(base_ttl * market_hours_multiplier)
     return int(base_ttl * off_hours_multiplier)
 

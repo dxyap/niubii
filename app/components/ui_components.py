@@ -2,10 +2,11 @@
 UI Components
 =============
 Reusable UI components for enhanced dashboard presentation.
+Optimized for trader at-a-glance insights.
 """
 
 import streamlit as st
-from typing import Literal
+from typing import Literal, Optional
 
 
 def render_card(
@@ -369,5 +370,349 @@ def render_progress_ring(
                 {label}
             </text>
         </svg>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# =============================================================================
+# TRADER-FOCUSED COMPONENTS
+# =============================================================================
+
+def render_market_pulse(
+    wti_price: float,
+    wti_change: float,
+    brent_price: float,
+    brent_change: float,
+    spread: float,
+    spread_change: float,
+    structure: str = "Contango",
+) -> None:
+    """
+    Render a market pulse header showing key prices at a glance.
+    
+    Args:
+        wti_price: Current WTI price
+        wti_change: WTI change percentage
+        brent_price: Current Brent price
+        brent_change: Brent change percentage
+        spread: WTI-Brent spread
+        spread_change: Spread change
+        structure: Market structure (Contango/Backwardation/Flat)
+    """
+    wti_color = "#00DC82" if wti_change >= 0 else "#FF5252"
+    brent_color = "#00DC82" if brent_change >= 0 else "#FF5252"
+    spread_color = "#00DC82" if spread_change >= 0 else "#FF5252"
+    
+    structure_colors = {
+        "Contango": "#f59e0b",
+        "Backwardation": "#00DC82",
+        "Flat": "#94a3b8",
+    }
+    struct_color = structure_colors.get(structure, "#94a3b8")
+    
+    st.markdown(f"""
+    <div class="market-pulse">
+        <div class="market-pulse-item">
+            <span class="market-pulse-label">WTI Crude</span>
+            <span class="market-pulse-value">${wti_price:.2f}</span>
+            <span class="market-pulse-change" style="color: {wti_color};">{wti_change:+.2f}%</span>
+        </div>
+        <div class="market-pulse-item">
+            <span class="market-pulse-label">Brent Crude</span>
+            <span class="market-pulse-value">${brent_price:.2f}</span>
+            <span class="market-pulse-change" style="color: {brent_color};">{brent_change:+.2f}%</span>
+        </div>
+        <div class="market-pulse-item">
+            <span class="market-pulse-label">WTI-Brent</span>
+            <span class="market-pulse-value">${spread:.2f}</span>
+            <span class="market-pulse-change" style="color: {spread_color};">{spread_change:+.2f}</span>
+        </div>
+        <div class="market-pulse-item">
+            <span class="market-pulse-label">Structure</span>
+            <span class="market-pulse-value" style="color: {struct_color}; font-size: 16px;">{structure}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_pnl_display(
+    value: float,
+    label: str = "Day P&L",
+    show_percentage: bool = True,
+    percentage: Optional[float] = None,
+) -> None:
+    """
+    Render a large, prominent P&L display for quick visibility.
+    
+    Args:
+        value: P&L value
+        label: Display label
+        show_percentage: Whether to show percentage
+        percentage: P&L percentage (optional)
+    """
+    if value > 0:
+        status = "profit"
+        sign = "+"
+    elif value < 0:
+        status = "loss"
+        sign = ""
+    else:
+        status = "neutral"
+        sign = ""
+    
+    pct_display = ""
+    if show_percentage and percentage is not None:
+        pct_color = "#00DC82" if percentage >= 0 else "#FF5252"
+        pct_display = f'<div style="font-size: 16px; color: {pct_color}; margin-top: 4px;">({percentage:+.2f}%)</div>'
+    
+    st.markdown(f"""
+    <div class="pnl-display {status}">
+        <div class="pnl-value {status}">{sign}${abs(value):,.0f}</div>
+        {pct_display}
+        <div class="pnl-label">{label}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_position_heat_strip(positions: list[dict]) -> None:
+    """
+    Render a horizontal strip of position chips showing portfolio at a glance.
+    
+    Args:
+        positions: List of position dicts with keys: symbol, qty, pnl
+    """
+    chips_html = ""
+    for pos in positions:
+        symbol = pos.get("symbol", "???")
+        qty = pos.get("qty", 0)
+        pnl = pos.get("pnl", 0)
+        
+        position_type = "long" if qty > 0 else "short"
+        pnl_color = "#00DC82" if pnl >= 0 else "#FF5252"
+        pnl_sign = "+" if pnl >= 0 else ""
+        
+        chips_html += f"""
+        <div class="position-chip {position_type}">
+            <span class="position-chip-symbol">{symbol}</span>
+            <span class="position-chip-qty">{qty:+d}</span>
+            <span class="position-chip-pnl" style="color: {pnl_color};">{pnl_sign}${abs(pnl):,.0f}</span>
+        </div>
+        """
+    
+    st.markdown(f"""
+    <div class="position-heat-strip">
+        {chips_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_signal_indicator(
+    direction: Literal["LONG", "SHORT", "NEUTRAL"],
+    confidence: float,
+    instrument: str = "WTI",
+    entry_price: Optional[float] = None,
+) -> None:
+    """
+    Render a bold signal indicator for quick trade direction visibility.
+    
+    Args:
+        direction: Signal direction
+        confidence: Confidence percentage (0-100)
+        instrument: Instrument name
+        entry_price: Optional suggested entry price
+    """
+    direction_lower = direction.lower()
+    icon = "🟢" if direction == "LONG" else "🔴" if direction == "SHORT" else "⚪"
+    
+    entry_html = ""
+    if entry_price:
+        entry_html = f"""
+        <div style="margin-left: auto; text-align: right;">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">Entry Zone</div>
+            <div style="font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'IBM Plex Mono', monospace;">${entry_price:.2f}</div>
+        </div>
+        """
+    
+    st.markdown(f"""
+    <div class="signal-indicator {direction_lower}">
+        <div style="font-size: 32px;">{icon}</div>
+        <div>
+            <div class="signal-direction {direction_lower}">{direction}</div>
+            <div style="font-size: 12px; color: #64748b;">{instrument}</div>
+        </div>
+        <div class="signal-confidence">
+            <div class="signal-confidence-value">{confidence:.0f}%</div>
+            <div class="signal-confidence-label">Confidence</div>
+        </div>
+        {entry_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_risk_traffic_light(
+    var_utilization: float,
+    exposure_utilization: float,
+    drawdown_pct: float,
+) -> None:
+    """
+    Render a traffic light risk indicator for quick risk status assessment.
+    
+    Args:
+        var_utilization: VaR utilization percentage (0-100)
+        exposure_utilization: Gross exposure utilization percentage (0-100)
+        drawdown_pct: Current drawdown percentage
+    """
+    # Determine overall risk status
+    if var_utilization > 90 or exposure_utilization > 90 or drawdown_pct > 5:
+        status = "red"
+        status_text = "High Risk"
+        green_class = "inactive"
+        yellow_class = "inactive"
+        red_class = "red"
+    elif var_utilization > 75 or exposure_utilization > 75 or drawdown_pct > 3:
+        status = "yellow"
+        status_text = "Elevated"
+        green_class = "inactive"
+        yellow_class = "yellow"
+        red_class = "inactive"
+    else:
+        status = "green"
+        status_text = "Normal"
+        green_class = "green"
+        yellow_class = "inactive"
+        red_class = "inactive"
+    
+    st.markdown(f"""
+    <div class="risk-traffic-light">
+        <div class="traffic-light-dot {green_class}"></div>
+        <div class="traffic-light-dot {yellow_class}"></div>
+        <div class="traffic-light-dot {red_class}"></div>
+        <div class="traffic-light-text">{status_text}</div>
+        <div style="margin-left: auto; display: flex; gap: 16px; font-size: 12px; color: #94a3b8;">
+            <span>VaR: {var_utilization:.0f}%</span>
+            <span>Exp: {exposure_utilization:.0f}%</span>
+            <span>DD: {drawdown_pct:.1f}%</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_compact_stats(stats: list[dict]) -> None:
+    """
+    Render a compact horizontal row of statistics.
+    
+    Args:
+        stats: List of stat dicts with keys: label, value, color (optional)
+    """
+    stats_html = ""
+    for stat in stats:
+        label = stat.get("label", "")
+        value = stat.get("value", "")
+        color = stat.get("color", "#f1f5f9")
+        
+        stats_html += f"""
+        <div class="compact-stat">
+            <span class="compact-stat-label">{label}</span>
+            <span class="compact-stat-value" style="color: {color};">{value}</span>
+        </div>
+        """
+    
+    st.markdown(f"""
+    <div class="compact-stats-row">
+        {stats_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_quick_trade_button(
+    action: Literal["BUY", "SELL"],
+    instrument: str,
+    quantity: int,
+    key: str,
+) -> bool:
+    """
+    Render a styled quick trade button.
+    
+    Args:
+        action: BUY or SELL
+        instrument: Instrument symbol
+        quantity: Trade quantity
+        key: Unique button key
+        
+    Returns:
+        True if button was clicked
+    """
+    action_lower = action.lower()
+    color = "#00DC82" if action == "BUY" else "#FF5252"
+    icon = "📈" if action == "BUY" else "📉"
+    
+    # Use native streamlit button with custom styling
+    button_label = f"{icon} {action} {quantity} {instrument}"
+    
+    return st.button(button_label, key=key, use_container_width=True)
+
+
+def render_data_freshness(
+    last_update: str,
+    freshness_seconds: int,
+) -> None:
+    """
+    Render a data freshness indicator.
+    
+    Args:
+        last_update: Last update timestamp string
+        freshness_seconds: Seconds since last update
+    """
+    if freshness_seconds < 60:
+        dot_class = "fresh"
+        text = f"Updated {freshness_seconds}s ago"
+    elif freshness_seconds < 300:
+        dot_class = "stale"
+        text = f"Updated {freshness_seconds // 60}m ago"
+    else:
+        dot_class = "old"
+        text = f"Data may be stale ({freshness_seconds // 60}m ago)"
+    
+    st.markdown(f"""
+    <div class="data-freshness">
+        <div class="data-freshness-dot {dot_class}"></div>
+        <span>{text}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_mini_pnl_card(
+    label: str,
+    value: float,
+    sub_text: str = "",
+) -> None:
+    """
+    Render a mini P&L card for compact display.
+    
+    Args:
+        label: Card label
+        value: P&L value
+        sub_text: Optional sub text
+    """
+    color = "#00DC82" if value >= 0 else "#FF5252"
+    sign = "+" if value >= 0 else ""
+    
+    sub_html = f'<div style="font-size: 10px; color: #64748b; margin-top: 2px;">{sub_text}</div>' if sub_text else ""
+    
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+        border-radius: 10px;
+        padding: 14px;
+        border: 1px solid rgba(51, 65, 85, 0.5);
+        text-align: center;
+    ">
+        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+            {label}
+        </div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; color: {color};">
+            {sign}${abs(value):,.0f}
+        </div>
+        {sub_html}
     </div>
     """, unsafe_allow_html=True)

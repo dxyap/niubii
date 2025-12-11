@@ -64,3 +64,6 @@ market:
 
 market_hours:
   weekend_closed_days: [5, 6]
+
+# Timezone configuration (Asia/Singapore = GMT+8)
+timezone: "Asia/Singapore"

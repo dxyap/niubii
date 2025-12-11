@@ -8,7 +8,6 @@ import math
 import sys
 import time
 from datetime import datetime, timedelta
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -21,8 +20,6 @@ import yaml
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
-CONFIG_DIR = project_root / "config"
-BLOOMBERG_TICKERS_PATH = CONFIG_DIR / "bloomberg_tickers.yaml"
 
 from dotenv import load_dotenv
 
@@ -59,34 +56,31 @@ from app.components.theme import apply_theme, get_chart_config
 apply_theme(st)
 
 
-@lru_cache(maxsize=1)
-def load_bloomberg_tickers_config() -> dict:
-    """Load Bloomberg ticker mappings once per session."""
-    if BLOOMBERG_TICKERS_PATH.exists():
-        try:
-            with BLOOMBERG_TICKERS_PATH.open("r", encoding="utf-8") as f:
-                return yaml.safe_load(f) or {}
-        except Exception:
-            return {}
-    return {}
+def get_bloomberg_config() -> dict:
+    """
+    Get Bloomberg ticker configuration via DataLoader.
+    
+    Uses DataLoader's cached configuration instead of loading YAML directly.
+    This reduces duplicate file reads and centralizes config access.
+    """
+    try:
+        loader = shared_state.get_data_loader()
+        return loader.get_bloomberg_config()
+    except Exception:
+        return {}
 
 
 def get_crack_spread_front_month_override() -> dict:
-    """Return any configured front month override for the 321 crack spread."""
-    config = load_bloomberg_tickers_config()
-    override = (
-        config.get("spreads", {})
-        .get("crack_321", {})
-        .get("front_month_override")
-    )
-    if isinstance(override, dict):
-        return {
-            "ticker": override.get("ticker"),
-            "label": override.get("label"),
-        }
-    if isinstance(override, str):
-        return {"ticker": override, "label": None}
-    return {}
+    """
+    Return any configured front month override for the 321 crack spread.
+    
+    Uses DataLoader's centralized configuration access.
+    """
+    try:
+        loader = shared_state.get_data_loader()
+        return loader.get_front_month_override("crack_321") or {}
+    except Exception:
+        return {}
 
 
 def sanitize_percentage(value, default=0.0):
@@ -214,7 +208,7 @@ with header_col3:
 render_status_bar(
     data_mode=data_mode,
     last_refresh=st.session_state.get('last_refresh'),
-    timezone=connection_status.get('timezone', 'UTC'),
+    timezone=connection_status.get('timezone', 'Asia/Singapore'),
     latency_ms=connection_status.get('latency_ms'),
 )
 
@@ -1149,24 +1143,27 @@ with tab3:
     st.caption("Primary crude oil storage hubs - Live data from Bloomberg")
 
     # Regional hub definitions with crude-specific data
+    # Capacities sourced from bloomberg_tickers.yaml inventory.locations
     REGIONAL_HUBS = {
         "usgc": {
             "name": "US Gulf Coast",
             "region": "North America",
             "key": "usgc",
-            "crude_capacity_mb": 125,
-            "product_capacity_mb": 20,
+            "crude_capacity_mb": 400,  # USGC crude inventory capacity (million barrels)
+            "product_capacity_mb": 0,
             "benchmark": "WTI/LLS",
             "icon": "🇺🇸",
+            "ticker": "DOESCROK Index",
         },
         "ara": {
             "name": "ARA (Amsterdam-Rotterdam-Antwerp)",
             "region": "Europe",
-            "key": "rotterdam",  # Maps to satellite data key
-            "crude_capacity_mb": 25,  # Million barrels crude capacity
-            "product_capacity_mb": 10,
+            "key": "ara",  # Maps to satellite data key
+            "crude_capacity_mb": 100,  # ARA crude inventory capacity (million barrels)
+            "product_capacity_mb": 0,
             "benchmark": "Brent",
             "icon": "🇪🇺",
+            "ticker": "DARATOTL Index",
         },
     }
 
@@ -1182,7 +1179,9 @@ with tab3:
                 utilization = sanitize_percentage(loc_data.get("utilization_pct", 0))
                 change_week = loc_data.get("change_week_pct", 0)
                 crude_cap = hub_info["crude_capacity_mb"]
-                estimated_crude = crude_cap * utilization / 100
+                estimated_crude = loc_data.get("estimated_volume_mb", crude_cap * utilization / 100)
+                last_observation = loc_data.get("last_observation", "N/A")
+                ticker = hub_info.get("ticker", "N/A")
 
                 st.markdown(f"**{hub_info['icon']} {hub_info['name']}**")
                 st.caption(f"Region: {hub_info['region']} | Benchmark: {hub_info['benchmark']}")
@@ -1204,6 +1203,17 @@ with tab3:
                 progress_value = max(0.0, min(utilization / 100, 1.0))
                 st.progress(progress_value)
                 st.caption(f"Utilization: {utilization:.1f}% of {crude_cap} MMbbl capacity")
+
+                # Display Bloomberg ticker and last observation time
+                if last_observation and last_observation != "N/A":
+                    try:
+                        obs_dt = datetime.fromisoformat(last_observation)
+                        obs_time_str = obs_dt.strftime("%Y-%m-%d %H:%M")
+                    except (ValueError, TypeError):
+                        obs_time_str = str(last_observation)
+                    st.caption(f"📡 Source: `{ticker}` | Last data: {obs_time_str}")
+                else:
+                    st.caption(f"📡 Source: `{ticker}`")
 
                 # Signal interpretation
                 if utilization < 45:
@@ -1319,9 +1329,9 @@ with tab3:
         - All Bloomberg-connected regional inventory tickers default to this config file
         - Add the USGC / ARA tickers under their respective location keys
 
-        **Bloomberg Tickers to search:**
-        - **USGC**: USGCTOTL Index (PADD 3 commercial crude)
-        - **ARA**: Crude stocks, Gasoline, Gasoil, Fuel Oil indices
+        **Bloomberg Tickers configured:**
+        - **USGC Crude Inventory**: `DOESCROK Index` (Capacity: 400 MMbbl)
+        - **ARA Crude Inventory**: `DARATOTL Index` (Capacity: 100 MMbbl)
         """)
 
     st.divider()

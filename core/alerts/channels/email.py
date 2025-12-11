@@ -227,7 +227,7 @@ class EmailChannel(NotificationChannel):
                     <p><span class="severity-badge">{trigger.severity.value}</span> <span class="category">{trigger.category.value}</span></p>
                     <p>{trigger.message}</p>
                     <div class="meta">
-                        <p>📅 Time: {trigger.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")}</p>
+                        <p>📅 Time: {trigger.timestamp.strftime("%Y-%m-%d %H:%M:%S SGT")}</p>
                         <p>🔖 Alert ID: {trigger.trigger_id}</p>
                         <p>📋 Rule: {event.rule.config.name}</p>
                     </div>

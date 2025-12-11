@@ -25,23 +25,15 @@ class SpreadAnalyzer:
     - RBOB Gasoline: Quoted in $/gallon (42 gallons per barrel)
     - Heating Oil: Quoted in $/gallon (42 gallons per barrel)
     - Gasoil (ICE): Quoted in $/metric tonne (~7.45 barrels per tonne)
+    
+    Configuration:
+    - gallons_per_barrel: Can be overridden via constructor (default: 42)
+    - barrels_per_tonne_gasoil: Can be overridden via constructor (default: 7.45)
     """
 
-    # Standard conversion: gallons per barrel
-    GALLONS_PER_BARREL = 42
-
-    # Approximate barrels per metric tonne for gasoil
-    BARRELS_PER_TONNE_GASOIL = 7.45
-
-    # Contract specifications for spread calculations
-    # Maps Bloomberg ticker prefix to conversion factor to get $/barrel
-    BARREL_CONVERSION = {
-        "CL": 1,      # WTI - already in $/bbl
-        "CO": 1,      # Brent - already in $/bbl
-        "XB": 42,     # RBOB - $/gal to $/bbl (42 gal/bbl)
-        "HO": 42,     # Heating Oil - $/gal to $/bbl
-        "QS": 7.45,   # Gasoil - $/tonne to $/bbl (approx)
-    }
+    # Default conversion constants (can be overridden via constructor)
+    DEFAULT_GALLONS_PER_BARREL = 42
+    DEFAULT_BARRELS_PER_TONNE_GASOIL = 7.45
 
     # Regional refining margin configurations (simplified).
     REGIONAL_REFINING_CONFIGS = {
@@ -86,12 +78,32 @@ class SpreadAnalyzer:
         },
     }
 
-    def __init__(self):
-        """Initialize spread analyzer."""
-        pass
+    def __init__(
+        self,
+        gallons_per_barrel: int | None = None,
+        barrels_per_tonne_gasoil: float | None = None,
+    ):
+        """
+        Initialize spread analyzer.
+        
+        Args:
+            gallons_per_barrel: Conversion factor for gallon to barrel (default: 42)
+            barrels_per_tonne_gasoil: Conversion factor for tonne to barrel (default: 7.45)
+        """
+        self.gallons_per_barrel = gallons_per_barrel or self.DEFAULT_GALLONS_PER_BARREL
+        self.barrels_per_tonne_gasoil = barrels_per_tonne_gasoil or self.DEFAULT_BARRELS_PER_TONNE_GASOIL
+        
+        # Contract specifications for spread calculations
+        # Maps Bloomberg ticker prefix to conversion factor to get $/barrel
+        self.barrel_conversion = {
+            "CL": 1,                            # WTI - already in $/bbl
+            "CO": 1,                            # Brent - already in $/bbl
+            "XB": self.gallons_per_barrel,      # RBOB - $/gal to $/bbl
+            "HO": self.gallons_per_barrel,      # Heating Oil - $/gal to $/bbl
+            "QS": self.barrels_per_tonne_gasoil,  # Gasoil - $/tonne to $/bbl
+        }
 
-    @classmethod
-    def convert_to_barrel(cls, price: float, unit: str) -> float:
+    def convert_to_barrel(self, price: float, unit: str) -> float:
         """
         Convert a price to $/barrel.
 
@@ -105,9 +117,9 @@ class SpreadAnalyzer:
         if unit == 'barrel':
             return price
         elif unit == 'gallon':
-            return price * cls.GALLONS_PER_BARREL
+            return price * self.gallons_per_barrel
         elif unit == 'tonne':
-            return price * cls.BARRELS_PER_TONNE_GASOIL
+            return price * self.barrels_per_tonne_gasoil
         else:
             raise ValueError(f"Unknown unit: {unit}. Expected 'gallon', 'barrel', or 'tonne'")
 
@@ -152,7 +164,10 @@ class SpreadAnalyzer:
         distillate_price: float,
         crack_type: str = "3-2-1",
         gasoline_unit: str = "gallon",
-        distillate_unit: str = "gallon"
+        distillate_unit: str = "gallon",
+        gasoline_ratio: float | None = None,
+        distillate_ratio: float | None = None,
+        crude_ratio: float | None = None,
     ) -> dict:
         """
         Calculate crack spread.
@@ -162,8 +177,8 @@ class SpreadAnalyzer:
 
         Standard unit conventions:
         - Crude oil (WTI/Brent): Always quoted in $/barrel
-        - RBOB Gasoline: Quoted in $/gallon (multiply by 42 to get $/barrel)
-        - Heating Oil: Quoted in $/gallon (multiply by 42 to get $/barrel)
+        - RBOB Gasoline: Quoted in $/gallon (multiply by gallons_per_barrel to get $/barrel)
+        - Heating Oil: Quoted in $/gallon (multiply by gallons_per_barrel to get $/barrel)
 
         Args:
             crude_price: Crude oil price in $/barrel
@@ -172,6 +187,9 @@ class SpreadAnalyzer:
             crack_type: Type of crack spread ('3-2-1', '2-1-1', 'gasoline', 'heating_oil')
             gasoline_unit: Unit of gasoline price - 'gallon' or 'barrel' (default: 'gallon')
             distillate_unit: Unit of distillate price - 'gallon' or 'barrel' (default: 'gallon')
+            gasoline_ratio: Optional custom gasoline ratio (overrides crack_type default)
+            distillate_ratio: Optional custom distillate ratio (overrides crack_type default)
+            crude_ratio: Optional custom crude ratio (overrides crack_type default)
 
         Returns:
             Dict containing crack spread analysis with keys:

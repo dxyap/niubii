@@ -2,6 +2,7 @@
 Risk Management Page
 ====================
 Portfolio risk monitoring and analysis with live data.
+Enhanced with traffic light system and visual stress testing.
 """
 
 from pathlib import Path
@@ -11,6 +12,11 @@ import plotly.express as px
 import streamlit as st
 
 from app.components.charts import BASE_LAYOUT, CHART_COLORS, create_gauge_chart
+from app.components.ui_components import (
+    render_compact_stats,
+    render_progress_ring,
+    render_risk_traffic_light,
+)
 from app.page_utils import get_chart_config, init_page
 from core.risk import RiskLimits, RiskMonitor, VaRCalculator
 
@@ -39,28 +45,40 @@ var_calc, risk_limits, risk_monitor = get_risk_components()
 portfolio = ctx.portfolio.summary
 position_pnl = portfolio['positions']
 
-# Top metrics row
-col1, col2, col3, col4, col5 = st.columns(5)
-
 var_value = portfolio['var_estimate']
 var_limit = portfolio['var_limit']
 var_util = portfolio['var_utilization']
+gross_util = portfolio['gross_exposure'] / 20000000 * 100
+drawdown_pct = -portfolio['total_pnl'] / 1000000 * 100 if portfolio['total_pnl'] < 0 else 0
+
+# Risk Traffic Light - Most important visual indicator
+render_risk_traffic_light(
+    var_utilization=var_util,
+    exposure_utilization=gross_util,
+    drawdown_pct=abs(drawdown_pct),
+)
+
+st.markdown("")  # Spacing
+
+# Top metrics row
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
+    var_color = "inverse" if var_util > 75 else "off"
     st.metric(
         "Portfolio VaR (95%, 1-Day)",
         f"${var_value:,.0f}",
         delta=f"{var_util:.0f}% of limit",
-        delta_color="off"
+        delta_color=var_color
     )
 
 with col2:
-    gross_util = portfolio['gross_exposure'] / 20000000 * 100
+    exp_color = "inverse" if gross_util > 75 else "off"
     st.metric(
         "Gross Exposure",
         f"${portfolio['gross_exposure']/1e6:.1f}M",
         delta=f"{gross_util:.0f}% of limit",
-        delta_color="off"
+        delta_color=exp_color
     )
 
 with col3:
@@ -73,13 +91,13 @@ with col3:
     )
 
 with col4:
-    drawdown_pct = -portfolio['total_pnl'] / 1000000 * 100 if portfolio['total_pnl'] < 0 else 0
     dd_util = abs(drawdown_pct) / 5 * 100 if drawdown_pct != 0 else 0
+    dd_color = "inverse" if drawdown_pct > 2 else "off"
     st.metric(
         "Current Drawdown",
         f"{drawdown_pct:.1f}%",
         delta=f"{dd_util:.0f}% of limit" if dd_util > 0 else "None",
-        delta_color="off"
+        delta_color=dd_color
     )
 
 with col5:
@@ -91,11 +109,12 @@ with col5:
     if var_util > 75:
         alerts.append("VaR")
 
+    alert_color = "inverse" if alerts else "off"
     st.metric(
         "Active Alerts",
         len(alerts),
-        delta=f"{len(alerts)} Warning" if alerts else "None",
-        delta_color="off"
+        delta=f"{len(alerts)} Warning" if alerts else "All Clear",
+        delta_color=alert_color
     )
 
 st.divider()
@@ -260,12 +279,14 @@ with tab2:
 
 with tab3:
     st.subheader("Stress Test Scenarios")
+    
+    st.markdown("**Impact analysis under various market scenarios**")
 
     scenarios = {
-        "Oil +10% Shock": {"factors": {"crude_oil": 0.10}},
-        "Oil -10% Shock": {"factors": {"crude_oil": -0.10}},
-        "Oil -20% Crash": {"factors": {"crude_oil": -0.20}},
-        "2020 COVID Replay": {"factors": {"crude_oil": -0.65}},
+        "Oil +10% Rally": {"factors": {"crude_oil": 0.10}, "icon": "📈", "severity": "low"},
+        "Oil -10% Decline": {"factors": {"crude_oil": -0.10}, "icon": "📉", "severity": "medium"},
+        "Oil -20% Crash": {"factors": {"crude_oil": -0.20}, "icon": "⚠️", "severity": "high"},
+        "2020 COVID Replay (-65%)": {"factors": {"crude_oil": -0.65}, "icon": "🚨", "severity": "critical"},
     }
 
     stress_results = []
@@ -282,27 +303,70 @@ with tab3:
         stress_results.append({
             'scenario': scenario_name,
             'pnl': pnl_impact,
-            'pnl_pct': pnl_impact / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0
+            'pnl_pct': pnl_impact / portfolio['gross_exposure'] * 100 if portfolio['gross_exposure'] > 0 else 0,
+            'icon': scenario['icon'],
+            'severity': scenario['severity'],
         })
 
-    stress_df = pd.DataFrame(stress_results)
-
-    for _, row in stress_df.iterrows():
-        col1, col2, col3 = st.columns([2, 1, 1])
-
-        with col1:
-            st.markdown(f"**{row['scenario']}**")
-        with col2:
-            pnl = row['pnl']
-            color = "#00D26A" if pnl > 0 else "#FF4B4B"
-            st.markdown(f"<span style='color: {color}; font-size: 18px;'>${pnl:,.0f}</span>", unsafe_allow_html=True)
-        with col3:
-            if pnl > 0:
-                st.success("Favorable")
-            elif abs(row['pnl_pct']) < 5:
-                st.info("Within Limits")
-            else:
-                st.warning("Caution")
+    # Display as styled cards
+    for result in stress_results:
+        pnl = result['pnl']
+        pnl_pct = result['pnl_pct']
+        
+        # Determine colors and status
+        if pnl > 0:
+            bg_color = "rgba(0, 220, 130, 0.1)"
+            border_color = "rgba(0, 220, 130, 0.3)"
+            text_color = "#00DC82"
+            status = "✅ Favorable"
+        elif abs(pnl_pct) < 5:
+            bg_color = "rgba(14, 165, 233, 0.1)"
+            border_color = "rgba(14, 165, 233, 0.3)"
+            text_color = "#0ea5e9"
+            status = "ℹ️ Within Limits"
+        elif abs(pnl_pct) < 15:
+            bg_color = "rgba(245, 158, 11, 0.1)"
+            border_color = "rgba(245, 158, 11, 0.3)"
+            text_color = "#f59e0b"
+            status = "⚠️ Caution"
+        else:
+            bg_color = "rgba(239, 68, 68, 0.1)"
+            border_color = "rgba(239, 68, 68, 0.3)"
+            text_color = "#ef4444"
+            status = "🚨 Critical"
+        
+        sign = "+" if pnl >= 0 else ""
+        
+        st.markdown(f"""
+        <div style="
+            background: {bg_color};
+            border: 1px solid {border_color};
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">{result['icon']}</span>
+                <span style="font-weight: 600; color: #e2e8f0;">{result['scenario']}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 24px;">
+                <div style="text-align: right;">
+                    <div style="font-size: 20px; font-weight: 700; color: {text_color}; font-family: 'IBM Plex Mono', monospace;">
+                        {sign}${abs(pnl):,.0f}
+                    </div>
+                    <div style="font-size: 11px; color: #64748b;">
+                        {pnl_pct:+.1f}% of exposure
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: {text_color}; min-width: 100px; text-align: right;">
+                    {status}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 with tab4:
     st.subheader("Risk Alerts")

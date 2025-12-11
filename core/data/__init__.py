@@ -25,6 +25,7 @@ from .cache import (
     TTLCache,
     get_smart_ttl,
     is_market_hours,
+    set_weekend_closed_days,
 )
 from .loader import DataLoader
 
@@ -36,6 +37,7 @@ __all__ = [
     "RequestDeduplicator",
     "get_smart_ttl",
     "is_market_hours",
+    "set_weekend_closed_days",
     "BloombergClient",
     "TickerMapper",
     "BloombergSubscriptionService",

@@ -2,6 +2,7 @@
 Trade Entry Page
 ================
 Manual trade entry with pre-trade risk checks.
+Enhanced with visual pre-trade feedback.
 """
 
 from datetime import datetime
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from app.components.ui_components import render_compact_stats, render_progress_ring
 from app.page_utils import init_page
 from core.constants import REFERENCE_PRICES
 from core.risk import RiskLimits
@@ -132,32 +134,76 @@ with col2:
         price=price_for_checks
     )
 
-    st.markdown("**Position Limits**")
+    # Position Limit Visual Check
+    pos_util = position_check['contract_utilization_pct']
+    pos_color = "#00DC82" if pos_util < 75 else "#f59e0b" if pos_util < 90 else "#ef4444"
+    pos_status = "✅ Approved" if position_check['approved'] else "❌ Breach"
+    
+    st.markdown(f"""
+    <div style="
+        background: {'rgba(0, 220, 130, 0.1)' if position_check['approved'] else 'rgba(239, 68, 68, 0.1)'};
+        border: 1px solid {'rgba(0, 220, 130, 0.3)' if position_check['approved'] else 'rgba(239, 68, 68, 0.3)'};
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 12px;
+    ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Position Limits</span>
+            <span style="font-size: 12px; color: {'#00DC82' if position_check['approved'] else '#ef4444'}; font-weight: 600;">{pos_status}</span>
+        </div>
+        <div style="font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'IBM Plex Mono', monospace;">
+            {position_check['new_quantity']} / {position_check['max_contracts']} contracts
+        </div>
+        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+            {pos_util:.0f}% utilized
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.progress(min(pos_util / 100, 1.0))
 
-    if position_check['approved']:
-        st.success(f"✅ Position: {position_check['new_quantity']} / {position_check['max_contracts']} contracts")
-    else:
-        st.error("❌ Position limit breach")
+    st.markdown("")  # Spacing
 
-    st.progress(min(position_check['contract_utilization_pct'] / 100, 1.0))
-
-    st.divider()
-
-    st.markdown("**VaR Impact**")
-
+    # VaR Impact Visual Check
     multiplier = ctx.data_loader.get_multiplier(selected_ticker)
     current_var = portfolio_summary['var_estimate']
     var_limit = portfolio_summary['var_limit']
     var_impact = proposed_quantity * price_for_checks * multiplier * 0.02 * 1.65
     new_var = current_var + var_impact
     var_util = new_var / var_limit * 100
-
-    if var_util < 90:
-        st.success(f"✅ VaR: ${new_var:,.0f} ({var_util:.0f}% of limit)")
-    else:
-        st.warning(f"⚠️ VaR: ${new_var:,.0f} ({var_util:.0f}% of limit)")
-
+    
+    var_approved = var_util < 90
+    var_status = "✅ Approved" if var_approved else "⚠️ Warning"
+    
+    st.markdown(f"""
+    <div style="
+        background: {'rgba(0, 220, 130, 0.1)' if var_approved else 'rgba(245, 158, 11, 0.1)'};
+        border: 1px solid {'rgba(0, 220, 130, 0.3)' if var_approved else 'rgba(245, 158, 11, 0.3)'};
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 12px;
+    ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">VaR Impact</span>
+            <span style="font-size: 12px; color: {'#00DC82' if var_approved else '#f59e0b'}; font-weight: 600;">{var_status}</span>
+        </div>
+        <div style="font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'IBM Plex Mono', monospace;">
+            ${new_var:,.0f}
+        </div>
+        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+            {var_util:.0f}% of ${var_limit:,} limit (+${var_impact:,.0f} impact)
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.progress(min(var_util / 100, 1.0))
+    
+    # Overall approval status
+    overall_approved = position_check['approved'] and var_approved
+    if overall_approved:
+        st.success("✅ Trade passes all risk checks")
+    else:
+        st.warning("⚠️ Trade requires risk review")
 
 # Recent trades
 st.divider()
@@ -189,32 +235,56 @@ else:
 st.divider()
 st.subheader("⚡ Quick Trade Entry")
 
+st.markdown("""
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+""", unsafe_allow_html=True)
+
 quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
 
+# Get live prices
+wti_price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
+brent_price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
+
 with quick_col1:
-    if st.button("Buy 5 WTI", width='stretch'):
-        price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
-        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
+    st.markdown(f"""
+    <div style="text-align: center; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+        WTI @ ${wti_price:.2f}
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("📈 Buy 5 WTI", use_container_width=True, type="primary"):
+        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col2:
-    if st.button("Sell 5 WTI", width='stretch'):
-        price = round(ctx.price_cache.get("CL1 Comdty") or 72.5, 2)
-        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
+    st.markdown(f"""
+    <div style="text-align: center; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+        WTI @ ${wti_price:.2f}
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("📉 Sell 5 WTI", use_container_width=True):
+        trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col3:
-    if st.button("Buy 5 Brent", width='stretch'):
-        price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
-        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=price, strategy="Quick Entry")
+    st.markdown(f"""
+    <div style="text-align: center; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+        Brent @ ${brent_price:.2f}
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("📈 Buy 5 Brent", use_container_width=True, type="primary"):
+        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
 
 with quick_col4:
-    if st.button("Sell 5 Brent", width='stretch'):
-        price = round(ctx.price_cache.get("CO1 Comdty") or 77.2, 2)
-        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=price, strategy="Quick Entry")
+    st.markdown(f"""
+    <div style="text-align: center; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+        Brent @ ${brent_price:.2f}
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("📉 Sell 5 Brent", use_container_width=True):
+        trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()

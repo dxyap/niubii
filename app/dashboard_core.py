@@ -20,24 +20,58 @@ class DataNotAvailableError(Exception):
 
 
 class PriceCache:
-    """Cache ticker prices fetched from the data loader."""
+    """
+    Lightweight price cache that leverages DataLoader's built-in deduplication.
+    
+    This class provides a simple interface for getting prices while tracking
+    errors. The actual caching and deduplication is handled by DataLoader's
+    RequestDeduplicator, so this class only adds error tracking and a
+    consistent interface.
+    """
 
     def __init__(self, data_loader):
         self._data_loader = data_loader
-        self._prices: dict[str, float] = {}
         self._errors: dict[str, str] = {}
+        self._session_prices: dict[str, float] = {}
 
     def get(self, ticker: str) -> float | None:
-        """Return the latest price for ticker, caching repeated requests."""
+        """
+        Return the latest price for ticker.
+        
+        Uses DataLoader's built-in request deduplication to prevent
+        redundant Bloomberg API calls within the same refresh cycle.
+        """
         if ticker in self._errors:
             return None
-        if ticker not in self._prices:
-            try:
-                self._prices[ticker] = float(self._data_loader.get_price(ticker))
-            except Exception as e:
+        
+        # Check session cache first (for repeated calls in same render)
+        if ticker in self._session_prices:
+            return self._session_prices[ticker]
+        
+        try:
+            # DataLoader.get_price() uses RequestDeduplicator internally
+            price = float(self._data_loader.get_price(ticker))
+            self._session_prices[ticker] = price
+            return price
+        except Exception as e:
+            self._errors[ticker] = str(e)
+            return None
+
+    def get_batch(self, tickers: list[str]) -> dict[str, float]:
+        """
+        Get prices for multiple tickers in a single batch call.
+        More efficient than calling get() for each ticker.
+        """
+        try:
+            batch = self._data_loader.get_prices_batch(tickers)
+            for ticker, data in batch.items():
+                if "current" in data:
+                    self._session_prices[ticker] = data["current"]
+            return {t: d.get("current") for t, d in batch.items()}
+        except Exception as e:
+            for ticker in tickers:
                 self._errors[ticker] = str(e)
-                return None
-        return self._prices[ticker]
+            return {}
 
     def get_error(self, ticker: str) -> str | None:
         """Get error message for ticker if any."""
@@ -46,6 +80,11 @@ class PriceCache:
     def has_errors(self) -> bool:
         """Check if any errors occurred."""
         return len(self._errors) > 0
+
+    def clear(self) -> None:
+        """Clear session cache and errors for a fresh start."""
+        self._session_prices.clear()
+        self._errors.clear()
 
 
 @dataclass(frozen=True)
@@ -228,9 +267,15 @@ class DashboardData:
     Data bundle for the dashboard with optimized loading.
 
     Key optimizations:
-    - Prefetch all price data in a single batch call
+    - Prefetch all price data in a single batch call via DataLoader
+    - DataLoader's RequestDeduplicator prevents duplicate API calls
     - Lazy loading for expensive historical data
     - Caching of computed metrics
+    
+    Note: All data fetching goes through DataLoader which handles:
+    - Request deduplication (prevents duplicate Bloomberg calls)
+    - Multi-layer caching (TTL cache, disk cache)
+    - Market-hours aware TTL (longer cache during off-hours)
     """
 
     # Sentinel to distinguish "not loaded" from "loaded but None/empty"
@@ -240,11 +285,11 @@ class DashboardData:
         self.data_loader = data_loader
         self.lookback_days = lookback_days
 
-        # Price data (loaded together in batch)
+        # Price data (loaded together in batch via DataLoader)
         self._oil_prices = self._NOT_LOADED
         self._all_spreads = self._NOT_LOADED
 
-        # Curve data
+        # Curve data (lazy loaded)
         self._curves: dict[str, pd.DataFrame | object] = {
             "futures_curve": self._NOT_LOADED,  # WTI
             "brent_curve": self._NOT_LOADED,
@@ -254,7 +299,7 @@ class DashboardData:
         # Historical data (expensive - loaded lazily)
         self._wti_history = self._NOT_LOADED
 
-        # Connection status
+        # Connection status (cached)
         self._connection_status: dict[str, str] | None = None
 
         # Store errors for display
@@ -267,17 +312,24 @@ class DashboardData:
     def _prefetch_price_data(self) -> None:
         """
         Prefetch all price-related data in optimized batch calls.
+        
+        DataLoader.get_oil_prices() and get_all_spreads() use:
+        - _get_price_batch_cached() for batched Bloomberg calls
+        - RequestDeduplicator to coalesce identical requests
+        - Smart TTL based on market hours
+        
         This significantly reduces API calls on page load.
         """
         try:
-            # Fetch oil prices (4 tickers in 1 call)
+            # Fetch oil prices (batch call via DataLoader)
             self._oil_prices = self.data_loader.get_oil_prices()
         except Exception as e:
             self._errors["oil_prices"] = str(e)
             self._oil_prices = None
 
         try:
-            # Fetch all spreads in a single batch (4 tickers total)
+            # Fetch all spreads in a single batch
+            # Note: This reuses prices from the same cache if called close together
             self._all_spreads = self.data_loader.get_all_spreads()
         except Exception as e:
             self._errors["spreads"] = str(e)
