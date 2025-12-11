@@ -7,9 +7,11 @@ High-level data loading with caching and Bloomberg integration.
 import contextlib
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yaml
@@ -22,6 +24,140 @@ from .bloomberg import (
 from .cache import DataCache, ParquetStorage, RequestDeduplicator, get_smart_ttl
 
 logger = logging.getLogger(__name__)
+
+
+def _require_mapping(value: Mapping | None, path: str) -> dict:
+    """Ensure a mapping exists in configuration."""
+    if isinstance(value, Mapping) and value:
+        return dict(value)
+    raise ValueError(f"Missing configuration for {path} in data_loader.yaml")
+
+
+def _require_sequence(value: Sequence | None, path: str) -> list:
+    """Ensure a sequence exists in configuration."""
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and len(value) > 0:
+        return list(value)
+    raise ValueError(f"Missing configuration for {path} in data_loader.yaml")
+
+
+@dataclass(frozen=True)
+class CrackSpreadConfig:
+    """Configuration and calculator for crack spread ratios."""
+
+    gasoline_ratio: float
+    heating_oil_ratio: float
+    crude_ratio: float
+    divisor: float | None = None
+
+    @classmethod
+    def from_mapping(cls, data: Mapping | None, path: str) -> "CrackSpreadConfig":
+        mapping = _require_mapping(data, path)
+        divisor = mapping.get("divisor")
+        divisor_value = float(divisor) if divisor not in (None, 0) else None
+        return cls(
+            gasoline_ratio=float(mapping.get("gasoline_ratio", 0)),
+            heating_oil_ratio=float(mapping.get("heating_oil_ratio", 0)),
+            crude_ratio=float(mapping.get("crude_ratio", 0)),
+            divisor=divisor_value,
+        )
+
+    def calculate(self, gasoline_value: float, heating_oil_value: float, crude_value: float) -> float:
+        """Calculate crack spread with configured ratios."""
+        numerator = self.gasoline_ratio * gasoline_value + self.heating_oil_ratio * heating_oil_value
+        numerator -= self.crude_ratio * crude_value
+        if self.divisor:
+            return numerator / self.divisor
+        return numerator
+
+
+@dataclass(frozen=True)
+class LoaderSettings:
+    """Immutable loader configuration with helper utilities."""
+
+    gallons_per_barrel: int
+    cache_base_ttl: int
+    dedupe_window_seconds: float
+    oil_price_tickers: dict[str, str]
+    all_oil_price_tickers: dict[str, str]
+    spread_batch_tickers: tuple[str, ...]
+    core_subscription_tickers: tuple[str, ...]
+    market_status_tickers: dict[str, str]
+    crack_321: CrackSpreadConfig
+    crack_211: CrackSpreadConfig
+    curve_spread_offsets: dict[str, int]
+    structure_threshold: float
+    curve_months: int
+    weekend_closed_days: frozenset[int]
+
+    @classmethod
+    def load(cls, config_dir: Path, gallons_default: int) -> "LoaderSettings":
+        """Load settings from data_loader.yaml."""
+        config_file = config_dir / "data_loader.yaml"
+        if not config_file.exists():
+            logger.warning("Data loader config not found at %s", config_file)
+            raw: Mapping[str, Any] = {}
+        else:
+            with open(config_file) as f:
+                raw = yaml.safe_load(f) or {}
+
+        if not isinstance(raw, Mapping):
+            raise ValueError("data_loader.yaml must define a mapping at the top level")
+
+        return cls.from_mapping(raw, gallons_default)
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any], gallons_default: int) -> "LoaderSettings":
+        """Build LoaderSettings from mapping data."""
+        pricing_cfg = raw.get("pricing", {}) or {}
+        caching_cfg = raw.get("caching", {}) or {}
+        dedupe_cfg = raw.get("deduplicator", {}) or {}
+        tickers_cfg = raw.get("tickers", {}) or {}
+        spreads_cfg = raw.get("spreads", {}) or {}
+        market_cfg = raw.get("market", {}) or {}
+        market_hours_cfg = raw.get("market_hours", {}) or {}
+
+        oil_price_tickers = _require_mapping(tickers_cfg.get("oil_prices"), "tickers.oil_prices")
+        all_oil_price_tickers = _require_mapping(tickers_cfg.get("all_oil_prices"), "tickers.all_oil_prices")
+        spread_batch_tickers = tuple(
+            _require_sequence(tickers_cfg.get("spread_batch"), "tickers.spread_batch")
+        )
+        core_subscription_tickers = tuple(
+            _require_sequence(tickers_cfg.get("core_subscriptions"), "tickers.core_subscriptions")
+        )
+        market_status_tickers = _require_mapping(tickers_cfg.get("market_status"), "tickers.market_status")
+
+        crack_321 = CrackSpreadConfig.from_mapping(spreads_cfg.get("crack_321"), "spreads.crack_321")
+        crack_211 = CrackSpreadConfig.from_mapping(spreads_cfg.get("crack_211"), "spreads.crack_211")
+
+        curve_offsets_cfg = market_cfg.get("curve_spread_offsets") or {}
+        curve_spread_offsets = {str(key): int(value) for key, value in curve_offsets_cfg.items()}
+        if not curve_spread_offsets:
+            curve_spread_offsets = {"m1_m2": 1, "m1_m6": 5, "m1_m12": 11}
+
+        weekend_days = market_hours_cfg.get("weekend_closed_days", [5, 6])
+        weekend_closed_days = frozenset(int(day) for day in weekend_days)
+
+        return cls(
+            gallons_per_barrel=int(pricing_cfg.get("gallons_per_barrel", gallons_default)),
+            cache_base_ttl=int(caching_cfg.get("real_time_cache_base_ttl", 60)),
+            dedupe_window_seconds=float(dedupe_cfg.get("window_seconds", 1.0)),
+            oil_price_tickers=oil_price_tickers,
+            all_oil_price_tickers=all_oil_price_tickers,
+            spread_batch_tickers=spread_batch_tickers,
+            core_subscription_tickers=core_subscription_tickers,
+            market_status_tickers=market_status_tickers,
+            crack_321=crack_321,
+            crack_211=crack_211,
+            curve_spread_offsets=curve_spread_offsets,
+            structure_threshold=float(market_cfg.get("structure_threshold", 0.05)),
+            curve_months=int(market_cfg.get("default_curve_months", 12)),
+            weekend_closed_days=weekend_closed_days,
+        )
+
+    def is_market_open(self, when: datetime | None = None) -> bool:
+        """Check market hours based on configured closed days."""
+        reference = when or datetime.now()
+        return reference.weekday() not in self.weekend_closed_days
 
 
 class DataLoader:
@@ -43,7 +179,7 @@ class DataLoader:
     - Gasoil (QS1): Quoted in $/metric tonne (~7.45 barrels per tonne)
     """
 
-    # Standard conversion factor: gallons per barrel
+    # Standard conversion factor: gallons per barrel (overridden by config)
     GALLONS_PER_BARREL = 42
 
     def __init__(
@@ -61,6 +197,11 @@ class DataLoader:
         self.config_dir = Path(config_dir)
         self.data_dir = Path(data_dir)
 
+        # Load loader-specific configuration before initializing components
+        self.settings = LoaderSettings.load(self.config_dir, self.GALLONS_PER_BARREL)
+        # Backward compatibility: expose previous attribute name
+        self.loader_settings = self.settings
+
         # Initialize components
         self.bloomberg = BloombergClient()
         self.cache = DataCache(cache_dir=str(self.data_dir / "cache"))
@@ -68,7 +209,7 @@ class DataLoader:
 
         # Request deduplicator to prevent redundant Bloomberg API calls
         # within a short time window (e.g., during dashboard refresh)
-        self._deduplicator = RequestDeduplicator(window_seconds=1.0)
+        self._deduplicator = RequestDeduplicator(window_seconds=self.settings.dedupe_window_seconds)
 
         # Initialize subscription service for real-time updates
         self.subscription_service = BloombergSubscriptionService(self.bloomberg)
@@ -227,51 +368,31 @@ class DataLoader:
         batch = self.get_prices_batch(list(tickers))
         if batch:
             # Use smart TTL - longer during off-hours when prices don't change
-            ttl = get_smart_ttl(60)  # Base 60s, extended during off-hours
+            ttl = get_smart_ttl(self.settings.cache_base_ttl)  # Base TTL configurable
             self.cache.set(cache_key, batch, cache_type="real_time")
         return batch
 
-    def get_oil_prices(self) -> dict[str, dict[str, float]]:
-        """Get current oil prices for key benchmarks with changes (batch optimized)."""
-        ticker_map = {
-            "WTI": "CL1 Comdty",
-            "Brent": "CO1 Comdty",
-            "RBOB": "XB1 Comdty",
-            "Heating Oil": "HO1 Comdty",
-        }
+    def _build_named_price_map(
+        self,
+        cache_key: str,
+        ticker_map: Mapping[str, str],
+    ) -> dict[str, dict[str, float]]:
+        """Return price payload keyed by friendly names."""
+        batch_prices = self._get_price_batch_cached(cache_key, list(ticker_map.values()))
 
-        batch_prices = self._get_price_batch_cached("oil_prices", ticker_map.values())
-
-        # Map back to friendly names
-        prices = {}
+        prices: dict[str, dict[str, float]] = {}
         for name, ticker in ticker_map.items():
             if ticker in batch_prices:
                 prices[name] = batch_prices[ticker]
-
         return prices
+
+    def get_oil_prices(self) -> dict[str, dict[str, float]]:
+        """Get current oil prices for key benchmarks with changes (batch optimized)."""
+        return self._build_named_price_map("oil_prices", self.settings.oil_price_tickers)
 
     def get_all_oil_prices(self) -> dict[str, dict[str, float]]:
         """Get prices for all tracked oil products (batch optimized)."""
-        ticker_map = {
-            "WTI Front": "CL1 Comdty",
-            "WTI 2nd": "CL2 Comdty",
-            "Brent Front": "CO1 Comdty",
-            "Brent 2nd": "CO2 Comdty",
-            "RBOB": "XB1 Comdty",
-            "Heating Oil": "HO1 Comdty",
-            "Gasoil": "QS1 Comdty",
-            "Natural Gas": "NG1 Comdty",
-        }
-
-        batch_prices = self._get_price_batch_cached("all_oil_prices", ticker_map.values())
-
-        # Map back to friendly names
-        prices = {}
-        for name, ticker in ticker_map.items():
-            if ticker in batch_prices:
-                prices[name] = batch_prices[ticker]
-
-        return prices
+        return self._build_named_price_map("all_oil_prices", self.settings.all_oil_price_tickers)
 
     def get_intraday_prices(self, ticker: str) -> pd.DataFrame:
         """Get intraday price history for charting."""
@@ -415,7 +536,7 @@ class DataLoader:
     def get_futures_curve(
         self,
         commodity: str = "wti",
-        num_months: int = 12
+        num_months: int | None = None
     ) -> pd.DataFrame:
         """
         Get futures curve data.
@@ -429,15 +550,16 @@ class DataLoader:
         Returns:
             DataFrame with curve data including changes
         """
-        dedupe_key = f"curve:{commodity}:{num_months}"
+        target_months = num_months if num_months is not None else self.settings.curve_months
+        dedupe_key = f"curve:{commodity}:{target_months}"
         return self._deduplicator.execute(
             dedupe_key,
-            lambda: self.bloomberg.get_curve(commodity, num_months)
+            lambda: self.bloomberg.get_curve(commodity, target_months)
         )
 
     def get_calendar_spreads(self, commodity: str = "wti") -> pd.DataFrame:
         """Calculate calendar spreads from curve."""
-        curve = self.get_futures_curve(commodity, num_months=12)
+        curve = self.get_futures_curve(commodity, num_months=self.settings.curve_months)
 
         spreads = []
         for i in range(len(curve) - 1):
@@ -455,35 +577,37 @@ class DataLoader:
 
     def get_term_structure(self, commodity: str = "wti") -> dict:
         """Get term structure analysis."""
-        curve = self.get_futures_curve(commodity, num_months=12)
+        curve = self.get_futures_curve(commodity, num_months=self.settings.curve_months)
+        curve_length = len(curve)
 
-        if len(curve) < 2:
+        if curve_length < 2:
             return {"structure": "Unknown", "slope": 0}
 
         # Calculate overall slope
-        slope = (curve.iloc[-1]["price"] - curve.iloc[0]["price"]) / (len(curve) - 1)
+        slope = (curve.iloc[-1]["price"] - curve.iloc[0]["price"]) / (curve_length - 1)
 
         # Determine structure
-        if slope > 0.05:
+        if slope > self.settings.structure_threshold:
             structure = "Contango"
-        elif slope < -0.05:
+        elif slope < -self.settings.structure_threshold:
             structure = "Backwardation"
         else:
             structure = "Flat"
 
-        # Key spreads
-        m1_m2 = curve.iloc[0]["price"] - curve.iloc[1]["price"]
-        m1_m6 = curve.iloc[0]["price"] - curve.iloc[5]["price"] if len(curve) > 5 else 0
-        m1_m12 = curve.iloc[0]["price"] - curve.iloc[11]["price"] if len(curve) > 11 else 0
+        spreads: dict[str, float] = {}
+        for label, offset in self.settings.curve_spread_offsets.items():
+            if curve_length > offset:
+                spreads[f"{label}_spread"] = round(curve.iloc[0]["price"] - curve.iloc[offset]["price"], 2)
+            else:
+                spreads[f"{label}_spread"] = 0.0
 
-        return {
+        result = {
             "structure": structure,
             "slope": round(slope, 4),
-            "m1_m2_spread": round(m1_m2, 2),
-            "m1_m6_spread": round(m1_m6, 2),
-            "m1_m12_spread": round(m1_m12, 2),
             "curve_data": curve,
         }
+        result.update(spreads)
+        return result
 
     # =========================================================================
     # FUNDAMENTAL DATA METHODS
@@ -555,8 +679,7 @@ class DataLoader:
         Fetch the core spread tickers in one call with a short-lived cache to
         avoid redundant Bloomberg round trips within a refresh cycle.
         """
-        tickers = ("CL1 Comdty", "CO1 Comdty", "XB1 Comdty", "HO1 Comdty")
-        return self._get_price_batch_cached("core_spread_prices", tickers)
+        return self._get_price_batch_cached("core_spread_prices", list(self.settings.spread_batch_tickers))
 
     def _build_spread_payloads(self, batch: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
         """Compute the various spreads from a shared batch payload."""
@@ -575,14 +698,15 @@ class DataLoader:
         wti_brent_spread_open = wti_open - brent_open
 
         # Convert refined products to $/bbl
-        rbob_bbl = rbob_data.get("current", 0) * self.GALLONS_PER_BARREL
-        ho_bbl = ho_data.get("current", 0) * self.GALLONS_PER_BARREL
-        rbob_open_bbl = rbob_data.get("open", rbob_data.get("current", 0)) * self.GALLONS_PER_BARREL
-        ho_open_bbl = ho_data.get("open", ho_data.get("current", 0)) * self.GALLONS_PER_BARREL
+        gallon_factor = self.settings.gallons_per_barrel
+        rbob_bbl = rbob_data.get("current", 0) * gallon_factor
+        ho_bbl = ho_data.get("current", 0) * gallon_factor
+        rbob_open_bbl = rbob_data.get("open", rbob_data.get("current", 0)) * gallon_factor
+        ho_open_bbl = ho_data.get("open", ho_data.get("current", 0)) * gallon_factor
 
-        crack_321 = (2 * rbob_bbl + ho_bbl - 3 * wti_current) / 3
-        crack_321_open = (2 * rbob_open_bbl + ho_open_bbl - 3 * wti_open) / 3
-        crack_211 = (rbob_bbl + ho_bbl - 2 * wti_current) / 2
+        crack_321 = self.settings.crack_321.calculate(rbob_bbl, ho_bbl, wti_current)
+        crack_321_open = self.settings.crack_321.calculate(rbob_open_bbl, ho_open_bbl, wti_open)
+        crack_211 = self.settings.crack_211.calculate(rbob_bbl, ho_bbl, wti_current)
 
         return {
             "wti_brent": {
@@ -608,8 +732,7 @@ class DataLoader:
 
     def get_wti_brent_spread(self) -> dict[str, float]:
         """Calculate WTI-Brent spread with details (batch optimized)."""
-        payloads = self._build_spread_payloads(self._get_spread_price_batch())
-        return payloads["wti_brent"]
+        return self.get_all_spreads()["wti_brent"]
 
     def get_crack_spread_321(self) -> dict[str, float]:
         """
@@ -618,8 +741,7 @@ class DataLoader:
         The 3-2-1 crack spread represents the refining margin for converting
         3 barrels of crude oil into 2 barrels of gasoline and 1 barrel of heating oil.
         """
-        payloads = self._build_spread_payloads(self._get_spread_price_batch())
-        return payloads["crack_321"]
+        return self.get_all_spreads()["crack_321"]
 
     def get_crack_spread_211(self) -> dict[str, float]:
         """
@@ -628,8 +750,7 @@ class DataLoader:
         The 2-1-1 crack spread represents the refining margin for converting
         2 barrels of crude oil into 1 barrel of gasoline and 1 barrel of heating oil.
         """
-        payloads = self._build_spread_payloads(self._get_spread_price_batch())
-        return payloads["crack_211"]
+        return self.get_all_spreads()["crack_211"]
 
     def get_all_spreads(self) -> dict[str, dict]:
         """
@@ -645,40 +766,50 @@ class DataLoader:
     def get_market_summary(self) -> dict:
         """Get comprehensive market summary."""
         oil_prices = self.get_oil_prices()
-        wti_curve = self.get_futures_curve("wti")
-        self.get_futures_curve("brent")
+        spread_payload = self.get_all_spreads()
+        wti_structure = self.get_term_structure("wti")
+        brent_structure = self.get_term_structure("brent")
 
-        # Calculate spreads
-        wti_brent = self.get_wti_brent_spread()
-        crack_321 = self.get_crack_spread_321()
-
-        # Calendar spreads
-        wti_m1_m2 = wti_curve.iloc[0]["price"] - wti_curve.iloc[1]["price"]
-        wti_m1_m12 = wti_curve.iloc[0]["price"] - wti_curve.iloc[11]["price"]
-
-        # Curve shape
-        curve_slope = (wti_curve.iloc[11]["price"] - wti_curve.iloc[0]["price"]) / 11
-        structure = "Contango" if curve_slope > 0.05 else "Backwardation" if curve_slope < -0.05 else "Flat"
+        # Map configured curve spreads into friendly keys
+        wti_spreads: dict[str, float] = {}
+        for label in self.settings.curve_spread_offsets:
+            spread_key = f"{label}_spread"
+            value = wti_structure.get(spread_key)
+            if value is not None:
+                wti_spreads[f"wti_{label}"] = value
 
         return {
             "prices": oil_prices,
             "spreads": {
-                "wti_brent": wti_brent,
-                "crack_321": crack_321,
-                "wti_m1_m2": round(wti_m1_m2, 2),
-                "wti_m1_m12": round(wti_m1_m12, 2),
+                "wti_brent": spread_payload["wti_brent"],
+                "crack_321": spread_payload["crack_321"],
+                "crack_211": spread_payload["crack_211"],
+                **wti_spreads,
             },
             "curve": {
-                "structure": structure,
-                "slope": round(curve_slope, 3),
+                "structure": wti_structure["structure"],
+                "slope": wti_structure["slope"],
+                "details": {
+                    "wti": {
+                        "structure": wti_structure["structure"],
+                        "slope": wti_structure["slope"],
+                    },
+                    "brent": {
+                        "structure": brent_structure["structure"],
+                        "slope": brent_structure["slope"],
+                    },
+                },
             },
             "timestamp": datetime.now().isoformat(),
         }
 
     def get_market_status(self) -> dict:
         """Get quick market status overview."""
-        wti = self.get_price_with_change("CL1 Comdty")
-        brent = self.get_price_with_change("CO1 Comdty")
+        wti_ticker = self.settings.market_status_tickers["wti"]
+        brent_ticker = self.settings.market_status_tickers["brent"]
+
+        wti = self.get_price_with_change(wti_ticker)
+        brent = self.get_price_with_change(brent_ticker)
 
         return {
             "wti": wti,
@@ -690,10 +821,7 @@ class DataLoader:
 
     def _is_market_hours(self) -> bool:
         """Check if oil markets are open."""
-        now = datetime.now()
-        # Simplified check - oil trades nearly 24 hours
-        # Weekend closure: weekday >= 5 means Saturday or Sunday
-        return now.weekday() < 5
+        return self.settings.is_market_open()
 
     # =========================================================================
     # DATA REFRESH
@@ -743,19 +871,10 @@ class DataLoader:
 
     def subscribe_to_core_tickers(self) -> None:
         """Subscribe to core oil market tickers for real-time updates."""
-        core_tickers = [
-            "CL1 Comdty",  # WTI Front Month
-            "CL2 Comdty",  # WTI 2nd Month
-            "CO1 Comdty",  # Brent Front Month
-            "CO2 Comdty",  # Brent 2nd Month
-            "XB1 Comdty",  # RBOB Gasoline
-            "HO1 Comdty",  # Heating Oil
-        ]
-
-        for ticker in core_tickers:
+        for ticker in self.settings.core_subscription_tickers:
             self.subscription_service.subscribe(ticker)
 
-        logger.info(f"Subscribed to {len(core_tickers)} core tickers")
+        logger.info(f"Subscribed to {len(self.settings.core_subscription_tickers)} core tickers")
 
     def get_live_prices(self) -> dict[str, dict[str, float]]:
         """Get live prices for all subscribed tickers."""

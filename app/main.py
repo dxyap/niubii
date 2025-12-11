@@ -47,6 +47,7 @@ st.set_page_config(
 
 from app import shared_state
 from app.components.theme import apply_theme as apply_dashboard_theme
+from app.page_utils import render_status_bar
 from app.ui import (
     ActivityFeedView,
     KeyMetricsView,
@@ -198,13 +199,10 @@ class DashboardApp:
     def _render_header(self) -> None:
         st.title("Oil Trading Dashboard")
 
-        # Check Bloomberg connection
         connection_status = self.data_loader.get_connection_status()
         data_mode = connection_status.get("data_mode", "disconnected")
 
-        if data_mode == "live":
-            st.caption(":green_circle: Live market data from Bloomberg")
-        elif data_mode == "disconnected":
+        if data_mode == "disconnected":
             st.error("Bloomberg Terminal not connected. Live data required.")
             st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
             if st.button("Retry Bloomberg Connection", key="retry_live_disconnected"):
@@ -214,8 +212,13 @@ class DashboardApp:
                     st.warning("Bloomberg connection still unavailable.")
                 self._trigger_rerun()
             st.stop()
-        else:
-            st.caption("Real-time quantitative analysis for oil markets")
+
+        render_status_bar(
+            data_mode=data_mode,
+            last_refresh=self.refresh_controller.last_refresh,
+            timezone=connection_status.get("timezone", "UTC"),
+            latency_ms=connection_status.get("latency_ms"),
+        )
 
     def _render_market_sections(self) -> None:
         left_col, right_col = st.columns([2, 1])

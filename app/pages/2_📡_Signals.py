@@ -14,13 +14,13 @@ from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
 
 # Initialize page
 ctx = init_page(
-    title="📡 Trading Signals",
+    title="Trading Signals",
     page_title="Signals | Oil Trading",
-    icon="📡",
+    icon="SIG",
     lookback_days=120,
 )
 
-st.caption("AI-powered signal generation for oil markets | ⚠️ Signals are advisory only")
+st.caption("AI-powered signal generation for oil markets | Signals are advisory only")
 
 # Initialize signal components (cached)
 @st.cache_resource

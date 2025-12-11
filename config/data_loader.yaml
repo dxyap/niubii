@@ -1,0 +1,66 @@
+# ============================================================================
+# DATA LOADER CONFIGURATION
+# ============================================================================
+
+deduplicator:
+  window_seconds: 1.0
+
+pricing:
+  gallons_per_barrel: 42
+
+caching:
+  real_time_cache_base_ttl: 60
+
+tickers:
+  oil_prices:
+    WTI: "CL1 Comdty"
+    Brent: "CO1 Comdty"
+    RBOB: "XB1 Comdty"
+    Heating Oil: "HO1 Comdty"
+  all_oil_prices:
+    WTI Front: "CL1 Comdty"
+    WTI 2nd: "CL2 Comdty"
+    Brent Front: "CO1 Comdty"
+    Brent 2nd: "CO2 Comdty"
+    RBOB: "XB1 Comdty"
+    Heating Oil: "HO1 Comdty"
+    Gasoil: "QS1 Comdty"
+    Natural Gas: "NG1 Comdty"
+  spread_batch:
+    - "CL1 Comdty"
+    - "CO1 Comdty"
+    - "XB1 Comdty"
+    - "HO1 Comdty"
+  core_subscriptions:
+    - "CL1 Comdty"
+    - "CL2 Comdty"
+    - "CO1 Comdty"
+    - "CO2 Comdty"
+    - "XB1 Comdty"
+    - "HO1 Comdty"
+  market_status:
+    wti: "CL1 Comdty"
+    brent: "CO1 Comdty"
+
+spreads:
+  crack_321:
+    gasoline_ratio: 2
+    heating_oil_ratio: 1
+    crude_ratio: 3
+    divisor: 3
+  crack_211:
+    gasoline_ratio: 1
+    heating_oil_ratio: 1
+    crude_ratio: 2
+    divisor: 2
+
+market:
+  default_curve_months: 12
+  structure_threshold: 0.05
+  curve_spread_offsets:
+    m1_m2: 1
+    m1_m6: 5
+    m1_m12: 11
+
+market_hours:
+  weekend_closed_days: [5, 6]

@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -84,58 +85,38 @@ def init_page(
     require_data: bool = True,
 ) -> PageContext:
     """
-    Initialize a dashboard page with standard configuration.
-
-    This function handles:
-    - Page configuration
-    - Theme application
-    - Shared state initialization
-    - Connection status display
-
-    Args:
-        title: Page header title (with emoji)
-        page_title: Browser tab title
-        icon: Page icon for tab
-        layout: Page layout ("wide" or "centered")
-        lookback_days: Days of historical data to load
-        show_connection_status: Whether to show connection indicator
-        require_data: Stop page if no data connection
-
-    Returns:
-        PageContext with common objects
+    Initialize a dashboard page with standard configuration and status bar.
     """
-    # Page configuration (must be first Streamlit call)
-    st.set_page_config(
-        page_title=page_title,
-        page_icon=icon,
-        layout=layout,
-    )
-
-    # Apply shared theme
+    st.set_page_config(page_title=page_title, page_icon=icon, layout=layout)
     apply_theme(st)
 
-    # Get shared context
     context = shared_state.get_dashboard_context(lookback_days=lookback_days)
     data_loader = context.data_loader
     price_cache = context.price_cache
 
-    # Get connection status
+    st.session_state.setdefault("last_refresh", datetime.now())
+
     connection_status = data_loader.get_connection_status()
     data_mode = connection_status.get("data_mode", "disconnected")
 
-    # Render title
     st.title(title)
 
-    # Show connection status if requested
     if show_connection_status:
         if data_mode == "live":
-            st.caption("🟢 Live market data from Bloomberg")
+            st.caption("Live market data from Bloomberg")
         elif data_mode == "mock":
-            st.caption("⚠️ Simulated data mode — Bloomberg not connected")
+            st.caption("Simulated data mode (Bloomberg not connected)")
         elif data_mode == "disconnected" and require_data:
-            st.error("🔴 Bloomberg Terminal not connected. Live data required.")
+            st.error("Bloomberg Terminal not connected. Live data required.")
             st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
             st.stop()
+
+    render_status_bar(
+        data_mode=data_mode,
+        last_refresh=st.session_state.get("last_refresh"),
+        timezone=connection_status.get("timezone") or os.getenv("DATA_TIMEZONE", "UTC"),
+        latency_ms=connection_status.get("latency_ms"),
+    )
 
     return PageContext(
         context=context,
@@ -144,7 +125,6 @@ def init_page(
         data_mode=data_mode,
         connection_status=connection_status,
     )
-
 
 def render_live_status_bar(ctx: PageContext) -> None:
     """
@@ -179,6 +159,37 @@ def render_live_status_bar(ctx: PageContext) -> None:
         )
 
 
+def render_status_bar(
+    data_mode: str,
+    last_refresh: datetime | None,
+    timezone: str = "UTC",
+    latency_ms: float | int | None = None,
+) -> None:
+    """
+    Render a compact status bar with mode, timezone, and last update timestamp.
+    """
+    mode_palette = {
+        "live": ("#00D282", "Live data"),
+        "mock": ("#f59e0b", "Simulated data"),
+        "disconnected": ("#ef4444", "Disconnected"),
+    }
+    color, label = mode_palette.get(data_mode, mode_palette["disconnected"])
+    refreshed = last_refresh.strftime("%H:%M:%S") if isinstance(last_refresh, datetime) else "N/A"
+    latency_text = f" | Latency: {latency_ms:.0f} ms" if isinstance(latency_ms, (int, float)) else ""
+
+    st.markdown(
+        f"""<div style="display:flex; align-items:center; gap:12px; padding:10px 14px;
+        background: linear-gradient(90deg, rgba(15, 23, 42, 0.7) 0%, rgba(30, 41, 59, 0.7) 100%);
+        border: 1px solid #334155; border-radius: 8px; margin: 10px 0;">
+            <span style="color:{color}; font-weight:700;">{label}</span>
+            <span style="color:#94A3B8;">Timezone: {timezone}</span>
+            <span style="color:#94A3B8;">Last update: {refreshed}</span>
+            <span style="color:#64748B; margin-left:auto;">Data mode: {data_mode}{latency_text}</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
 def get_cached_component(component_class, *args, cache_key: str = None, **kwargs):
     """
     Get or create a cached component instance.
@@ -206,6 +217,7 @@ __all__ = [
     'init_page',
     'PageContext',
     'render_live_status_bar',
+    'render_status_bar',
     'get_cached_component',
     'COLORS',
     'get_chart_config',

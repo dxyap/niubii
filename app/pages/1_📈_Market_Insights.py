@@ -47,6 +47,7 @@ from app.components.ui_components import (
     render_badge,
 )
 from app.main import get_connection_status_cached
+from app.page_utils import render_status_bar
 from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
 from core.data.bloomberg import DataUnavailableError
 
@@ -210,25 +211,23 @@ with header_col3:
         st.rerun()
 
 # Live status bar
-if data_mode == "live":
-    time_since_update = (datetime.now() - st.session_state.last_refresh).seconds
-    st.markdown(
-        f"""<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-        background: linear-gradient(90deg, rgba(0,210,130,0.15) 0%, rgba(0,210,130,0.05) 100%);
-        border-left: 3px solid #00D282; border-radius: 4px; margin-bottom: 1rem;">
-        <span style="color: #00D282; font-weight: 600;">🟢 LIVE</span>
-        <span style="color: #94A3B8;">Bloomberg Connected</span>
-        <span style="color: #64748B; margin-left: auto;">Last update: {st.session_state.last_refresh.strftime('%H:%M:%S')} ({time_since_update}s ago)</span>
-        </div>""",
-        unsafe_allow_html=True
-    )
-elif data_mode == "disconnected":
-    st.error("🔴 Bloomberg Terminal not connected. Live data required.")
+render_status_bar(
+    data_mode=data_mode,
+    last_refresh=st.session_state.get('last_refresh'),
+    timezone=connection_status.get('timezone', 'UTC'),
+    latency_ms=connection_status.get('latency_ms'),
+)
+
+if data_mode == "disconnected":
+    st.error("Bloomberg Terminal not connected. Live data required.")
     st.info(f"Connection error: {connection_status.get('connection_error', 'Unknown')}")
     st.stop()
-else:
-    st.warning(f"⚠️ Data mode: {data_mode}")
+elif data_mode != "live":
+    st.warning(f"Data mode: {data_mode}")
 
+# =============================================================================
+# MAIN TABS - Market Insights + Research
+# =============================================================================
 # =============================================================================
 # MAIN TABS - Market Insights + Research
 # =============================================================================
