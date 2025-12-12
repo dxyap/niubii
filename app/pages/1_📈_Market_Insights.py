@@ -1223,10 +1223,7 @@ with tab3:
 
         st.divider()
 
-        # Regional stocks comparison chart
-        st.markdown("**Regional Crude Stocks Comparison**")
-
-        # Prepare data for chart
+        # Prepare hub-level data for weekly change and summary
         hub_names = []
         crude_volumes = []
         utilizations = []
@@ -1239,33 +1236,6 @@ with tab3:
             crude_volumes.append(hub_info["crude_capacity_mb"] * util / 100)
             utilizations.append(util)
             changes.append(loc_data.get("change_week_pct", 0))
-
-        # Create comparison bar chart
-        fig_regional = go.Figure()
-
-        fig_regional.add_trace(go.Bar(
-            x=hub_names,
-            y=crude_volumes,
-            name='Crude Stocks (MMbbl)',
-            marker_color=[
-                CHART_COLORS['profit'] if u < 50 else CHART_COLORS['loss'] if u > 70 else CHART_COLORS['primary']
-                for u in utilizations
-            ],
-            marker_line_width=0,
-            text=[f"{v:.1f}" for v in crude_volumes],
-            textposition='outside',
-            hovertemplate='%{x}<br>%{y:.1f} MMbbl<br>Utilization: %{customdata:.1f}%<extra></extra>',
-            customdata=utilizations,
-        ))
-
-        fig_regional.update_layout(
-            **BASE_LAYOUT,
-            height=300,
-            yaxis_title='Crude Stocks (MMbbl)',
-            showlegend=False,
-        )
-
-        st.plotly_chart(fig_regional, use_container_width=True, config=get_chart_config())
 
         # Weekly changes chart
         col_change1, col_change2 = st.columns([2, 1])
@@ -1299,8 +1269,14 @@ with tab3:
             st.markdown("**Global Summary**")
             global_summary = satellite_data.get_global_summary()
 
-            total_crude = sum(crude_volumes)
-            avg_util = np.mean(utilizations)
+            total_crude = global_summary.get("estimated_volume_mb")
+            avg_util = global_summary.get("global_utilization_pct")
+
+            # Fallback to chart-derived values if summary missing
+            if total_crude is None:
+                total_crude = sum(crude_volumes)
+            if avg_util is None:
+                avg_util = float(np.mean(utilizations)) if utilizations else 0
 
             st.metric("Total Regional Crude", f"{total_crude:.1f} MMbbl")
             st.metric("Avg Utilization", f"{avg_util:.1f}%")

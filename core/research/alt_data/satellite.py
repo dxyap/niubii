@@ -291,9 +291,8 @@ class SatelliteData:
         try:
             # Get all configured tickers for this location
             ticker_list = list(tickers_for_total.values())
-            fields = ["PX_LAST", "CHG_PCT_1W"]
-
-            prices_df = client.get_prices(ticker_list, fields)
+            # Only request current level; weekly change is computed from last two PX_LAST points
+            prices_df = client.get_prices(ticker_list, ["PX_LAST"])
 
             if prices_df is None or prices_df.empty:
                 logger.warning(f"No data returned for {location}")
@@ -309,7 +308,9 @@ class SatelliteData:
                 if ticker in prices_df.index:
                     row = prices_df.loc[ticker]
                     volume_kb = row.get("PX_LAST", 0)
-                    weekly_change = row.get("CHG_PCT_1W", 0)
+
+                    # Derive weekly change from last two PX_LAST data points
+                    weekly_change = self._compute_weekly_change(client, ticker)
 
                     if volume_kb is not None and not (hasattr(volume_kb, '__iter__') and not volume_kb):
                         total_inventory_kb += float(volume_kb)
@@ -318,7 +319,7 @@ class SatelliteData:
                             "volume_mmb": float(volume_kb) / 1000,
                             "weekly_change_pct": float(weekly_change) if weekly_change else 0,
                         }
-                        if weekly_change:
+                        if weekly_change is not None:
                             weekly_change_sum += float(weekly_change)
                             count += 1
 
@@ -346,6 +347,48 @@ class SatelliteData:
 
         except Exception as e:
             logger.error(f"Error fetching {location} data from Bloomberg: {e}")
+            return None
+
+    def _compute_weekly_change(self, client, ticker: str) -> float | None:
+        """
+        Compute weekly change using the last two PX_LAST points for a ticker.
+
+        Returns:
+            Percentage change between the two most recent PX_LAST values.
+            None if insufficient data or unavailable.
+        """
+        try:
+            from datetime import timedelta
+
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=14)
+
+            hist = client.get_historical(
+                ticker,
+                start_date=start_date,
+                end_date=end_date,
+                fields=["PX_LAST"],
+            )
+
+            if hist is None or hist.empty or "PX_LAST" not in hist:
+                return None
+
+            hist_sorted = hist.sort_values("date") if "date" in hist else hist
+            hist_clean = hist_sorted.dropna(subset=["PX_LAST"])
+            if len(hist_clean) < 2:
+                return None
+
+            last_two = hist_clean.tail(2)["PX_LAST"].tolist()
+            prev, latest = last_two[-2], last_two[-1]
+
+            if prev is None or prev == 0:
+                return None
+
+            change_pct = ((latest - prev) / prev) * 100
+            return round(change_pct, 2)
+
+        except Exception as exc:
+            logger.error(f"Failed to compute weekly change for {ticker}: {exc}")
             return None
 
     def get_storage_trends(
@@ -440,8 +483,13 @@ class SatelliteData:
         if not locations:
             return {"error": "No data available"}
 
-        # Exclude duplicate rotterdam entry (it's the same as ara)
-        unique_locations = {k: v for k, v in locations.items() if k != "rotterdam"}
+        # Deduplicate aliases (e.g., rotterdam -> ara, houston -> usgc)
+        unique_locations: dict[str, dict[str, Any]] = {}
+        for key, loc_data in locations.items():
+            normalized_key = LOCATION_ALIASES.get(key, key)
+            if normalized_key in unique_locations:
+                continue
+            unique_locations[normalized_key] = loc_data
 
         total_capacity = sum(
             loc_data.get("capacity_mb", 0)
