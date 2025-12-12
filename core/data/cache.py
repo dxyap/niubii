@@ -322,7 +322,7 @@ class DataCache:
 
         # Legacy memory cache (for backward compatibility)
         self._memory_cache: dict = {}
-        self._memory_timestamps: dict = {}
+        self._memory_expiry: dict[str, float] = {}
 
         # Disk cache for persistent data
         if HAS_DISKCACHE:
@@ -371,8 +371,8 @@ class DataCache:
 
         # Legacy memory cache fallback
         if cache_type in ("real_time", "intraday") and key in self._memory_cache:
-            timestamp = self._memory_timestamps.get(key, 0)
-            if datetime.now().timestamp() - timestamp < duration:
+            expiry = self._memory_expiry.get(key, 0)
+            if datetime.now().timestamp() < expiry:
                 return self._memory_cache[key]
 
         # Check disk cache
@@ -400,7 +400,8 @@ class DataCache:
         self,
         key: str,
         value: Any,
-        cache_type: str = "historical"
+        cache_type: str = "historical",
+        ttl: float | None = None,
     ) -> None:
         """
         Set value in cache.
@@ -409,23 +410,25 @@ class DataCache:
             key: Cache key
             value: Value to cache
             cache_type: Type of cache
+            ttl: Optional TTL override (seconds). Defaults to cache type duration.
         """
         duration = self.DURATIONS.get(cache_type, self.DURATIONS["historical"])
+        effective_ttl = float(ttl) if ttl is not None else float(duration)
 
         # Use efficient TTL caches for high-frequency data
         if cache_type == "real_time":
-            self._real_time_cache.set(key, value, ttl=duration)
-            self._remember_for_fallback(key, value)
+            self._real_time_cache.set(key, value, ttl=effective_ttl)
+            self._remember_for_fallback(key, value, effective_ttl)
             return
         elif cache_type == "intraday":
-            self._intraday_cache.set(key, value, ttl=duration)
-            self._remember_for_fallback(key, value)
+            self._intraday_cache.set(key, value, ttl=effective_ttl)
+            self._remember_for_fallback(key, value, effective_ttl)
             return
 
         # Disk cache
         if self._disk_cache is not None:
             try:
-                self._disk_cache.set(key, value, expire=duration)
+                self._disk_cache.set(key, value, expire=effective_ttl)
                 return
             except Exception as e:
                 logger.warning(f"Disk cache write error: {e}")
@@ -440,10 +443,10 @@ class DataCache:
         except Exception as e:
             logger.warning(f"File cache write error: {e}")
 
-    def _remember_for_fallback(self, key: str, value: Any) -> None:
+    def _remember_for_fallback(self, key: str, value: Any, ttl: float) -> None:
         """Store a copy in the legacy memory cache for TTL fallbacks."""
         self._memory_cache[key] = value
-        self._memory_timestamps[key] = datetime.now().timestamp()
+        self._memory_expiry[key] = datetime.now().timestamp() + ttl
 
     def cached(
         self,
@@ -496,7 +499,7 @@ class DataCache:
 
         if cache_type in ("real_time", "intraday", None):
             self._memory_cache.clear()
-            self._memory_timestamps.clear()
+            self._memory_expiry.clear()
 
         if cache_type not in ("real_time", "intraday"):
             if self._disk_cache is not None:

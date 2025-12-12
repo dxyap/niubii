@@ -7,6 +7,7 @@ High-level data loading with caching and Bloomberg integration.
 import contextlib
 import logging
 import os
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -34,18 +35,18 @@ from .cache import (
 logger = logging.getLogger(__name__)
 
 
-def _require_mapping(value: Mapping | None, path: str) -> dict:
+def _require_mapping(value: Mapping | None, path: str, source: str = "data_loader.yaml") -> dict:
     """Ensure a mapping exists in configuration."""
     if isinstance(value, Mapping) and value:
         return dict(value)
-    raise ValueError(f"Missing configuration for {path} in data_loader.yaml")
+    raise ValueError(f"Missing configuration for {path} in {source}")
 
 
-def _require_sequence(value: Sequence | None, path: str) -> list:
+def _require_sequence(value: Sequence | None, path: str, source: str = "data_loader.yaml") -> list:
     """Ensure a sequence exists in configuration."""
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and len(value) > 0:
         return list(value)
-    raise ValueError(f"Missing configuration for {path} in data_loader.yaml")
+    raise ValueError(f"Missing configuration for {path} in {source}")
 
 
 @dataclass(frozen=True)
@@ -84,14 +85,16 @@ class LoaderSettings:
 
     gallons_per_barrel: int
     cache_base_ttl: int
+    cache_market_hours_multiplier: float
+    cache_off_hours_multiplier: float
     dedupe_window_seconds: float
     oil_price_tickers: dict[str, str]
     all_oil_price_tickers: dict[str, str]
     spread_batch_tickers: tuple[str, ...]
     core_subscription_tickers: tuple[str, ...]
     market_status_tickers: dict[str, str]
-    crack_321: CrackSpreadConfig
-    crack_211: CrackSpreadConfig
+    crack_321: CrackSpreadConfig | None
+    crack_211: CrackSpreadConfig | None
     curve_spread_offsets: dict[str, int]
     structure_threshold: float
     curve_months: int
@@ -99,7 +102,12 @@ class LoaderSettings:
     timezone: str
 
     @classmethod
-    def load(cls, config_dir: Path, gallons_default: int) -> "LoaderSettings":
+    def load(
+        cls,
+        config_dir: Path,
+        gallons_default: int,
+        bloomberg_config: Mapping[str, Any] | None = None,
+    ) -> "LoaderSettings":
         """Load settings from data_loader.yaml."""
         config_file = config_dir / "data_loader.yaml"
         if not config_file.exists():
@@ -112,10 +120,15 @@ class LoaderSettings:
         if not isinstance(raw, Mapping):
             raise ValueError("data_loader.yaml must define a mapping at the top level")
 
-        return cls.from_mapping(raw, gallons_default)
+        return cls.from_mapping(raw, gallons_default, bloomberg_config=bloomberg_config)
 
     @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any], gallons_default: int) -> "LoaderSettings":
+    def from_mapping(
+        cls,
+        raw: Mapping[str, Any],
+        gallons_default: int,
+        bloomberg_config: Mapping[str, Any] | None = None,
+    ) -> "LoaderSettings":
         """Build LoaderSettings from mapping data."""
         pricing_cfg = raw.get("pricing", {}) or {}
         caching_cfg = raw.get("caching", {}) or {}
@@ -125,18 +138,41 @@ class LoaderSettings:
         market_cfg = raw.get("market", {}) or {}
         market_hours_cfg = raw.get("market_hours", {}) or {}
 
-        oil_price_tickers = _require_mapping(tickers_cfg.get("oil_prices"), "tickers.oil_prices")
-        all_oil_price_tickers = _require_mapping(tickers_cfg.get("all_oil_prices"), "tickers.all_oil_prices")
-        spread_batch_tickers = tuple(
-            _require_sequence(tickers_cfg.get("spread_batch"), "tickers.spread_batch")
-        )
-        core_subscription_tickers = tuple(
-            _require_sequence(tickers_cfg.get("core_subscriptions"), "tickers.core_subscriptions")
-        )
-        market_status_tickers = _require_mapping(tickers_cfg.get("market_status"), "tickers.market_status")
+        ticker_groups_cfg = (bloomberg_config or {}).get("ticker_groups", {}) or {}
 
-        crack_321 = CrackSpreadConfig.from_mapping(spreads_cfg.get("crack_321"), "spreads.crack_321")
-        crack_211 = CrackSpreadConfig.from_mapping(spreads_cfg.get("crack_211"), "spreads.crack_211")
+        def _load_crack_config(name: str) -> CrackSpreadConfig | None:
+            config = spreads_cfg.get(name)
+            if not config:
+                return None
+            try:
+                return CrackSpreadConfig.from_mapping(config, f"spreads.{name}")
+            except Exception as exc:
+                logger.warning("Could not load crack config %s: %s", name, exc)
+                return None
+
+        def _load_ticker_group(name: str, expect_sequence: bool = False):
+            """Load a ticker group from data_loader.yaml or bloomberg_tickers.yaml."""
+            source = tickers_cfg.get(name)
+            source_label = "data_loader.yaml"
+            path = f"tickers.{name}"
+
+            if source is None:
+                source = ticker_groups_cfg.get(name)
+                source_label = "bloomberg_tickers.yaml"
+                path = f"ticker_groups.{name}"
+
+            if expect_sequence:
+                return tuple(_require_sequence(source, path, source_label))
+            return _require_mapping(source, path, source_label)
+
+        oil_price_tickers = _load_ticker_group("oil_prices")
+        all_oil_price_tickers = _load_ticker_group("all_oil_prices")
+        spread_batch_tickers = _load_ticker_group("spread_batch", expect_sequence=True)
+        core_subscription_tickers = _load_ticker_group("core_subscriptions", expect_sequence=True)
+        market_status_tickers = _load_ticker_group("market_status")
+
+        crack_321 = _load_crack_config("crack_321")
+        crack_211 = _load_crack_config("crack_211")
 
         curve_offsets_cfg = market_cfg.get("curve_spread_offsets") or {}
         curve_spread_offsets = {str(key): int(value) for key, value in curve_offsets_cfg.items()}
@@ -150,6 +186,8 @@ class LoaderSettings:
         return cls(
             gallons_per_barrel=int(pricing_cfg.get("gallons_per_barrel", gallons_default)),
             cache_base_ttl=int(caching_cfg.get("real_time_cache_base_ttl", 60)),
+            cache_market_hours_multiplier=float(caching_cfg.get("market_hours_ttl_multiplier", 1.0)),
+            cache_off_hours_multiplier=float(caching_cfg.get("off_hours_ttl_multiplier", 10.0)),
             dedupe_window_seconds=float(dedupe_cfg.get("window_seconds", 1.0)),
             oil_price_tickers=oil_price_tickers,
             all_oil_price_tickers=all_oil_price_tickers,
@@ -163,6 +201,15 @@ class LoaderSettings:
             curve_months=int(market_cfg.get("default_curve_months", 12)),
             weekend_closed_days=weekend_closed_days,
             timezone=timezone,
+        )
+
+    def get_real_time_cache_ttl(self, when: datetime | None = None) -> int:
+        """Return market-aware TTL for real-time caches."""
+        return get_smart_ttl(
+            base_ttl=self.cache_base_ttl,
+            market_hours_multiplier=self.cache_market_hours_multiplier,
+            off_hours_multiplier=self.cache_off_hours_multiplier,
+            when=when,
         )
 
     def is_market_open(self, when: datetime | None = None) -> bool:
@@ -207,8 +254,15 @@ class DataLoader:
         self.config_dir = Path(config_dir)
         self.data_dir = Path(data_dir)
 
+        # Load Bloomberg ticker configuration once for reuse across settings and loaders
+        self._bloomberg_config = self._load_bloomberg_config()
+
         # Load loader-specific configuration before initializing components
-        self.settings = LoaderSettings.load(self.config_dir, self.GALLONS_PER_BARREL)
+        self.settings = LoaderSettings.load(
+            self.config_dir,
+            self.GALLONS_PER_BARREL,
+            bloomberg_config=self._bloomberg_config,
+        )
         # Backward compatibility: expose previous attribute name
         self.loader_settings = self.settings
 
@@ -244,22 +298,33 @@ class DataLoader:
             )
             logger.error("Live Bloomberg connection required.")
 
+    def _load_bloomberg_config(self) -> dict:
+        """Load bloomberg_tickers.yaml once and reuse across the loader."""
+        tickers_file = self.config_dir / "bloomberg_tickers.yaml"
+        if not tickers_file.exists():
+            logger.warning("Bloomberg ticker config not found at %s", tickers_file)
+            return {}
+
+        try:
+            with open(tickers_file, encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except Exception as exc:
+            logger.error("Failed to load bloomberg_tickers.yaml: %s", exc)
+            return {}
+
     def _load_config(self):
         """Load configuration files."""
         self.instruments = {}
-        self.tickers = {}
-        self._bloomberg_config = {}
 
         instruments_file = self.config_dir / "instruments.yaml"
         if instruments_file.exists():
             with open(instruments_file) as f:
                 self.instruments = yaml.safe_load(f) or {}
 
-        tickers_file = self.config_dir / "bloomberg_tickers.yaml"
-        if tickers_file.exists():
-            with open(tickers_file) as f:
-                self._bloomberg_config = yaml.safe_load(f) or {}
-                self.tickers = self._bloomberg_config
+        # Keep the preloaded Bloomberg config; load lazily if missing
+        if not hasattr(self, "_bloomberg_config"):
+            self._bloomberg_config = self._load_bloomberg_config()
+        self.tickers = self._bloomberg_config
 
     # =========================================================================
     # CONFIGURATION ACCESS METHODS
@@ -317,6 +382,20 @@ class DataLoader:
         return None
 
     def get_crack_spread_321_index(self) -> dict | None:
+        """
+        Fetch front-month 3-2-1 crack spread from the Bloomberg FVCSM index.
+
+        If unavailable, wait 10 seconds and retry once before giving up.
+        """
+        result = self._fetch_crack_spread_321_index_once()
+        if result is not None:
+            return result
+
+        logger.info("FVCSM crack spread unavailable; retrying in 10 seconds")
+        time.sleep(10)
+        return self._fetch_crack_spread_321_index_once()
+
+    def _fetch_crack_spread_321_index_once(self) -> dict | None:
         """
         Fetch front-month 3-2-1 crack spread from the Bloomberg FVCSM index.
 
@@ -499,9 +578,9 @@ class DataLoader:
 
         batch = self.get_prices_batch(list(tickers))
         if batch:
-            # Use smart TTL - longer during off-hours when prices don't change
-            ttl = get_smart_ttl(self.settings.cache_base_ttl)  # Base TTL configurable
-            self.cache.set(cache_key, batch, cache_type="real_time")
+            # Use market-aware TTL to minimise redundant fetches
+            ttl = self.settings.get_real_time_cache_ttl()
+            self.cache.set(cache_key, batch, cache_type="real_time", ttl=ttl)
         return batch
 
     def _build_named_price_map(
@@ -915,8 +994,6 @@ class DataLoader:
         """Compute the various spreads from a shared batch payload."""
         wti_data = batch.get("CL1 Comdty", {})
         brent_data = batch.get("CO1 Comdty", {})
-        rbob_data = batch.get("XB1 Comdty", {})
-        ho_data = batch.get("HO1 Comdty", {})
 
         # WTI/Brent values
         wti_current = wti_data.get("current", 0)
@@ -927,38 +1004,20 @@ class DataLoader:
         wti_brent_spread = wti_current - brent_current
         wti_brent_spread_open = wti_open - brent_open
 
-        # Convert refined products to $/bbl
-        gallon_factor = self.settings.gallons_per_barrel
-        rbob_bbl = rbob_data.get("current", 0) * gallon_factor
-        ho_bbl = ho_data.get("current", 0) * gallon_factor
-        rbob_open_bbl = rbob_data.get("open", rbob_data.get("current", 0)) * gallon_factor
-        ho_open_bbl = ho_data.get("open", ho_data.get("current", 0)) * gallon_factor
-
-        crack_321 = self.settings.crack_321.calculate(rbob_bbl, ho_bbl, wti_current)
-        crack_321_open = self.settings.crack_321.calculate(rbob_open_bbl, ho_open_bbl, wti_open)
-        crack_211 = self.settings.crack_211.calculate(rbob_bbl, ho_bbl, wti_current)
-
-        return {
+        payload = {
             "wti_brent": {
                 "spread": round(wti_brent_spread, 2),
                 "change": round(wti_brent_spread - wti_brent_spread_open, 2),
                 "wti": wti_current,
                 "brent": brent_current,
             },
-            "crack_321": {
-                "crack": round(crack_321, 2),
-                "change": round(crack_321 - crack_321_open, 2),
-                "wti": wti_current,
-                "rbob_bbl": round(rbob_bbl, 2),
-                "ho_bbl": round(ho_bbl, 2),
-            },
-            "crack_211": {
-                "crack": round(crack_211, 2),
-                "wti": wti_current,
-                "rbob_bbl": round(rbob_bbl, 2),
-                "ho_bbl": round(ho_bbl, 2),
-            },
         }
+
+        crack_index = self.get_crack_spread_321_index()
+        payload["crack_321"] = crack_index
+        payload["crack_211"] = None
+
+        return payload
 
     def get_wti_brent_spread(self) -> dict[str, float]:
         """Calculate WTI-Brent spread with details (batch optimized)."""
@@ -966,21 +1025,15 @@ class DataLoader:
 
     def get_crack_spread_321(self) -> dict[str, float]:
         """
-        Calculate 3-2-1 crack spread (batch optimized).
-
-        The 3-2-1 crack spread represents the refining margin for converting
-        3 barrels of crude oil into 2 barrels of gasoline and 1 barrel of heating oil.
+        Retrieve 3-2-1 crack spread from Bloomberg FVCSM index with retry.
         """
-        return self.get_all_spreads()["crack_321"]
+        return self.get_crack_spread_321_index() or {}
 
     def get_crack_spread_211(self) -> dict[str, float]:
         """
-        Calculate 2-1-1 crack spread (batch optimized).
-
-        The 2-1-1 crack spread represents the refining margin for converting
-        2 barrels of crude oil into 1 barrel of gasoline and 1 barrel of heating oil.
+        Placeholder for 2-1-1 crack spread; returns empty when not configured.
         """
-        return self.get_all_spreads()["crack_211"]
+        return self.get_all_spreads().get("crack_211") or {}
 
     def get_all_spreads(self) -> dict[str, dict]:
         """

@@ -11,6 +11,7 @@ import builtins
 import contextlib
 import logging
 import os
+import threading
 from datetime import datetime
 
 import pandas as pd
@@ -810,6 +811,10 @@ class BloombergSubscriptionService:
         self._callbacks: dict[str, list] = {}
         self._running = False
         self._subscription_session = None
+        self._event_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._latest_updates: dict[str, dict[str, float]] = {}
 
         # Check if subscriptions are enabled
         self.subscriptions_enabled = os.environ.get("BLOOMBERG_ENABLE_SUBSCRIPTIONS", "false").lower() == "true"
@@ -845,7 +850,10 @@ class BloombergSubscriptionService:
             import blpapi
 
             if not self._subscription_session:
-                self._start_subscription_session()
+                if not self._start_subscription_session():
+                    raise RuntimeError("Subscription session unavailable")
+
+            self._ensure_event_loop()
 
             subscription_list = blpapi.SubscriptionList()
             subscription_list.add(
@@ -891,11 +899,46 @@ class BloombergSubscriptionService:
         return list(self._subscriptions.keys())
 
     def get_latest_prices(self) -> dict[str, dict[str, float]]:
-        """Get latest prices for all subscribed tickers."""
-        prices = {}
-        for ticker in self._subscriptions:
-            prices[ticker] = self.client.get_price_with_change(ticker)
-        return prices
+        """
+        Get latest prices for all subscribed tickers.
+
+        Uses streaming cache when subscriptions are enabled; otherwise falls
+        back to a single batched reference-data call to minimise API load.
+        """
+        tickers = self.get_subscribed_tickers()
+        if not tickers:
+            return {}
+
+        if self.subscriptions_enabled and self._subscription_session:
+            with self._lock:
+                return dict(self._latest_updates)
+
+        # Fallback: batch poll to reduce per-ticker calls
+        try:
+            fields = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW"]
+            df = self.client.get_prices(tickers, fields)
+            result: dict[str, dict[str, float]] = {}
+            if df is not None and not df.empty:
+                for ticker in tickers:
+                    if ticker not in df.index:
+                        continue
+                    row = df.loc[ticker]
+                    current = row.get("PX_LAST", 0)
+                    open_price = row.get("PX_OPEN", current)
+                    change = current - open_price if current and open_price else 0
+                    change_pct = (change / open_price * 100) if open_price else 0
+                    result[ticker] = {
+                        "current": current,
+                        "open": open_price,
+                        "change": round(change, 4),
+                        "change_pct": round(change_pct, 4),
+                        "high": row.get("PX_HIGH", current),
+                        "low": row.get("PX_LOW", current),
+                    }
+            return result
+        except Exception as exc:
+            logger.debug("Batch polling fallback failed: %s", exc)
+            return {}
 
     def _start_subscription_session(self) -> bool:
         """Start Bloomberg subscription session."""
@@ -926,11 +969,90 @@ class BloombergSubscriptionService:
             logger.warning(f"Could not start subscription session: {e}")
             return False
 
+    def _ensure_event_loop(self) -> None:
+        """Start a background event loop to drain subscription events."""
+        if self._event_thread and self._event_thread.is_alive():
+            return
+
+        self._stop_event.clear()
+        self._event_thread = threading.Thread(
+            target=self._run_event_loop,
+            name="blpapi-subscription-loop",
+            daemon=True,
+        )
+        self._event_thread.start()
+
+    def _run_event_loop(self) -> None:
+        """Continuously drain Bloomberg subscription events to avoid queue buildup."""
+        try:
+            import blpapi
+        except Exception:
+            logger.warning("blpapi not available; cannot start subscription event loop")
+            return
+
+        while not self._stop_event.is_set() and self._subscription_session:
+            try:
+                event = self._subscription_session.nextEvent(0.5)
+            except Exception as exc:
+                logger.debug("Subscription event loop error: %s", exc)
+                continue
+
+            if event.eventType() == blpapi.Event.TIMEOUT:
+                continue
+
+            for msg in event:
+                self._process_subscription_event(msg)
+
+    def _process_subscription_event(self, msg) -> None:
+        """Store the latest subscription values and invoke callbacks if any."""
+        try:
+            import blpapi
+        except Exception:
+            return
+
+        # Extract ticker from correlation id
+        ticker = None
+        try:
+            corr_id = msg.correlationIds()[0] if msg.correlationIds() else msg.correlationId()
+            ticker = str(getattr(corr_id, "value", lambda: corr_id)())
+        except Exception:
+            pass
+
+        if not ticker:
+            return
+
+        fields = {}
+        for field_name, key in (("LAST_PRICE", "current"), ("BID", "bid"), ("ASK", "ask"), ("VOLUME", "volume")):
+            if msg.hasElement(field_name):
+                try:
+                    fields[key] = float(msg.getElementAsFloat(field_name))
+                except Exception:
+                    continue
+
+        if not fields:
+            return
+
+        with self._lock:
+            existing = self._latest_updates.get(ticker, {})
+            existing.update(fields)
+            self._latest_updates[ticker] = existing
+
+        callbacks = self._callbacks.get(ticker, [])
+        for cb in callbacks:
+            with contextlib.suppress(Exception):
+                cb(ticker, self._latest_updates[ticker])
+
     def stop(self) -> None:
         """Stop all subscriptions and cleanup."""
         self._running = False
         self._subscriptions.clear()
         self._callbacks.clear()
+        with self._lock:
+            self._latest_updates.clear()
+        self._stop_event.set()
+        if self._event_thread and self._event_thread.is_alive():
+            self._event_thread.join(timeout=1.0)
+        self._event_thread = None
 
         if self._subscription_session:
             with contextlib.suppress(builtins.BaseException):
