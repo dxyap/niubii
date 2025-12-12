@@ -315,6 +315,56 @@ class DataLoader:
             return {"ticker": override, "label": None}
         return None
 
+    def get_crack_spread_321_index(self) -> dict | None:
+        """
+        Fetch front-month 3-2-1 crack spread from the Bloomberg FVCSM index.
+
+        Uses the same front month selection logic as the Market Insights page
+        (override in config takes precedence, otherwise derive from current month).
+        Returns price and daily change to keep Key Metrics consistent.
+        """
+        spread_cfg = self.get_spread_config("crack_321") or {}
+        override = self.get_front_month_override("crack_321") or {}
+
+        # Resolve ticker and label
+        ticker = override.get("ticker")
+        label = override.get("label")
+
+        month_codes = ("F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z")
+        month_names = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+        now = datetime.now()
+        idx = max(0, min(len(month_codes) - 1, now.month - 1))
+
+        if not ticker:
+            base_ticker = spread_cfg.get("base_ticker", "FVCSM")
+            ticker_format = spread_cfg.get("ticker_format", "{base} {month_code}{year_code} Index")
+            month_code = month_codes[idx]
+            year_code = str(now.year)[-2:]
+            ticker = ticker_format.format(
+                base=base_ticker,
+                month_code=month_code,
+                year_code=year_code,
+            )
+            label = label or f"{month_names[idx]} {year_code}"
+
+        # Batch fetch to include open price (for delta) using the deduplicated path
+        batch = self.get_prices_batch([ticker]) or {}
+        price_data = batch.get(ticker)
+        if not price_data:
+            logger.warning("No price data returned for crack spread index ticker %s", ticker)
+            return None
+
+        crack_price = float(price_data.get("current") or 0)
+        change = float(price_data.get("change") or 0)
+
+        return {
+            "crack": round(crack_price, 2),
+            "change": round(change, 2),
+            "ticker": ticker,
+            "label": label or ticker,
+            "source": "Bloomberg FVCSM",
+        }
+
     def get_eia_tickers(self) -> dict:
         """Get EIA fundamental data tickers."""
         return self._bloomberg_config.get("eia_tickers", {})

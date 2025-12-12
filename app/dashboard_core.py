@@ -308,6 +308,7 @@ class DashboardData:
         # Prefetch price data if requested
         if prefetch:
             self._prefetch_price_data()
+        self._crack_index = self._NOT_LOADED
 
     def _prefetch_price_data(self) -> None:
         """
@@ -359,7 +360,17 @@ class DashboardData:
             return None
 
     @property
-    def crack_spread(self) -> dict[str, float] | None:
+    def crack_spread(self) -> dict[str, float | str] | None:
+        # Prefer Bloomberg FVCSM index (same source as Market Insights)
+        if self._crack_index is self._NOT_LOADED:
+            try:
+                self._crack_index = self.data_loader.get_crack_spread_321_index()
+            except Exception as e:
+                self._errors["crack_spread_index"] = str(e)
+                self._crack_index = None
+        if self._crack_index is not None:
+            return self._crack_index
+
         # Use prefetched spread data if available
         if self._all_spreads is not self._NOT_LOADED and self._all_spreads is not None:
             return self._all_spreads.get("crack_321")

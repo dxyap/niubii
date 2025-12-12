@@ -278,13 +278,19 @@ class SatelliteData:
             )
             return None
 
+        # Use crude-only if available to avoid double-counting product series
+        if "crude" in configured_tickers:
+            tickers_for_total = {"crude": configured_tickers["crude"]}
+        else:
+            tickers_for_total = configured_tickers
+
         capacity = STORAGE_CAPACITIES_MB.get(location, {})
         # Use crude capacity for crude inventory calculations
         total_capacity = capacity.get("crude", capacity.get("total", 50))
 
         try:
             # Get all configured tickers for this location
-            ticker_list = list(configured_tickers.values())
+            ticker_list = list(tickers_for_total.values())
             fields = ["PX_LAST", "CHG_PCT_1W"]
 
             prices_df = client.get_prices(ticker_list, fields)
@@ -299,7 +305,7 @@ class SatelliteData:
             weekly_change_sum = 0
             count = 0
 
-            for product_key, ticker in configured_tickers.items():
+            for product_key, ticker in tickers_for_total.items():
                 if ticker in prices_df.index:
                     row = prices_df.loc[ticker]
                     volume_kb = row.get("PX_LAST", 0)

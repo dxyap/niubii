@@ -43,11 +43,6 @@ from core.backtest import (
     generate_summary_report,
 )
 
-st.set_page_config(
-    page_title="Backtest | Oil Trading",
-    page_icon="🔬",
-    layout="wide"
-)
 
 apply_theme(st)
 
@@ -130,7 +125,7 @@ with st.sidebar:
     slippage = st.number_input("Slippage (bps)", 0.0, 10.0, 1.0, 0.5)
 
 # Main content
-run_backtest = st.button("🚀 Run Backtest", type="primary", width='stretch')
+run_backtest = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
 
 if run_backtest or "backtest_result" in st.session_state:
     if run_backtest:
@@ -236,12 +231,12 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Equity curve
                 fig = create_equity_chart(result, height=400)
                 if fig:
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 # Drawdown chart
                 fig = create_drawdown_chart(result, height=200)
                 if fig:
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             with col2:
                 st.markdown("**Risk-Adjusted Returns**")
@@ -268,12 +263,12 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Trade analysis chart
                 fig = create_trade_analysis_chart(result, height=350)
                 if fig:
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
                 # Returns distribution
                 fig = create_returns_distribution(result, height=250)
                 if fig:
-                    st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             with col2:
                 st.markdown("**Trade Statistics**")
@@ -295,7 +290,7 @@ if run_backtest or "backtest_result" in st.session_state:
             if not result.trades.empty:
                 st.dataframe(
                     result.trades.tail(20),
-                    width='stretch',
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         "pnl": st.column_config.NumberColumn("P&L", format="$%.2f"),
@@ -309,7 +304,7 @@ if run_backtest or "backtest_result" in st.session_state:
             # Monthly returns heatmap
             fig = create_monthly_heatmap(result, height=400)
             if fig:
-                st.plotly_chart(fig, width='stretch', config=get_chart_config())
+                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
             # Monthly summary table
             st.markdown("**Monthly Statistics**")
@@ -325,7 +320,7 @@ if run_backtest or "backtest_result" in st.session_state:
                 # Add color coding
                 st.dataframe(
                     monthly_stats.tail(12),
-                    width='stretch',
+                    use_container_width=True,
                     hide_index=True,
                 )
 

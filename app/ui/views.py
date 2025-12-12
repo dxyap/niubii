@@ -172,7 +172,7 @@ class SidebarView:
             auto_refresh = st.toggle(toggle_label, value=self.refresh_controller.auto_refresh_enabled)
             self.refresh_controller.update_auto_refresh(auto_refresh)
 
-            if st.button("Refresh Now", width='stretch'):
+            if st.button("Refresh Now", use_container_width=True):
                 self.refresh_controller.refresh_now()
 
             st.divider()
@@ -287,7 +287,7 @@ class MarketOverviewView:
             show_ma=True,
             ma_periods=[20, 50],
         )
-        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         prices = self.context.data.oil_prices or {}
         live_brent = prices.get("Brent", {}).get("current")
@@ -311,7 +311,7 @@ class MarketOverviewView:
             return "Unknown"
 
         fig = create_futures_curve_chart(curve_data=curve, title="", height=280)
-        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         prices = curve["price"]
         slope = (prices.iloc[-1] - prices.iloc[0]) / max(len(prices) - 1, 1)
@@ -368,7 +368,7 @@ class PortfolioView:
         if not table.empty:
             st.dataframe(
                 table,
-                width='stretch',
+                use_container_width=True,
                 hide_index=True,
                 column_config={
                     "Symbol": st.column_config.TextColumn("Symbol"),
@@ -413,13 +413,12 @@ class PortfolioView:
             text=f"VaR Utilization: {summary['var_utilization']:.0f}%",
         )
 
-        # Compact risk metrics
-        render_compact_stats([
-            {"label": "VaR (95%)", "value": f"${summary['var_estimate']:,.0f}"},
-            {"label": "VaR Limit", "value": f"${summary['var_limit']:,}"},
-            {"label": "Gross Exp", "value": f"${summary['gross_exposure'] / 1e6:.1f}M"},
-            {"label": "Net Pos", "value": f"{summary['net_contracts']:.0f} lots"},
-        ])
+        # Compact risk metrics (use native metrics to avoid raw HTML showing)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("VaR (95%)", f"${summary['var_estimate']:,.0f}")
+        col2.metric("VaR Limit", f"${summary['var_limit']:,.0f}")
+        col3.metric("Gross Exp", f"${summary['gross_exposure'] / 1e6:.1f}M")
+        col4.metric("Net Pos", f"{summary['net_contracts']:.0f} lots")
 
         alerts = self.context.generate_alerts(curve_structure, summary["var_utilization"])
         st.divider()
@@ -459,7 +458,7 @@ class ActivityFeedView:
         if trades.empty:
             st.info("No recent trades.")
             return
-        st.dataframe(trades, width='stretch', hide_index=True)
+        st.dataframe(trades, use_container_width=True, hide_index=True)
 
     def _render_signals(self) -> None:
         st.subheader("Active Signals")
@@ -467,4 +466,4 @@ class ActivityFeedView:
         if signals.empty:
             st.info("No active signals.")
             return
-        st.dataframe(signals, width='stretch', hide_index=True)
+        st.dataframe(signals, use_container_width=True, hide_index=True)

@@ -312,9 +312,8 @@ inventory:
       tickers:
         crude: "DOESCROK Index"  # USGC Crude Oil Inventory
       capacity_mb:
-        total: 400
-        crude: 400
-        products: 0
+        total: 80
+        crude: 80
     ara:
       name: "ARA (Amsterdam-Rotterdam-Antwerp)"
       tickers:
@@ -325,4 +324,3 @@ inventory:
       capacity_mb:
         total: 100
         crude: 100
-        products: 0

@@ -92,7 +92,7 @@ with col1:
 
         notes = st.text_area("Notes", placeholder="Trade rationale...")
 
-        submitted = st.form_submit_button("💾 Save Trade", width='stretch')
+        submitted = st.form_submit_button("💾 Save Trade", use_container_width=True)
 
         if submitted:
             ticker = instrument.split(" - ")[0]
@@ -216,7 +216,7 @@ if not todays_trades.empty:
 
     st.dataframe(
         display_trades,
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         column_config={
             'trade_id': 'Trade ID',

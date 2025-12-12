@@ -143,7 +143,7 @@ with tab1:
             height=300,
         )
 
-        st.plotly_chart(fig, width='stretch', config=get_chart_config())
+        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
 
         st.subheader("Risk Contribution by Position")
 
@@ -190,7 +190,7 @@ with tab1:
                 hovertemplate='%{label}<br>$%{value:,.0f}<extra></extra>',
             )
 
-            st.plotly_chart(fig2, width='stretch', config=get_chart_config())
+            st.plotly_chart(fig2, use_container_width=True, config=get_chart_config())
 
     with col2:
         st.subheader("Risk Metrics")
@@ -251,7 +251,7 @@ with tab2:
 
     st.dataframe(
         limits_df,
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         column_config={
             'Instrument': st.column_config.TextColumn('Instrument'),
