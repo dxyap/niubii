@@ -11,42 +11,45 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Import centralized colors and extend for chart-specific needs
+from core.constants import COLORS as _BASE_COLORS
+
 # =============================================================================
 # CHART THEME CONSTANTS
 # =============================================================================
 
-# Color palette - inspired by professional trading terminals
+# Chart-specific color palette extending base colors
 CHART_COLORS = {
-    # Candlestick colors
-    "candle_up": "#00DC82",        # Vivid green for bullish
-    "candle_down": "#FF5252",      # Vivid red for bearish
-    "candle_up_fill": "#00DC82",   # Solid fill for up candles
-    "candle_down_fill": "#FF5252", # Solid fill for down candles
-
+    # Use base colors where available
+    "candle_up": _BASE_COLORS["candle_up"],
+    "candle_down": _BASE_COLORS["candle_down"],
+    "candle_up_fill": _BASE_COLORS["candle_up"],
+    "candle_down_fill": _BASE_COLORS["candle_down"],
+    
     # Line colors
-    "primary": "#00A3E0",          # Electric blue
-    "secondary": "#8B5CF6",        # Purple
-    "tertiary": "#F59E0B",         # Amber
-    "accent": "#EC4899",           # Pink
-
-    # Moving averages
-    "ma_fast": "#FFB020",          # Gold for fast MA
-    "ma_slow": "#A855F7",          # Purple for slow MA
-    "ma_long": "#06B6D4",          # Cyan for long MA
-
-    # Backgrounds and grids
+    "primary": _BASE_COLORS["info"],
+    "secondary": _BASE_COLORS["secondary"],
+    "tertiary": _BASE_COLORS["warning"],
+    "accent": "#EC4899",  # Pink (chart-specific)
+    
+    # Moving averages from base colors
+    "ma_fast": _BASE_COLORS["ma_fast"],
+    "ma_slow": _BASE_COLORS["ma_slow"],
+    "ma_long": _BASE_COLORS["ma_long"],
+    
+    # Chart-specific backgrounds and grids
     "bg_primary": "rgba(10, 15, 30, 0.95)",
-    "bg_secondary": "rgba(15, 23, 42, 0.8)",
-    "grid": "rgba(51, 65, 85, 0.4)",
+    "bg_secondary": _BASE_COLORS["chart_bg"],
+    "grid": _BASE_COLORS["chart_grid"],
     "grid_light": "rgba(71, 85, 105, 0.25)",
-
-    # Text
-    "text_primary": "#E2E8F0",
-    "text_secondary": "#94A3B8",
-
-    # Profit/Loss
-    "profit": "#00DC82",
-    "loss": "#FF5252",
+    
+    # Text colors from base
+    "text_primary": _BASE_COLORS["text"],
+    "text_secondary": _BASE_COLORS["text_muted"],
+    
+    # Profit/Loss from base
+    "profit": _BASE_COLORS["profit"],
+    "loss": _BASE_COLORS["loss"],
 }
 
 # Common layout settings for all charts

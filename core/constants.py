@@ -170,3 +170,74 @@ ANNUALIZED_VOLATILITY: Final[dict[str, float]] = {
     "QS": 0.28,
     "NG": 0.40,
 }
+
+# =============================================================================
+# UI COLORS (Single source of truth)
+# =============================================================================
+
+COLORS: Final[dict[str, str]] = {
+    # Primary colors
+    "primary": "#0ea5e9",
+    "primary_light": "#38bdf8",
+    "primary_dark": "#0284c7",
+
+    # Secondary colors
+    "secondary": "#8b5cf6",
+    "secondary_light": "#a78bfa",
+
+    # Semantic colors
+    "success": "#00DC82",
+    "warning": "#f59e0b",
+    "error": "#FF5252",
+    "info": "#00A3E0",
+
+    # P&L specific colors
+    "profit": "#00D26A",
+    "loss": "#FF4B4B",
+    "neutral": "#94a3b8",
+
+    # Position colors
+    "long": "#00DC82",
+    "short": "#FF5252",
+    "flat": "#64748b",
+
+    # Candlestick colors (solid fills)
+    "candle_up": "#00DC82",
+    "candle_down": "#FF5252",
+
+    # Text colors
+    "text": "#e2e8f0",
+    "text_muted": "#94a3b8",
+    "text_bright": "#f8fafc",
+    "text_dim": "#64748b",
+
+    # Background colors
+    "background": "#0f172a",
+    "surface": "#1e293b",
+    "surface_light": "#334155",
+    "border": "#334155",
+    "card": "rgba(30, 41, 59, 0.6)",
+
+    # Chart colors
+    "chart_bg": "rgba(15, 23, 42, 0.8)",
+    "chart_grid": "rgba(51, 65, 85, 0.4)",
+
+    # Moving average colors
+    "ma_fast": "#FFB020",
+    "ma_slow": "#A855F7",
+    "ma_long": "#06B6D4",
+
+    # Signal colors
+    "signal_long": "#00DC82",
+    "signal_short": "#FF5252",
+    "signal_neutral": "#94a3b8",
+
+    # Risk traffic light
+    "risk_green": "#00DC82",
+    "risk_yellow": "#f59e0b",
+    "risk_red": "#ef4444",
+
+    # Accent
+    "gold": "#fbbf24",
+    "cyan": "#06b6d4",
+}

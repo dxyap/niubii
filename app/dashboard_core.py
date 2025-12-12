@@ -13,6 +13,9 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+# Import centralized formatting utilities
+from core.utils import format_pnl
+
 
 class DataNotAvailableError(Exception):
     """Raised when data is not available for display."""
@@ -179,10 +182,8 @@ class PortfolioAnalytics:
 
     @staticmethod
     def format_pnl(value: float) -> str:
-        """Format numeric P&L with sign."""
-        if value >= 0:
-            return f"+${value:,.0f}"
-        return f"-${abs(value):,.0f}"
+        """Format numeric P&L with sign. Delegates to centralized utility."""
+        return format_pnl(value)
 
     def formatted_table(self) -> pd.DataFrame:
         """Return a presentation-ready table."""
