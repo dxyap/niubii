@@ -16,9 +16,34 @@ Submodules:
 - research: Advanced analytics, LLM, and alternative data
 - infrastructure: Authentication, RBAC, audit logging, and monitoring
 - indicators: Technical indicator calculations
+- utils: Common utility functions (formatting, paths, etc.)
 """
 
-from . import constants, indicators
+from . import constants, indicators, utils
+from .constants import COLORS
+from .utils import (
+    PROJECT_ROOT,
+    CONFIG_DIR,
+    DATA_DIR,
+    format_pnl,
+    format_pnl_with_color,
+    format_currency,
+    format_percentage,
+    create_positions_signature,
+)
 
 __version__ = "3.0.0"  # Phase 9 complete - all phases implemented
-__all__ = ["constants", "indicators"]
+__all__ = [
+    "constants",
+    "indicators",
+    "utils",
+    "COLORS",
+    "PROJECT_ROOT",
+    "CONFIG_DIR",
+    "DATA_DIR",
+    "format_pnl",
+    "format_pnl_with_color",
+    "format_currency",
+    "format_percentage",
+    "create_positions_signature",
+]

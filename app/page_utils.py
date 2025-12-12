@@ -24,16 +24,17 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import streamlit as st
 from dotenv import load_dotenv
 
-# Ensure project root is in path (do this once at module load)
-_project_root = Path(__file__).parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+# Use centralized project root
+from core.utils import PROJECT_ROOT
+
+# Ensure project root is in path (backward compatibility)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 load_dotenv()
 

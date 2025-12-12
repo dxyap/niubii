@@ -20,14 +20,19 @@ from typing import TYPE_CHECKING
 import streamlit as st
 from dotenv import load_dotenv
 
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# Use centralized project root from core.utils
+from core.utils import PROJECT_ROOT, create_positions_signature
+
+# Ensure project root is in path (backward compatibility)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 load_dotenv()
 
 from .dashboard_core import DashboardContext, PortfolioAnalytics, Position
+
+# Re-export formatting functions from centralized location
+from core.utils import format_pnl, format_pnl_with_color
 
 if TYPE_CHECKING:
     from core.data import DataLoader
@@ -38,8 +43,8 @@ def get_data_loader() -> DataLoader:
     if 'data_loader' not in st.session_state:
         from core.data import DataLoader
         st.session_state.data_loader = DataLoader(
-            config_dir=str(project_root / "config"),
-            data_dir=str(project_root / "data"),
+            config_dir=str(PROJECT_ROOT / "config"),
+            data_dir=str(PROJECT_ROOT / "data"),
         )
     return st.session_state.data_loader
 
@@ -105,35 +110,6 @@ def get_portfolio_summary(data_loader=None):
     return summary
 
 
-def format_pnl(value: float) -> str:
-    """Format P&L with sign."""
-    if value >= 0:
-        return f"+${value:,.0f}"
-    return f"-${abs(value):,.0f}"
-
-
-def format_pnl_with_color(value: float) -> tuple:
-    """Return formatted P&L and color."""
-    color = "#00D26A" if value >= 0 else "#FF4B4B"
-    formatted = format_pnl(value)
-    return formatted, color
-
-
-def _positions_signature(positions):
-    """Create a hashable signature for current positions."""
-    sorted_positions = sorted(
-        (
-            pos.get("symbol"),
-            pos.get("ticker"),
-            float(pos.get("qty", 0)),
-            float(pos.get("entry", 0)),
-            pos.get("strategy", ""),
-        )
-        for pos in positions
-    )
-    return tuple(sorted_positions)
-
-
 def get_dashboard_context(lookback_days: int = 90, force_refresh: bool = False) -> DashboardContext:
     """
     Return a cached DashboardContext shared across pages.
@@ -146,7 +122,7 @@ def get_dashboard_context(lookback_days: int = 90, force_refresh: bool = False) 
     This reduces redundant data fetching while ensuring data freshness.
     """
     positions = get_positions()
-    signature = _positions_signature(positions)
+    signature = create_positions_signature(positions)
     current_time = datetime.now()
 
     store = st.session_state.setdefault("_dashboard_context_store", {})

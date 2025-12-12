@@ -25,9 +25,7 @@ class TechnicalSignals:
     - Term structure signals
     """
 
-    def __init__(self):
-        """Initialize technical signal generator."""
-        pass
+    # No initialization required - all methods are stateless
 
     def calculate_moving_averages(
         self,
