@@ -105,11 +105,11 @@ with tab1:
                     fill='tonexty', fillcolor='rgba(148, 163, 184, 0.1)',
                 ))
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
             if show_volume and 'PX_VOLUME' in hist_data.columns:
                 vol_fig = create_volume_chart(hist_data, height=120)
-                st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(vol_fig, width="stretch", config=get_chart_config())
 
             st.markdown("**Statistics**")
 
@@ -151,7 +151,7 @@ with tab2:
     }, index=['WTI', 'Brent', 'RBOB', 'Heating Oil', 'USD Index', 'S&P 500'])
 
     fig = create_heatmap(corr_data, title="", colorscale="RdBu_r", height=400)
-    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+    st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
     st.divider()
 
@@ -183,7 +183,7 @@ with tab2:
         yaxis=corr_yaxis,
     )
 
-    st.plotly_chart(fig2, use_container_width=True, config=get_chart_config())
+    st.plotly_chart(fig2, width="stretch", config=get_chart_config())
 
 with tab3:
     st.subheader("Seasonality Analysis")
@@ -248,7 +248,7 @@ with tab3:
             yaxis_tickformat='+.0f',
         )
 
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
 with tab4:
     st.subheader("Backtesting Tools")
@@ -274,7 +274,7 @@ with tab4:
             rsi_period = st.slider("RSI Period", 7, 21, 14)
             oversold = st.slider("Oversold Level", 20, 40, 30)
 
-        if st.button("Run Backtest", use_container_width=True):
+        if st.button("Run Backtest", width="stretch"):
             with st.spinner("Running backtest..."):
                 import time
                 time.sleep(1)
@@ -316,7 +316,7 @@ with tab4:
             yaxis_tickformat='$,.0f',
         )
 
-        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+        st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
     st.divider()
 

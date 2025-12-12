@@ -171,10 +171,10 @@ if composite:
         # Action buttons with better styling
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
-            if st.button("✅ Traded", use_container_width=True, type="primary"):
+            if st.button("✅ Traded", width="stretch", type="primary"):
                 st.success("Signal marked as traded")
         with col_btn2:
-            if st.button("❌ Dismiss", use_container_width=True):
+            if st.button("❌ Dismiss", width="stretch"):
                 st.info("Signal dismissed")
 
 st.divider()
@@ -298,7 +298,7 @@ with tab3:
         'Result': ['--', '--', '--', '+$12,500', '-$4,200'],
     })
 
-    st.dataframe(signal_history, use_container_width=True, hide_index=True)
+    st.dataframe(signal_history, width="stretch", hide_index=True)
 
     st.divider()
 

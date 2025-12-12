@@ -268,10 +268,13 @@ DASHBOARD_THEME_CSS = """
         border-color: var(--border-primary);
     }
 
-    /* ========== HIDE STREAMLIT BRANDING ========== */
+    /* ========== HIDE STREAMLIT BRANDING (keep header for sidebar toggle) ========== */
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
-    header { visibility: hidden; }
+    header { 
+        visibility: visible; 
+        background: transparent; 
+    }
 
     /* ========== CHARTS ========== */
     [data-testid="stVegaLiteChart"],

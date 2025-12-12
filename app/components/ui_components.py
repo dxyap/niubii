@@ -649,7 +649,7 @@ def render_quick_trade_button(
     # Use native streamlit button with custom styling
     button_label = f"{icon} {action} {quantity} {instrument}"
     
-    return st.button(button_label, key=key, use_container_width=True)
+    return st.button(button_label, key=key, width="stretch")
 
 
 def render_data_freshness(

@@ -92,7 +92,7 @@ with col1:
 
         notes = st.text_area("Notes", placeholder="Trade rationale...")
 
-        submitted = st.form_submit_button("💾 Save Trade", use_container_width=True)
+        submitted = st.form_submit_button("💾 Save Trade", width="stretch")
 
         if submitted:
             ticker = instrument.split(" - ")[0]
@@ -216,7 +216,7 @@ if not todays_trades.empty:
 
     st.dataframe(
         display_trades,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             'trade_id': 'Trade ID',
@@ -251,7 +251,7 @@ with quick_col1:
         WTI @ ${wti_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📈 Buy 5 WTI", use_container_width=True, type="primary"):
+    if st.button("📈 Buy 5 WTI", width="stretch", type="primary"):
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -262,7 +262,7 @@ with quick_col2:
         WTI @ ${wti_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📉 Sell 5 WTI", use_container_width=True):
+    if st.button("📉 Sell 5 WTI", width="stretch"):
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -273,7 +273,7 @@ with quick_col3:
         Brent @ ${brent_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📈 Buy 5 Brent", use_container_width=True, type="primary"):
+    if st.button("📈 Buy 5 Brent", width="stretch", type="primary"):
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -284,7 +284,7 @@ with quick_col4:
         Brent @ ${brent_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📉 Sell 5 Brent", use_container_width=True):
+    if st.button("📉 Sell 5 Brent", width="stretch"):
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()

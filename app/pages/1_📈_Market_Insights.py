@@ -197,7 +197,7 @@ with header_col2:
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
-    if st.button("🔄 Refresh Now", use_container_width=True):
+    if st.button("🔄 Refresh Now", width="stretch"):
         st.session_state.last_refresh = datetime.now()
         shared_state.invalidate_context_cache()
         st.rerun()
@@ -223,11 +223,10 @@ elif data_mode != "live":
 # =============================================================================
 # MAIN TABS - Market Insights + Research
 # =============================================================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📊 Price Action",
     "🔥 Crack Spreads",
     "📦 Inventory",
-    "🌍 OPEC Monitor",
     "📰 News & Sentiment",
     "📊 Correlations",
     "🔄 Regimes",
@@ -320,7 +319,7 @@ with tab1:
                     ma_periods=[20, 50],
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width="stretch", config=get_chart_config())
                 if history_ticker_used and history_ticker_used != ticker:
                     st.caption(f"Using fallback historical ticker {history_ticker_used} due to unavailable ICE data.")
 
@@ -331,13 +330,13 @@ with tab1:
                     st.markdown("**Volume**")
                     if 'PX_VOLUME' in hist_data.columns:
                         vol_fig = create_volume_chart(hist_data, height=120)
-                        st.plotly_chart(vol_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(vol_fig, width="stretch", config=get_chart_config())
 
                 with oi_col:
                     st.markdown("**Open Interest**")
                     if 'OPEN_INT' in hist_data.columns and hist_data['OPEN_INT'].notna().any():
                         oi_fig = create_open_interest_chart(hist_data, height=120)
-                        st.plotly_chart(oi_fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(oi_fig, width="stretch", config=get_chart_config())
                     else:
                         st.caption("Open interest data not available")
             else:
@@ -496,7 +495,7 @@ with tab1:
                     height=400,
                 )
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Calendar spreads
                 st.markdown("**Calendar Spreads (WTI)**")
@@ -505,7 +504,7 @@ with tab1:
 
                 st.dataframe(
                     spreads,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         'spread_name': 'Spread',
@@ -521,7 +520,7 @@ with tab1:
                     brent_spreads = format_calendar_spread_labels(brent_spreads, brent_curve)
                     st.dataframe(
                         brent_spreads,
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -652,7 +651,7 @@ with tab1:
                         ),
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                     # Dubai Calendar spreads
                     st.markdown("**Calendar Spreads (Dubai)**")
@@ -661,7 +660,7 @@ with tab1:
 
                     st.dataframe(
                         dubai_spreads,
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                         column_config={
                             'spread_name': 'Spread',
@@ -919,7 +918,7 @@ with tab2:
             }
             fig.update_layout(**layout)
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width="stretch", config=get_chart_config())
             st.caption(f"{front_month_ticker} | {lookback_days}-day daily history")
 
             stats_cols = st.columns(3)
@@ -1009,7 +1008,7 @@ with tab2:
                 showlegend=False,
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
             # Forward curve data table
             st.markdown("**Forward Curve Data**")
@@ -1017,7 +1016,7 @@ with tab2:
             display_df.columns = ['Contract', 'Price ($/bbl)', 'Bloomberg Ticker']
             st.dataframe(
                 display_df,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     'Contract': st.column_config.TextColumn('Contract'),
@@ -1223,90 +1222,71 @@ with tab3:
 
         st.divider()
 
-        # Prepare hub-level data for weekly change and summary
+        # Prepare hub-level data for weekly change view
         hub_names = []
-        crude_volumes = []
-        utilizations = []
         changes = []
+        abs_changes = []
 
         for hub_key, hub_info in REGIONAL_HUBS.items():
             loc_data = locations.get(hub_info["key"], {})
-            util = sanitize_percentage(loc_data.get("utilization_pct", 50), default=50)
+            crude_cap = hub_info["crude_capacity_mb"]
+            utilization = sanitize_percentage(loc_data.get("utilization_pct", 50), default=50)
+            estimated_crude = loc_data.get("estimated_volume_mb", crude_cap * utilization / 100)
             hub_names.append(hub_info["name"])
-            crude_volumes.append(hub_info["crude_capacity_mb"] * util / 100)
-            utilizations.append(util)
-            changes.append(loc_data.get("change_week_pct", 0))
+            change_pct = loc_data.get("change_week_pct", 0)
+            changes.append(change_pct)
+
+            # Derive absolute WoW change from percent change and latest level when possible.
+            pct_value = None
+            try:
+                pct_value = float(change_pct) / 100
+            except (TypeError, ValueError):
+                pct_value = None
+
+            if estimated_crude is None or pct_value is None or not math.isfinite(pct_value):
+                abs_changes.append(None)
+            else:
+                denom = 1 + pct_value
+                if denom == 0:
+                    abs_changes.append(None)
+                else:
+                    prev_level = estimated_crude / denom
+                    abs_changes.append(estimated_crude - prev_level)
 
         # Weekly changes chart
-        col_change1, col_change2 = st.columns([2, 1])
+        st.markdown("**Weekly Change by Hub**")
 
-        with col_change1:
-            st.markdown("**Weekly Change by Hub**")
+        fig_changes = go.Figure()
+        fig_changes.add_trace(go.Bar(
+            x=hub_names,
+            y=changes,
+            customdata=abs_changes,
+            marker_color=[CHART_COLORS['profit'] if c < 0 else CHART_COLORS['loss'] for c in changes],
+            marker_line_width=0,
+            text=[
+                f"{c:+.2f} MMbbl" if c is not None else ""
+                for c in abs_changes
+            ],
+            textposition='outside',
+            hovertemplate='%{x}<br>%{y:+.1f}% WoW<extra></extra>',
+        ))
 
-            fig_changes = go.Figure()
-            fig_changes.add_trace(go.Bar(
-                x=hub_names,
-                y=changes,
-                marker_color=[CHART_COLORS['profit'] if c < 0 else CHART_COLORS['loss'] for c in changes],
-                marker_line_width=0,
-                text=[f"{c:+.1f}%" for c in changes],
-                textposition='outside',
-                hovertemplate='%{x}<br>%{y:+.1f}% WoW<extra></extra>',
-            ))
+        fig_changes.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
 
-            fig_changes.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
+        fig_changes.update_layout(
+            **BASE_LAYOUT,
+            height=340,
+            yaxis={
+                **BASE_LAYOUT.get("yaxis", {}),
+                "title": "Weekly Change (%)",
+                "tickformat": "+.1f",
+                "tickprefix": "",
+                "ticksuffix": "%",
+            },
+            showlegend=False,
+        )
 
-            fig_changes.update_layout(
-                **BASE_LAYOUT,
-                height=250,
-                yaxis_title='Weekly Change (%)',
-                showlegend=False,
-            )
-
-            st.plotly_chart(fig_changes, use_container_width=True, config=get_chart_config())
-
-        with col_change2:
-            st.markdown("**Global Summary**")
-            global_summary = satellite_data.get_global_summary()
-
-            total_crude = global_summary.get("estimated_volume_mb")
-            avg_util = global_summary.get("global_utilization_pct")
-
-            # Fallback to chart-derived values if summary missing
-            if total_crude is None:
-                total_crude = sum(crude_volumes)
-            if avg_util is None:
-                avg_util = float(np.mean(utilizations)) if utilizations else 0
-
-            st.metric("Total Regional Crude", f"{total_crude:.1f} MMbbl")
-            st.metric("Avg Utilization", f"{avg_util:.1f}%")
-
-            # Trading signal
-            signal = satellite_data.calculate_storage_signal()
-            if signal["signal"] == "bullish":
-                st.success(f"📈 {signal['rationale']}")
-            elif signal["signal"] == "bearish":
-                st.error(f"📉 {signal['rationale']}")
-            else:
-                st.info(f"➡️ {signal['rationale']}")
-
-            st.caption(f"Confidence: {signal['confidence']}%")
-
-    else:
-        st.info("📊 Regional stock data requires Bloomberg connection and configured tickers.")
-        st.markdown("""
-        **To enable regional inventory data:**
-        1. Ensure Bloomberg Terminal is connected
-        2. Configure tickers in `config/bloomberg_tickers.yaml` (`inventory.locations`)
-
-        **Centralized ticker config**
-        - All Bloomberg-connected regional inventory tickers default to this config file
-        - Add the USGC / ARA tickers under their respective location keys
-
-        **Bloomberg Tickers configured:**
-        - **USGC Crude Inventory**: `DOESCROK Index` (Capacity: 400 MMbbl)
-        - **ARA Crude Inventory**: `DARATOTL Index` (Capacity: 100 MMbbl)
-        """)
+        st.plotly_chart(fig_changes, width="stretch", config=get_chart_config())
 
     st.divider()
 
@@ -1356,7 +1336,7 @@ with tab3:
                 yaxis_tickformat='.0f',
             )
 
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
             # Weekly change
             st.markdown("**Weekly Change**")
@@ -1379,7 +1359,7 @@ with tab3:
                 yaxis_title='Change (MMbbl)',
             )
 
-            st.plotly_chart(change_fig, use_container_width=True, config=get_chart_config())
+            st.plotly_chart(change_fig, width="stretch", config=get_chart_config())
 
         with col2:
             st.markdown("**Latest Report**")
@@ -1484,7 +1464,7 @@ with tab3:
             # Display as styled dataframe
             st.dataframe(
                 df_products,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "Product": st.column_config.TextColumn("Product", width="small"),
@@ -1547,7 +1527,7 @@ with tab3:
         yaxis_title='Product Stocks (MMbbl)',
     )
 
-    st.plotly_chart(fig_products, use_container_width=True, config=get_chart_config())
+    st.plotly_chart(fig_products, width="stretch", config=get_chart_config())
 
     # Data sources note
     st.caption("""
@@ -1556,112 +1536,9 @@ with tab3:
     """)
 
 # =============================================================================
-# TAB 4: OPEC Monitor
+# TAB 4: News & Sentiment
 # =============================================================================
 with tab4:
-    # OPEC Monitor Tab
-    st.subheader("OPEC+ Production Monitor")
-
-    opec_data = data_loader.get_opec_production()
-
-    if opec_data is None or (hasattr(opec_data, 'empty') and opec_data.empty):
-        st.info("📊 OPEC production data requires Bloomberg connection or external data feed.")
-        st.markdown("""
-        **Data Sources:**
-        - OPEC Monthly Oil Market Report
-        - IEA Oil Market Report
-        - Bloomberg OPEC <GO> function
-        """)
-    else:
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            st.markdown("**Production vs Quota by Country**")
-
-            fig = go.Figure()
-
-            fig.add_trace(go.Bar(
-                name='Quota',
-                x=opec_data['country'],
-                y=opec_data['quota_mbpd'],
-                marker_color=CHART_COLORS['primary'],
-                marker_line_width=0,
-                hovertemplate='Quota: %{y:.2f} mb/d<extra></extra>',
-            ))
-
-            fig.add_trace(go.Bar(
-                name='Actual',
-                x=opec_data['country'],
-                y=opec_data['actual_mbpd'],
-                marker_color=CHART_COLORS['profit'],
-                marker_line_width=0,
-                hovertemplate='Actual: %{y:.2f} mb/d<extra></extra>',
-            ))
-
-            opec_layout = {
-                **BASE_LAYOUT,
-                "height": 400,
-                "barmode": 'group',
-                "yaxis_title": 'Production (mb/d)',
-                "legend": {"orientation": 'h', "yanchor": 'bottom', "y": 1.02, "xanchor": 'right', "x": 1},
-            }
-            fig.update_layout(**opec_layout)
-
-            st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
-
-            # Compliance table
-            st.markdown("**Compliance by Country**")
-
-            st.dataframe(
-                opec_data,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'country': 'Country',
-                    'quota_mbpd': st.column_config.NumberColumn('Quota (mb/d)', format='%.2f'),
-                    'actual_mbpd': st.column_config.NumberColumn('Actual (mb/d)', format='%.2f'),
-                    'compliance_pct': st.column_config.ProgressColumn('Compliance', min_value=0, max_value=110, format='%.0f%%'),
-                }
-            )
-
-        with col2:
-            st.markdown("**Overall Compliance**")
-
-            opec_analysis = fundamental_analyzer.analyze_opec_compliance(opec_data)
-
-            st.metric(
-                "Overall Compliance",
-                f"{opec_analysis['overall_compliance_pct']:.1f}%"
-            )
-
-            st.metric(
-                "Total OPEC+ Production",
-                f"{opec_analysis['total_actual_mbpd']:.2f} mb/d"
-            )
-
-            st.metric(
-                "vs Quota",
-                f"{opec_analysis['deviation_mbpd']:+.2f} mb/d"
-            )
-
-            # Market impact
-            st.divider()
-            st.markdown("**Market Impact Assessment**")
-
-            if "Bullish" in opec_analysis['market_impact']:
-                st.success(opec_analysis['market_impact'])
-            elif "Bearish" in opec_analysis['market_impact']:
-                st.error(opec_analysis['market_impact'])
-            else:
-                st.info(opec_analysis['market_impact'])
-
-            if opec_analysis['over_producers']:
-                st.warning(f"Over-producers: {', '.join(opec_analysis['over_producers'])}")
-
-# =============================================================================
-# TAB 5: News & Sentiment
-# =============================================================================
-with tab5:
     # Page header with animation class
     st.markdown("""
     <div class="animate-fade-in-up">
@@ -1811,7 +1688,7 @@ with tab5:
                     ax.axis('off')
                     fig.patch.set_facecolor('#0f172a')
                     plt.tight_layout(pad=0)
-                    st.pyplot(fig, use_container_width=True)
+                    st.pyplot(fig, width="stretch")
                     plt.close(fig)
 
                     st.markdown(f"""
@@ -1903,7 +1780,7 @@ with tab5:
                     paper_bgcolor='rgba(0,0,0,0)',
                     font={'color': '#e2e8f0'},
                 )
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Show sentiment distribution with styled badges
                 if "label_distribution" in aggregate:
@@ -1955,9 +1832,9 @@ with tab5:
             st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
-# TAB 6: Correlations
+# TAB 5: Correlations
 # =============================================================================
-with tab6:
+with tab5:
     st.subheader("Cross-Asset Correlation Analysis")
 
     if not RESEARCH_AVAILABLE:
@@ -2004,7 +1881,7 @@ with tab6:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width="stretch", config=get_chart_config())
                     else:
                         st.warning("Unable to fetch correlation data. Please check Bloomberg connection.")
 
@@ -2052,7 +1929,7 @@ with tab6:
                     }
                     fig.update_layout(**corr_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
                 else:
                     st.info(f"No rolling correlation data available for {asset1} vs {asset2}")
 
@@ -2079,9 +1956,9 @@ with tab6:
             st.error(f"Correlation analysis error: {e}")
 
 # =============================================================================
-# TAB 7: Regimes
+# TAB 6: Regimes
 # =============================================================================
-with tab7:
+with tab6:
     st.subheader("Market Regime Detection")
 
     if not RESEARCH_AVAILABLE:
@@ -2213,7 +2090,7 @@ with tab7:
                 }
                 fig.update_layout(**regime_layout)
 
-                st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
             # Regime transitions
             st.markdown("**Recent Transitions**")
@@ -2231,15 +2108,15 @@ with tab7:
                     for t in transitions
                 ])
 
-                st.dataframe(trans_df, use_container_width=True, hide_index=True)
+                st.dataframe(trans_df, width="stretch", hide_index=True)
 
         except Exception as e:
             st.error(f"Regime detection error: {e}")
 
 # =============================================================================
-# TAB 8: Factor Models
+# TAB 7: Factor Models
 # =============================================================================
-with tab8:
+with tab7:
     st.subheader("Factor Decomposition & Attribution")
 
     if not RESEARCH_AVAILABLE:
@@ -2296,7 +2173,7 @@ with tab8:
                     }
                     fig.update_layout(**exposure_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
                 else:
                     st.info("Click 'Run Factor Analysis' to see results")
 
@@ -2328,7 +2205,7 @@ with tab8:
                             margin={"l": 20, "r": 20, "t": 20, "b": 20},
                         )
 
-                        st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                        st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 with col_b:
                     st.markdown("**Model Statistics**")
@@ -2360,9 +2237,9 @@ with tab8:
             st.error(f"Factor analysis error: {e}")
 
 # =============================================================================
-# TAB 9: Alternative Data
+# TAB 8: Alternative Data
 # =============================================================================
-with tab9:
+with tab8:
     st.subheader("Alternative Data Sources")
 
     if not RESEARCH_AVAILABLE:
@@ -2402,7 +2279,7 @@ with tab9:
                         })
 
                     storage_df = pd.DataFrame(storage_data)
-                    st.dataframe(storage_df, use_container_width=True, hide_index=True)
+                    st.dataframe(storage_df, width="stretch", hide_index=True)
 
                     # Storage utilization chart
                     fig = go.Figure()
@@ -2424,7 +2301,7 @@ with tab9:
                     }
                     fig.update_layout(**storage_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                     # Storage signal
                     signal = satellite.calculate_storage_signal()
@@ -2471,7 +2348,7 @@ with tab9:
                                 "Anchored": counts.get("anchored", 0),
                             })
 
-                        st.dataframe(pd.DataFrame(fleet_data), use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(fleet_data), width="stretch", hide_index=True)
 
                 with col2:
                     st.markdown("**Freight Rates**")
@@ -2517,7 +2394,7 @@ with tab9:
                         showlegend=False,
                     )
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Shipping signal
                 signal = shipping.calculate_shipping_signal()
@@ -2562,7 +2439,7 @@ with tab9:
                             "Week Change": f"{data.get('week_change', 0):+,}",
                         })
 
-                    st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(pos_data), width="stretch", hide_index=True)
 
                 # Percentile visualization
                 if positions:
@@ -2592,7 +2469,7 @@ with tab9:
                     }
                     fig.update_layout(**cot_layout)
 
-                    st.plotly_chart(fig, use_container_width=True, config=get_chart_config())
+                    st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Positioning signal
                 signal = positioning.calculate_positioning_signal()
