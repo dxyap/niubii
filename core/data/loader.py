@@ -19,6 +19,7 @@ import yaml
 from .bloomberg import (
     BloombergClient,
     BloombergSubscriptionService,
+    DataUnavailableError,
     TickerMapper,
 )
 from .cache import (
@@ -756,16 +757,114 @@ class DataLoader:
         cache_key = "eia_inventory"
         cached = self.cache.get(cache_key, cache_type="fundamental")
 
+        def _normalize_inventory_units(df: pd.DataFrame | None) -> pd.DataFrame | None:
+            """Ensure crude inventory fields are in MMbbl (convert from kb when necessary)."""
+            if df is None or df.empty:
+                return df
+            normalized = df.copy()
+            cols = ["inventory_mmb", "change_mmb", "expectation_mmb", "surprise_mmb"]
+
+            def needs_scale(series: pd.Series | None) -> bool:
+                if series is None or series.empty:
+                    return False
+                median_abs = series.abs().median()
+                return pd.notna(median_abs) and median_abs > 1000
+
+            if any(needs_scale(normalized.get(col)) for col in cols):
+                for col in cols:
+                    if col in normalized:
+                        normalized[col] = normalized[col] / 1000.0
+            return normalized
+
         if cached is not None:
-            return cached
+            return _normalize_inventory_units(cached)
 
-        # Try to load from storage
-        stored = self.storage.load_fundamentals("eia_inventory")
-        if stored is not None and not stored.empty:
-            return stored
+        tickers = self.get_eia_tickers()
+        crude_level_ticker = tickers.get("crude_inventory", "DOESCRUD Index")
+        crude_change_ticker = tickers.get("crude_inventory_change", "DOEASCRD Index")
 
-        # No data available - return None instead of mock data
-        return None
+        # Pull five-plus years to build a 5Y average and recent seasonality
+        start_date = datetime.now() - timedelta(days=365 * 6)
+        end_date = datetime.now()
+
+        inventory_df = None
+        change_df = None
+
+        try:
+            inventory_df = self.bloomberg.get_historical(
+                crude_level_ticker,
+                start_date,
+                end_date,
+                fields=["PX_LAST"],
+                frequency="WEEKLY",
+            )
+        except DataUnavailableError as e:
+            logger.warning("Could not fetch crude inventory from Bloomberg (%s): %s", crude_level_ticker, e)
+        except Exception as e:
+            logger.warning("Unexpected error fetching crude inventory %s: %s", crude_level_ticker, e)
+
+        if inventory_df is None or inventory_df.empty:
+            # Fall back to stored data if live pull is unavailable
+            stored = self.storage.load_fundamentals("eia_inventory")
+            if stored is not None and not stored.empty:
+                normalized_stored = _normalize_inventory_units(stored)
+                self.cache.set(cache_key, normalized_stored, cache_type="fundamental")
+                return normalized_stored
+            return None
+
+        try:
+            change_df = self.bloomberg.get_historical(
+                crude_change_ticker,
+                start_date,
+                end_date,
+                fields=["PX_LAST", "SURVEY_MEDIAN", "BEST_MEDIAN"],
+                frequency="WEEKLY",
+            )
+        except DataUnavailableError:
+            logger.debug("Crude inventory change ticker %s unavailable; will derive weekly change", crude_change_ticker)
+        except Exception as e:
+            logger.debug("Error fetching crude inventory change %s: %s", crude_change_ticker, e)
+
+        inventory_df = inventory_df.sort_index()
+
+        result_index = pd.to_datetime(inventory_df.index)
+
+        result = pd.DataFrame(index=result_index)
+        result.index.name = "date"
+        # Bloomberg DOESCRUD/DOEASCRD are in kb; convert to MMbbl (1,000 kb = 1 MMbbl)
+        result["inventory_mmb"] = inventory_df["PX_LAST"] / 1000.0
+
+        # Weekly change (prefer Bloomberg change ticker, otherwise derive from level)
+        change_series = None
+        if change_df is not None and not change_df.empty and "PX_LAST" in change_df:
+            change_series = change_df.sort_index()["PX_LAST"] / 1000.0
+        if change_series is None or change_series.empty:
+            change_series = result["inventory_mmb"].diff()
+        result["change_mmb"] = change_series.reindex(result.index).ffill().fillna(0.0)
+
+        # Expectation: use survey/best median when available, otherwise default to zero
+        expectation_series = None
+        if change_df is not None and not change_df.empty:
+            for col in ("SURVEY_MEDIAN", "BEST_MEDIAN"):
+                if col in change_df:
+                    expectation_series = change_df.sort_index()[col] / 1000.0
+                    break
+        if expectation_series is None:
+            expectation_series = pd.Series(0.0, index=result.index)
+        result["expectation_mmb"] = expectation_series.reindex(result.index).ffill().fillna(0.0)
+
+        # Surprise is always calculated off aligned level/change data
+        result["surprise_mmb"] = result["change_mmb"] - result["expectation_mmb"]
+
+        # Persist and cache for reuse
+        try:
+            self.storage.save_fundamentals("eia_inventory", result)
+        except Exception as e:
+            logger.debug("Could not save eia_inventory to storage: %s", e)
+
+        normalized = _normalize_inventory_units(result)
+        self.cache.set(cache_key, normalized, cache_type="fundamental")
+        return normalized
 
     def get_opec_production(self) -> pd.DataFrame | None:
         """

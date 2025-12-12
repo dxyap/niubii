@@ -1273,18 +1273,20 @@ with tab3:
 
         fig_changes.add_hline(y=0, line_dash='solid', line_color='rgba(255,255,255,0.3)', line_width=1)
 
-        fig_changes.update_layout(
+        layout_changes = {
             **BASE_LAYOUT,
-            height=340,
-            yaxis={
-                **BASE_LAYOUT.get("yaxis", {}),
-                "title": "Weekly Change (%)",
-                "tickformat": "+.1f",
-                "tickprefix": "",
-                "ticksuffix": "%",
-            },
-            showlegend=False,
-        )
+            "height": 340,
+            "showlegend": False,
+        }
+        layout_changes["yaxis"] = {
+            **BASE_LAYOUT.get("yaxis", {}),
+            "title": "Weekly Change (%)",
+            "tickformat": "+.1f",
+            "tickprefix": "",
+            "ticksuffix": "%",
+        }
+
+        fig_changes.update_layout(**layout_changes)
 
         st.plotly_chart(fig_changes, width="stretch", config=get_chart_config())
 
@@ -1311,41 +1313,69 @@ with tab3:
         with col1:
             st.markdown("**EIA Weekly Crude Inventory**")
 
+            inventory_df = eia_data.sort_index().copy()
+            inventory_df.index = pd.to_datetime(inventory_df.index)
+            inventory_df["year"] = inventory_df.index.year
+            inventory_df["week"] = inventory_df.index.isocalendar().week.astype(int)
+
+            # Build 3-year seasonality lines with 5-year average baseline
+            recent_years = sorted(inventory_df["year"].unique())[-3:]
+            five_year_cutoff = pd.Timestamp.now() - pd.DateOffset(years=5)
+            five_year_window = inventory_df[inventory_df.index >= five_year_cutoff]
+            five_year_avg = (
+                five_year_window.groupby("week")["inventory_mmb"]
+                .mean()
+                .reset_index()
+            )
+
             fig = go.Figure()
+            seasonal_colors = [
+                CHART_COLORS["primary"],
+                CHART_COLORS["secondary"],
+                CHART_COLORS["tertiary"],
+            ]
 
-            # Inventory level with gradient fill
-            fig.add_trace(go.Scatter(
-                x=eia_data.index,
-                y=eia_data['inventory_mmb'],
-                name='Inventory',
-                line={"color": CHART_COLORS['primary'], "width": 2.5},
-                fill='tozeroy',
-                fillcolor='rgba(0, 163, 224, 0.1)',
-                hovertemplate='%{x}<br>%{y:.1f} MMbbl<extra></extra>',
-            ))
+            for idx, year in enumerate(recent_years):
+                yearly = inventory_df[inventory_df["year"] == year]
+                fig.add_trace(go.Scatter(
+                    x=yearly["week"],
+                    y=yearly["inventory_mmb"],
+                    name=str(year),
+                    line={"color": seasonal_colors[idx % len(seasonal_colors)], "width": 2.5},
+                    hovertemplate=f"Week %{{x}} ({year})<br>%{{y:.1f}} MMbbl<extra></extra>",
+                ))
 
-            # 5-year range
-            mean = eia_data['inventory_mmb'].mean()
-            fig.add_hline(y=mean, line_dash='dash', line_color=CHART_COLORS['ma_fast'],
-                         annotation_text='5-Year Avg')
+            if not five_year_avg.empty:
+                fig.add_trace(go.Scatter(
+                    x=five_year_avg["week"],
+                    y=five_year_avg["inventory_mmb"],
+                    name="5Y Avg",
+                    line={"color": CHART_COLORS["ma_fast"], "dash": "dash", "width": 2},
+                    hovertemplate="Week %{x}<br>5Y Avg %{y:.1f} MMbbl<extra></extra>",
+                ))
 
             fig.update_layout(
                 **BASE_LAYOUT,
-                height=350,
-                yaxis_title='Inventory (MMbbl)',
-                yaxis_tickformat='.0f',
+                height=360,
+                xaxis_title="Week of Year",
+                yaxis_title="Inventory (MMbbl)",
+                yaxis_tickformat=".0f",
+                legend_title="Seasonality",
             )
 
             st.plotly_chart(fig, width="stretch", config=get_chart_config())
+            st.caption("Source: DOESCRUD Index | Seasonality: last 3 years with 5-year average.")
 
             # Weekly change
             st.markdown("**Weekly Change**")
 
+            change_window = inventory_df[inventory_df.index >= (pd.Timestamp.now() - pd.DateOffset(years=2))]
+
             change_fig = go.Figure()
             change_fig.add_trace(go.Bar(
-                x=eia_data.index,
-                y=eia_data['change_mmb'],
-                marker_color=[CHART_COLORS['profit'] if x < 0 else CHART_COLORS['loss'] for x in eia_data['change_mmb']],
+                x=change_window.index,
+                y=change_window['change_mmb'],
+                marker_color=[CHART_COLORS['profit'] if x < 0 else CHART_COLORS['loss'] for x in change_window['change_mmb']],
                 marker_line_width=0,
                 name='Change',
                 hovertemplate='%{x}<br>%{y:+.1f} MMbbl<extra></extra>',
@@ -1364,17 +1394,19 @@ with tab3:
         with col2:
             st.markdown("**Latest Report**")
 
-            latest = eia_data.iloc[-1]
+            latest = inventory_df.iloc[-1]
+            latest_expectation = latest.get('expectation_mmb', 0.0)
+            if pd.isna(latest_expectation):
+                latest_expectation = 0.0
 
             inv_analysis = fundamental_analyzer.analyze_inventory(
                 current_level=latest['inventory_mmb'],
                 change=latest['change_mmb'],
-                expectation=latest['expectation_mmb']
+                expectation=latest_expectation
             )
 
             st.metric("Current Level", f"{inv_analysis['current_level']:.1f} MMbbl")
             st.metric("Change", f"{inv_analysis['change']:+.1f} MMbbl")
-            st.metric("Surprise", f"{inv_analysis['surprise']:+.1f} MMbbl")
 
             # Signal
             if "Bullish" in inv_analysis['surprise_signal']:
