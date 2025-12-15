@@ -2,28 +2,36 @@
 Alerts Page
 ===========
 Multi-channel alert system for trading signals, risk, and events.
+
+Performance optimizations:
+- Page initialized before heavy imports
+- Alert engine cached in session state
+- Lazy module imports
 """
 
 import sys
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-from dotenv import load_dotenv
+# Apply theme first
+from app.components.theme import COLORS, apply_theme, get_chart_config
 
-load_dotenv()
+apply_theme(st)
+
+# Lazy imports after theme
+import pandas as pd
 
 from app import shared_state
-from app.components.theme import COLORS, apply_theme, get_chart_config
 from app.main import get_connection_status_cached
 
-# Import alerts modules
+# Import alerts modules (lightweight enum/config imports)
 from core.alerts import (
     AlertCategory,
     AlertEngine,
@@ -38,9 +46,6 @@ from core.alerts.rules import (
     create_signal_alert,
 )
 from core.alerts.scheduler import ReportConfig, ReportFrequency, ReportScheduler, ReportType
-
-
-apply_theme(st)
 
 # Initialize session state
 if "alert_engine" not in st.session_state:

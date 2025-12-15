@@ -2,19 +2,21 @@
 ML Signals Page
 ===============
 Machine learning-powered trading signals and model analytics.
+
+Performance optimizations:
+- Page initialized before heavy imports
+- ML modules loaded lazily (only when needed)
+- Plotly imported after page setup
 """
 
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from app.components.charts import BASE_LAYOUT, CHART_COLORS
+# Initialize page first (before heavy imports)
 from app.page_utils import get_chart_config, init_page
 
-# Initialize page
 ctx = init_page(
     title="🤖 ML-Powered Signals",
     page_title="ML Signals | Oil Trading",
@@ -22,7 +24,7 @@ ctx = init_page(
     lookback_days=365,
 )
 
-# Tabs
+# Tabs setup
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Current Signals",
     "🧠 Model Performance",
@@ -30,15 +32,27 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "⚙️ Model Training"
 ])
 
-# Try to load ML modules
-try:
-    from core.ml import FeatureConfig, FeatureEngineer
-    from core.ml.models import EnsembleModel, GradientBoostModel, ModelConfig
-    from core.ml.training import ModelTrainer, TrainingConfig
-    ML_AVAILABLE = True
-except ImportError as e:
-    ML_AVAILABLE = False
-    ML_ERROR = str(e)
+# Lazy imports after page init
+import pandas as pd
+import plotly.graph_objects as go
+
+from app.components.charts import BASE_LAYOUT, CHART_COLORS
+
+
+# Lazy load ML modules (cached check)
+@st.cache_data(show_spinner=False)
+def check_ml_availability():
+    """Check if ML modules are available (cached)."""
+    try:
+        from core.ml import FeatureConfig, FeatureEngineer
+        from core.ml.models import EnsembleModel, GradientBoostModel, ModelConfig
+        from core.ml.training import ModelTrainer, TrainingConfig
+        return True, None
+    except ImportError as e:
+        return False, str(e)
+
+
+ML_AVAILABLE, ML_ERROR = check_ml_availability()
 
 with tab1:
     st.subheader("Current ML Signals")

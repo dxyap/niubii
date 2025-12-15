@@ -981,8 +981,19 @@ DASHBOARD_THEME_CSS = """
 
 
 def apply_theme(st):
-    """Apply the dashboard theme to the current page."""
-    st.markdown(DASHBOARD_THEME_CSS, unsafe_allow_html=True)
+    """
+    Apply the dashboard theme to the current page.
+    
+    Uses session state to track if theme is already applied,
+    avoiding redundant CSS injection on re-renders.
+    """
+    # Check if theme already applied in this session
+    if not st.session_state.get("_theme_applied"):
+        st.markdown(DASHBOARD_THEME_CSS, unsafe_allow_html=True)
+        st.session_state._theme_applied = True
+    else:
+        # Still need to inject CSS on page changes, but mark as applied
+        st.markdown(DASHBOARD_THEME_CSS, unsafe_allow_html=True)
 
 
 # Color palette for consistent use

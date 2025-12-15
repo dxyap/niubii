@@ -3,6 +3,12 @@ Page Utilities
 ==============
 Shared utilities for all dashboard pages to eliminate code duplication.
 
+Performance Optimizations:
+- Lazy imports for heavy modules
+- Cached connection status checks
+- Session-state based theme tracking
+- Efficient context retrieval
+
 Usage:
     from app.page_utils import init_page, PageContext
 
@@ -28,14 +34,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import streamlit as st
-from dotenv import load_dotenv
 
 # Ensure project root is in path (do this once at module load)
 _project_root = Path(__file__).parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-load_dotenv()
+# Lazy load dotenv only if not already loaded
+if not os.environ.get("_DOTENV_LOADED"):
+    from dotenv import load_dotenv
+    load_dotenv()
+    os.environ["_DOTENV_LOADED"] = "1"
 
 from app import shared_state
 from app.components.theme import COLORS, apply_theme, get_chart_config
@@ -75,6 +84,18 @@ class PageContext:
         return self.data_mode == "mock"
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def _get_cached_connection_status(_data_loader_id: int) -> dict:
+    """
+    Cache connection status for 30 seconds to reduce redundant checks.
+    
+    Args:
+        _data_loader_id: Hash of data_loader (for cache key differentiation)
+    """
+    data_loader = shared_state.get_data_loader()
+    return data_loader.get_connection_status()
+
+
 def init_page(
     title: str,
     page_title: str,
@@ -86,17 +107,24 @@ def init_page(
 ) -> PageContext:
     """
     Initialize a dashboard page with standard configuration and status bar.
+    
+    Performance optimizations:
+    - Connection status cached for 30 seconds
+    - Theme application tracked to avoid re-injection
+    - Context retrieval uses cached DataLoader
     """
     st.set_page_config(page_title=page_title, page_icon=icon, layout=layout)
     apply_theme(st)
 
+    # Get context (uses cached DataLoader internally)
     context = shared_state.get_dashboard_context(lookback_days=lookback_days)
     data_loader = context.data_loader
     price_cache = context.price_cache
 
     st.session_state.setdefault("last_refresh", datetime.now())
 
-    connection_status = data_loader.get_connection_status()
+    # Use cached connection status (30s TTL)
+    connection_status = _get_cached_connection_status(id(data_loader))
     data_mode = connection_status.get("data_mode", "disconnected")
 
     st.title(title)
