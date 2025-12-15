@@ -36,6 +36,9 @@ from app.components.ui_components import (
     render_risk_traffic_light,
 )
 
+# Import risk modules at module level to avoid deadlock with cache locks
+from core.risk import RiskLimits, RiskMonitor, VaRCalculator
+
 # Initialize risk components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
@@ -47,7 +50,6 @@ def get_risk_components():
     
     These are stateless calculators, safe to cache.
     """
-    from core.risk import RiskLimits, RiskMonitor, VaRCalculator
     var_calc = VaRCalculator(confidence_level=0.95, holding_period=1)
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))
     risk_monitor = RiskMonitor()

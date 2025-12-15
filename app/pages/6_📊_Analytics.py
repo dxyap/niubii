@@ -39,7 +39,10 @@ from app.components.charts import (
 )
 
 
-# Cache analyzers as resources
+# Import analytics modules at module level to avoid deadlock with cache locks
+from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
+
+
 @st.cache_resource(show_spinner=False)
 def get_analytics_components():
     """
@@ -47,7 +50,6 @@ def get_analytics_components():
     
     These are stateless analyzers, safe to cache.
     """
-    from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
     return CurveAnalyzer(), SpreadAnalyzer(), FundamentalAnalyzer()
 
 

@@ -32,54 +32,45 @@ from app import shared_state
 from app.main import get_connection_status_cached, get_historical_data_cached
 
 
-# Lazy load backtest modules (cached)
-@st.cache_resource(show_spinner=False)
-def get_backtest_modules():
-    """
-    Import backtest modules lazily (cached).
-    
-    These are expensive to import and initialize.
-    """
-    from core.backtest import (
-        BacktestConfig,
-        BacktestEngine,
-        BollingerBandStrategy,
-        BuyAndHoldStrategy,
-        CostModelConfig,
-        MACrossoverStrategy,
-        MomentumStrategy,
-        RSIMeanReversionStrategy,
-        SimpleCostModel,
-        StrategyConfig,
-        create_drawdown_chart,
-        create_equity_chart,
-        create_monthly_heatmap,
-        create_returns_distribution,
-        create_trade_analysis_chart,
-        generate_summary_report,
-    )
-    return {
-        "BacktestConfig": BacktestConfig,
-        "BacktestEngine": BacktestEngine,
-        "BollingerBandStrategy": BollingerBandStrategy,
-        "BuyAndHoldStrategy": BuyAndHoldStrategy,
-        "CostModelConfig": CostModelConfig,
-        "MACrossoverStrategy": MACrossoverStrategy,
-        "MomentumStrategy": MomentumStrategy,
-        "RSIMeanReversionStrategy": RSIMeanReversionStrategy,
-        "SimpleCostModel": SimpleCostModel,
-        "StrategyConfig": StrategyConfig,
-        "create_drawdown_chart": create_drawdown_chart,
-        "create_equity_chart": create_equity_chart,
-        "create_monthly_heatmap": create_monthly_heatmap,
-        "create_returns_distribution": create_returns_distribution,
-        "create_trade_analysis_chart": create_trade_analysis_chart,
-        "generate_summary_report": generate_summary_report,
-    }
+# Import backtest modules at module level to avoid deadlock with cache locks
+from core.backtest import (
+    BacktestConfig,
+    BacktestEngine,
+    BollingerBandStrategy,
+    BuyAndHoldStrategy,
+    CostModelConfig,
+    MACrossoverStrategy,
+    MomentumStrategy,
+    RSIMeanReversionStrategy,
+    SimpleCostModel,
+    StrategyConfig,
+    create_drawdown_chart,
+    create_equity_chart,
+    create_monthly_heatmap,
+    create_returns_distribution,
+    create_trade_analysis_chart,
+    generate_summary_report,
+)
 
-
-# Load backtest modules
-bt = get_backtest_modules()
+# Create module reference dict for backward compatibility
+bt = {
+    "BacktestConfig": BacktestConfig,
+    "BacktestEngine": BacktestEngine,
+    "BollingerBandStrategy": BollingerBandStrategy,
+    "BuyAndHoldStrategy": BuyAndHoldStrategy,
+    "CostModelConfig": CostModelConfig,
+    "MACrossoverStrategy": MACrossoverStrategy,
+    "MomentumStrategy": MomentumStrategy,
+    "RSIMeanReversionStrategy": RSIMeanReversionStrategy,
+    "SimpleCostModel": SimpleCostModel,
+    "StrategyConfig": StrategyConfig,
+    "create_drawdown_chart": create_drawdown_chart,
+    "create_equity_chart": create_equity_chart,
+    "create_monthly_heatmap": create_monthly_heatmap,
+    "create_returns_distribution": create_returns_distribution,
+    "create_trade_analysis_chart": create_trade_analysis_chart,
+    "generate_summary_report": generate_summary_report,
+}
 
 # Get data loader (uses cached DataLoader)
 context = shared_state.get_dashboard_context(lookback_days=365)

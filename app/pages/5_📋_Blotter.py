@@ -39,6 +39,9 @@ from app.components.ui_components import (
     render_position_heat_strip,
 )
 
+# Import trading modules at module level to avoid deadlock with cache locks
+from core.trading import PnLCalculator, PositionManager, TradeBlotter
+
 # Initialize trading components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
@@ -50,7 +53,6 @@ def get_trading_components():
     
     Database connections are pooled, so caching is safe.
     """
-    from core.trading import PnLCalculator, PositionManager, TradeBlotter
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     pnl_calc = PnLCalculator()

@@ -29,6 +29,10 @@ st.caption("Enter trades manually after execution | Pre-trade risk checks includ
 from app.components.ui_components import render_compact_stats, render_progress_ring
 from core.constants import REFERENCE_PRICES
 
+# Import trading modules at module level to avoid deadlock with cache locks
+from core.risk import RiskLimits
+from core.trading import PositionManager, TradeBlotter
+
 # Initialize trading components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
@@ -40,8 +44,6 @@ def get_trading_components():
     
     Database connections are pooled, so caching is safe.
     """
-    from core.risk import RiskLimits
-    from core.trading import PositionManager, TradeBlotter
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))

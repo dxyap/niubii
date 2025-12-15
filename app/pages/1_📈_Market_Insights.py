@@ -130,7 +130,10 @@ if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = True
 
 
-# Cache analyzers as resources (expensive to create, stateless)
+# Import analytics modules at module level to avoid deadlock with cache locks
+from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
+
+
 @st.cache_resource(show_spinner=False)
 def get_market_insights_analyzers():
     """
@@ -138,7 +141,6 @@ def get_market_insights_analyzers():
     
     These are stateless analyzers, safe to cache across sessions.
     """
-    from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
     return CurveAnalyzer(), SpreadAnalyzer(), FundamentalAnalyzer()
 
 

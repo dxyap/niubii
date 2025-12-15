@@ -20,7 +20,6 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -35,12 +34,13 @@ load_dotenv()
 
 from .dashboard_core import DashboardContext, PortfolioAnalytics, Position
 
-if TYPE_CHECKING:
-    from core.data import DataLoader
+# Import DataLoader at module level to avoid deadlock with @st.cache_resource
+# The import lock and Streamlit's cache lock can conflict if import happens inside cached function
+from core.data import DataLoader
 
 
 @st.cache_resource(show_spinner=False)
-def _create_data_loader() -> "DataLoader":
+def _create_data_loader() -> DataLoader:
     """
     Create DataLoader instance (cached as resource).
     
@@ -51,21 +51,18 @@ def _create_data_loader() -> "DataLoader":
     
     Using @st.cache_resource ensures it's created once per session.
     """
-    from core.data import DataLoader
     return DataLoader(
         config_dir=str(project_root / "config"),
         data_dir=str(project_root / "data"),
     )
 
 
-def get_data_loader() -> "DataLoader":
+def get_data_loader() -> DataLoader:
     """
     Get the shared data loader (cached resource).
     
     Uses @st.cache_resource internally for efficient caching.
-    Falls back to session_state for backward compatibility.
     """
-    # Use cached resource version (most efficient)
     return _create_data_loader()
 
 

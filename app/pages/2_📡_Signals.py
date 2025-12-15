@@ -32,7 +32,10 @@ ctx = init_page(
 st.caption("AI-powered signal generation for oil markets | Signals are advisory only")
 
 
-# Lazy import and cache signal components
+# Import signal modules at module level to avoid deadlock with cache locks
+from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
+
+
 @st.cache_resource(show_spinner=False)
 def get_signal_components():
     """
@@ -40,7 +43,6 @@ def get_signal_components():
     
     These are expensive to create and stateless, so caching is safe.
     """
-    from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
     return TechnicalSignals(), FundamentalSignals(), SignalAggregator()
 
 
