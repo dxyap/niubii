@@ -3,14 +3,32 @@ Trade Blotter Page
 ==================
 Trade history and position monitor with live P&L.
 Enhanced with visual P&L displays and position breakdown.
+
+Performance optimizations:
+- Trading components cached via @st.cache_resource
+- Lazy imports after page initialization
+- Plotly imported after page setup
 """
 
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+
+# Initialize page first (before heavy imports)
+from app.page_utils import get_chart_config, init_page
+
+ctx = init_page(
+    title="📋 Trade Blotter & Position Monitor",
+    page_title="Trade Blotter | Oil Trading",
+    icon="📋",
+)
+
+st.caption("Track trades, positions, and P&L in real-time")
+
+# Lazy imports after page init
+import plotly.graph_objects as go
 
 from app import shared_state
 from app.components.charts import BASE_LAYOUT, CHART_COLORS
@@ -20,27 +38,24 @@ from app.components.ui_components import (
     render_pnl_display,
     render_position_heat_strip,
 )
-from app.page_utils import get_chart_config, init_page
-from core.trading import PnLCalculator, PositionManager, TradeBlotter
 
-# Initialize page
-ctx = init_page(
-    title="📋 Trade Blotter & Position Monitor",
-    page_title="Trade Blotter | Oil Trading",
-    icon="📋",
-)
-
-st.caption("Track trades, positions, and P&L in real-time")
-
-# Initialize trading components (cached)
+# Initialize trading components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
-@st.cache_resource
+
+@st.cache_resource(show_spinner=False)
 def get_trading_components():
+    """
+    Initialize trading components (cached as resource).
+    
+    Database connections are pooled, so caching is safe.
+    """
+    from core.trading import PnLCalculator, PositionManager, TradeBlotter
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     pnl_calc = PnLCalculator()
     return blotter, position_mgr, pnl_calc
+
 
 blotter, position_mgr, pnl_calc = get_trading_components()
 

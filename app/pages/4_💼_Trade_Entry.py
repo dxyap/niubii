@@ -3,6 +3,10 @@ Trade Entry Page
 ================
 Manual trade entry with pre-trade risk checks.
 Enhanced with visual pre-trade feedback.
+
+Performance optimizations:
+- Trading components cached via @st.cache_resource
+- Lazy imports after page initialization
 """
 
 from datetime import datetime
@@ -10,13 +14,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from app.components.ui_components import render_compact_stats, render_progress_ring
+# Initialize page first (before heavy imports)
 from app.page_utils import init_page
-from core.constants import REFERENCE_PRICES
-from core.risk import RiskLimits
-from core.trading import PositionManager, TradeBlotter
 
-# Initialize page
 ctx = init_page(
     title="💼 Trade Entry",
     page_title="Trade Entry | Oil Trading",
@@ -25,15 +25,28 @@ ctx = init_page(
 
 st.caption("Enter trades manually after execution | Pre-trade risk checks included")
 
-# Initialize trading components (cached)
+# Lazy imports after page init
+from app.components.ui_components import render_compact_stats, render_progress_ring
+from core.constants import REFERENCE_PRICES
+
+# Initialize trading components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
-@st.cache_resource
+
+@st.cache_resource(show_spinner=False)
 def get_trading_components():
+    """
+    Initialize trading components (cached as resource).
+    
+    Database connections are pooled, so caching is safe.
+    """
+    from core.risk import RiskLimits
+    from core.trading import PositionManager, TradeBlotter
     blotter = TradeBlotter(db_path=str(project_root / "data" / "trades" / "trades.db"))
     position_mgr = PositionManager(db_path=str(project_root / "data" / "trades" / "trades.db"))
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))
     return blotter, position_mgr, risk_limits
+
 
 blotter, position_mgr, risk_limits = get_trading_components()
 portfolio_summary = ctx.portfolio.summary

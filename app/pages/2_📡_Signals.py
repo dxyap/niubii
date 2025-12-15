@@ -2,6 +2,11 @@
 Trading Signals Page
 ====================
 Signal generation and display with enhanced visual indicators.
+
+Performance optimizations:
+- Signal components cached via @st.cache_resource
+- Historical data fetching uses page context caching
+- Lazy signal generation (only when needed)
 """
 
 from datetime import datetime, timedelta
@@ -15,9 +20,8 @@ from app.components.ui_components import (
     render_signal_indicator,
 )
 from app.page_utils import COLORS, init_page
-from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
 
-# Initialize page
+# Initialize page first (before heavy imports)
 ctx = init_page(
     title="📡 Trading Signals",
     page_title="Signals | Oil Trading",
@@ -27,10 +31,18 @@ ctx = init_page(
 
 st.caption("AI-powered signal generation for oil markets | Signals are advisory only")
 
-# Initialize signal components (cached)
-@st.cache_resource
+
+# Lazy import and cache signal components
+@st.cache_resource(show_spinner=False)
 def get_signal_components():
+    """
+    Initialize signal components (cached as resource).
+    
+    These are expensive to create and stateless, so caching is safe.
+    """
+    from core.signals import FundamentalSignals, SignalAggregator, TechnicalSignals
     return TechnicalSignals(), FundamentalSignals(), SignalAggregator()
+
 
 tech_signals, fund_signals, aggregator = get_signal_components()
 

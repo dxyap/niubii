@@ -2,28 +2,37 @@
 Market Insights & Research Page
 ================================
 Comprehensive market analysis, intelligence, and AI-powered research.
+
+Performance optimizations:
+- Removed force_refresh=True (was defeating cache benefits)
+- Analyzers cached via @st.cache_resource
+- Lazy imports for heavy modules
+- Connection status uses cached function
+- Research modules loaded lazily
 """
 
 import math
 import sys
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import streamlit as st
+
+# Add project root to path (done once at module load)
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Apply shared theme first
+from app.components.theme import apply_theme, get_chart_config
+
+apply_theme(st)
+
+# Lazy imports - heavy modules imported after page setup
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
-import yaml
-
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from app import shared_state
 from app.components.charts import (
@@ -45,13 +54,7 @@ from app.components.ui_components import (
 )
 from app.main import get_connection_status_cached
 from app.page_utils import render_status_bar
-from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
 from core.data.bloomberg import DataUnavailableError
-
-# Apply shared theme
-from app.components.theme import apply_theme, get_chart_config
-
-apply_theme(st)
 
 
 def get_bloomberg_config() -> dict:
@@ -120,19 +123,33 @@ except ImportError:
 # Auto-refresh configuration
 REFRESH_INTERVAL_SECONDS = 60  # Refresh every 60 seconds
 
-# Initialize last refresh time in session state
+# Initialize last refresh time in session state (only if not set)
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
 if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = True
 
-# Force refresh on data context to get latest data
-context = shared_state.get_dashboard_context(lookback_days=180, force_refresh=True)
+
+# Cache analyzers as resources (expensive to create, stateless)
+@st.cache_resource(show_spinner=False)
+def get_market_insights_analyzers():
+    """
+    Initialize market analysis components (cached as resource).
+    
+    These are stateless analyzers, safe to cache across sessions.
+    """
+    from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
+    return CurveAnalyzer(), SpreadAnalyzer(), FundamentalAnalyzer()
+
+
+# Get cached analyzers
+curve_analyzer, spread_analyzer, fundamental_analyzer = get_market_insights_analyzers()
+
+# Get data context WITHOUT force_refresh (leverage caching for performance)
+# The context has a 30-second TTL which provides fresh enough data
+context = shared_state.get_dashboard_context(lookback_days=180)
 data_loader = context.data_loader
 price_cache = context.price_cache
-curve_analyzer = CurveAnalyzer()
-spread_analyzer = SpreadAnalyzer()
-fundamental_analyzer = FundamentalAnalyzer()
 
 
 def format_calendar_spread_labels(spreads_df, curve_df):

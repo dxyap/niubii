@@ -5,10 +5,13 @@ Streamlit dashboard structured with reusable services for clarity and performanc
 Performance Optimizations:
 - Batch API calls for price fetching
 - Request deduplication for concurrent identical requests
-- Streamlit caching for expensive operations
+- Streamlit caching for expensive operations (@st.cache_data, @st.cache_resource)
 - Market-hours aware TTL for smart cache expiration
 - Auto-refresh using st.fragment (non-blocking)
 - Lazy loading of historical data
+- DataLoader cached as resource (expensive to create)
+- Connection status cached (30s TTL)
+- Theme application tracked to avoid re-injection
 """
 
 from __future__ import annotations
@@ -19,11 +22,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
-from dotenv import load_dotenv
 
+# Add project root to path once at module load
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# Lazy load dotenv
+if not os.environ.get("_DOTENV_LOADED"):
+    from dotenv import load_dotenv
+    load_dotenv()
+    os.environ["_DOTENV_LOADED"] = "1"
 
 # Export cached functions for use by other pages
 __all__ = [

@@ -2,51 +2,86 @@
 Backtest Page
 =============
 Strategy backtesting and analysis interface.
+
+Performance optimizations:
+- Page initialized before heavy imports
+- Backtest modules loaded lazily
+- Connection status cached
 """
 
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from app import shared_state
+# Apply theme first
 from app.components.theme import apply_theme, get_chart_config
-from app.main import get_connection_status_cached, get_historical_data_cached
-
-# Import backtest modules
-from core.backtest import (
-    BacktestConfig,
-    BacktestEngine,
-    BollingerBandStrategy,
-    BuyAndHoldStrategy,
-    CostModelConfig,
-    MACrossoverStrategy,
-    MomentumStrategy,
-    RSIMeanReversionStrategy,
-    SimpleCostModel,
-    StrategyConfig,
-    create_drawdown_chart,
-    create_equity_chart,
-    create_monthly_heatmap,
-    create_returns_distribution,
-    create_trade_analysis_chart,
-    generate_summary_report,
-)
-
 
 apply_theme(st)
 
-# Get data loader
+# Lazy imports after theme
+import pandas as pd
+
+from app import shared_state
+from app.main import get_connection_status_cached, get_historical_data_cached
+
+
+# Lazy load backtest modules (cached)
+@st.cache_resource(show_spinner=False)
+def get_backtest_modules():
+    """
+    Import backtest modules lazily (cached).
+    
+    These are expensive to import and initialize.
+    """
+    from core.backtest import (
+        BacktestConfig,
+        BacktestEngine,
+        BollingerBandStrategy,
+        BuyAndHoldStrategy,
+        CostModelConfig,
+        MACrossoverStrategy,
+        MomentumStrategy,
+        RSIMeanReversionStrategy,
+        SimpleCostModel,
+        StrategyConfig,
+        create_drawdown_chart,
+        create_equity_chart,
+        create_monthly_heatmap,
+        create_returns_distribution,
+        create_trade_analysis_chart,
+        generate_summary_report,
+    )
+    return {
+        "BacktestConfig": BacktestConfig,
+        "BacktestEngine": BacktestEngine,
+        "BollingerBandStrategy": BollingerBandStrategy,
+        "BuyAndHoldStrategy": BuyAndHoldStrategy,
+        "CostModelConfig": CostModelConfig,
+        "MACrossoverStrategy": MACrossoverStrategy,
+        "MomentumStrategy": MomentumStrategy,
+        "RSIMeanReversionStrategy": RSIMeanReversionStrategy,
+        "SimpleCostModel": SimpleCostModel,
+        "StrategyConfig": StrategyConfig,
+        "create_drawdown_chart": create_drawdown_chart,
+        "create_equity_chart": create_equity_chart,
+        "create_monthly_heatmap": create_monthly_heatmap,
+        "create_returns_distribution": create_returns_distribution,
+        "create_trade_analysis_chart": create_trade_analysis_chart,
+        "generate_summary_report": generate_summary_report,
+    }
+
+
+# Load backtest modules
+bt = get_backtest_modules()
+
+# Get data loader (uses cached DataLoader)
 context = shared_state.get_dashboard_context(lookback_days=365)
 data_loader = context.data_loader
 
@@ -146,37 +181,37 @@ if run_backtest or "backtest_result" in st.session_state:
                     st.stop()
 
                 # Create strategy
-                config = StrategyConfig(position_size=position_size, max_position=position_size * 2)
+                config = bt["StrategyConfig"](position_size=position_size, max_position=position_size * 2)
 
                 if strategy_type == "MA Crossover":
-                    strategy = MACrossoverStrategy(**strategy_params, config=config)
+                    strategy = bt["MACrossoverStrategy"](**strategy_params, config=config)
                 elif strategy_type == "RSI Mean Reversion":
-                    strategy = RSIMeanReversionStrategy(**strategy_params, config=config)
+                    strategy = bt["RSIMeanReversionStrategy"](**strategy_params, config=config)
                 elif strategy_type == "Bollinger Bands":
-                    strategy = BollingerBandStrategy(**strategy_params, config=config)
+                    strategy = bt["BollingerBandStrategy"](**strategy_params, config=config)
                 elif strategy_type == "Momentum":
-                    strategy = MomentumStrategy(**strategy_params, config=config)
+                    strategy = bt["MomentumStrategy"](**strategy_params, config=config)
                 else:
-                    strategy = BuyAndHoldStrategy(config=config)
+                    strategy = bt["BuyAndHoldStrategy"](config=config)
 
                 # Create cost model
-                cost_config = CostModelConfig(
+                cost_config = bt["CostModelConfig"](
                     commission_per_contract=commission,
                     slippage_ticks=slippage,
                     tick_size=0.01,
                     contract_multiplier=1000,
                 )
-                cost_model = SimpleCostModel(cost_config)
+                cost_model = bt["SimpleCostModel"](cost_config)
 
                 # Create engine and run
-                backtest_config = BacktestConfig(
+                backtest_config = bt["BacktestConfig"](
                     initial_capital=initial_capital,
                     commission_per_contract=commission,
                     slippage_pct=slippage / 100,
                     max_position_size=position_size * 2,
                 )
 
-                engine = BacktestEngine(backtest_config, cost_model)
+                engine = bt["BacktestEngine"](backtest_config, cost_model)
                 result = engine.run(strategy, hist_data, ticker.replace(" Comdty", ""))
 
                 # Store in session state
@@ -229,12 +264,12 @@ if run_backtest or "backtest_result" in st.session_state:
 
             with col1:
                 # Equity curve
-                fig = create_equity_chart(result, height=400)
+                fig = bt["create_equity_chart"](result, height=400)
                 if fig:
                     st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Drawdown chart
-                fig = create_drawdown_chart(result, height=200)
+                fig = bt["create_drawdown_chart"](result, height=200)
                 if fig:
                     st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
@@ -261,12 +296,12 @@ if run_backtest or "backtest_result" in st.session_state:
 
             with col1:
                 # Trade analysis chart
-                fig = create_trade_analysis_chart(result, height=350)
+                fig = bt["create_trade_analysis_chart"](result, height=350)
                 if fig:
                     st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
                 # Returns distribution
-                fig = create_returns_distribution(result, height=250)
+                fig = bt["create_returns_distribution"](result, height=250)
                 if fig:
                     st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
@@ -302,7 +337,7 @@ if run_backtest or "backtest_result" in st.session_state:
 
         with tab3:
             # Monthly returns heatmap
-            fig = create_monthly_heatmap(result, height=400)
+            fig = bt["create_monthly_heatmap"](result, height=400)
             if fig:
                 st.plotly_chart(fig, width="stretch", config=get_chart_config())
 
@@ -326,7 +361,7 @@ if run_backtest or "backtest_result" in st.session_state:
 
         with tab4:
             # Full text report
-            report_text = generate_summary_report(result)
+            report_text = bt["generate_summary_report"](result)
 
             st.code(report_text, language="text")
 

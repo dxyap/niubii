@@ -3,24 +3,21 @@ Risk Management Page
 ====================
 Portfolio risk monitoring and analysis with live data.
 Enhanced with traffic light system and visual stress testing.
+
+Performance optimizations:
+- Risk components cached via @st.cache_resource
+- Lazy imports for heavy modules
+- Chart config cached
 """
 
 from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
-from app.components.charts import BASE_LAYOUT, CHART_COLORS, create_gauge_chart
-from app.components.ui_components import (
-    render_compact_stats,
-    render_progress_ring,
-    render_risk_traffic_light,
-)
+# Initialize page first (before heavy imports)
 from app.page_utils import get_chart_config, init_page
-from core.risk import RiskLimits, RiskMonitor, VaRCalculator
 
-# Initialize page
 ctx = init_page(
     title="🛡️ Risk Management",
     page_title="Risk Management | Oil Trading",
@@ -29,15 +26,33 @@ ctx = init_page(
 
 st.caption("Portfolio risk monitoring and stress testing")
 
-# Initialize risk components (cached)
+# Lazy imports after page init
+import plotly.express as px
+
+from app.components.charts import BASE_LAYOUT, CHART_COLORS, create_gauge_chart
+from app.components.ui_components import (
+    render_compact_stats,
+    render_progress_ring,
+    render_risk_traffic_light,
+)
+
+# Initialize risk components (cached as resource)
 project_root = Path(__file__).parent.parent.parent
 
-@st.cache_resource
+
+@st.cache_resource(show_spinner=False)
 def get_risk_components():
+    """
+    Initialize risk components (cached as resource).
+    
+    These are stateless calculators, safe to cache.
+    """
+    from core.risk import RiskLimits, RiskMonitor, VaRCalculator
     var_calc = VaRCalculator(confidence_level=0.95, holding_period=1)
     risk_limits = RiskLimits(config_path=str(project_root / "config" / "risk_limits.yaml"))
     risk_monitor = RiskMonitor()
     return var_calc, risk_limits, risk_monitor
+
 
 var_calc, risk_limits, risk_monitor = get_risk_components()
 

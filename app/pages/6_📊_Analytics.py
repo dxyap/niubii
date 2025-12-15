@@ -2,26 +2,22 @@
 Analytics Page
 ==============
 Advanced analytics and research tools.
+
+Performance optimizations:
+- Analyzers cached via @st.cache_resource
+- Lazy imports for heavy modules
+- Historical data uses context caching
 """
 
 from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
-from app.components.charts import (
-    BASE_LAYOUT,
-    CHART_COLORS,
-    create_candlestick_chart,
-    create_heatmap,
-    create_volume_chart,
-)
+# Initialize page first (before heavy imports)
 from app.page_utils import get_chart_config, init_page
-from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
 
-# Initialize page
 ctx = init_page(
     title="📊 Advanced Analytics",
     page_title="Analytics | Oil Trading",
@@ -31,10 +27,31 @@ ctx = init_page(
 
 st.caption("Deep dive analysis and research tools")
 
-# Initialize analyzers
-curve_analyzer = CurveAnalyzer()
-spread_analyzer = SpreadAnalyzer()
-fundamental_analyzer = FundamentalAnalyzer()
+# Lazy imports after page init
+import plotly.graph_objects as go
+
+from app.components.charts import (
+    BASE_LAYOUT,
+    CHART_COLORS,
+    create_candlestick_chart,
+    create_heatmap,
+    create_volume_chart,
+)
+
+
+# Cache analyzers as resources
+@st.cache_resource(show_spinner=False)
+def get_analytics_components():
+    """
+    Initialize analytics components (cached as resource).
+    
+    These are stateless analyzers, safe to cache.
+    """
+    from core.analytics import CurveAnalyzer, FundamentalAnalyzer, SpreadAnalyzer
+    return CurveAnalyzer(), SpreadAnalyzer(), FundamentalAnalyzer()
+
+
+curve_analyzer, spread_analyzer, fundamental_analyzer = get_analytics_components()
 
 # Tabs
 tab1, tab2, tab3, tab4 = st.tabs([
