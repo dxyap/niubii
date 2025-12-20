@@ -291,7 +291,7 @@ with tab4:
             rsi_period = st.slider("RSI Period", 7, 21, 14)
             oversold = st.slider("Oversold Level", 20, 40, 30)
 
-        if st.button("Run Backtest", width="stretch"):
+        if st.button("Run Backtest", use_container_width=True):
             with st.spinner("Running backtest..."):
                 import time
                 time.sleep(1)

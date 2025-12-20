@@ -168,7 +168,7 @@ with st.sidebar:
     slippage = st.number_input("Slippage (bps)", 0.0, 10.0, 1.0, 0.5)
 
 # Main content
-run_backtest = st.button("🚀 Run Backtest", type="primary", width="stretch")
+run_backtest = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
 
 if run_backtest or "backtest_result" in st.session_state:
     if run_backtest:

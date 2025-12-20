@@ -264,7 +264,7 @@ with quick_col1:
         WTI @ ${wti_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📈 Buy 5 WTI", width="stretch", type="primary"):
+    if st.button("📈 Buy 5 WTI", use_container_width=True, type="primary"):
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="BUY", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -275,7 +275,7 @@ with quick_col2:
         WTI @ ${wti_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📉 Sell 5 WTI", width="stretch"):
+    if st.button("📉 Sell 5 WTI", use_container_width=True):
         trade_id = blotter.add_trade(instrument="CL1 Comdty", side="SELL", quantity=5, price=wti_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -286,7 +286,7 @@ with quick_col3:
         Brent @ ${brent_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📈 Buy 5 Brent", width="stretch", type="primary"):
+    if st.button("📈 Buy 5 Brent", use_container_width=True, type="primary"):
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="BUY", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()
@@ -297,7 +297,7 @@ with quick_col4:
         Brent @ ${brent_price:.2f}
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📉 Sell 5 Brent", width="stretch"):
+    if st.button("📉 Sell 5 Brent", use_container_width=True):
         trade_id = blotter.add_trade(instrument="CO1 Comdty", side="SELL", quantity=5, price=brent_price, strategy="Quick Entry")
         st.success(f"Trade {trade_id} saved!")
         st.rerun()

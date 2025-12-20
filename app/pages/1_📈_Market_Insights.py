@@ -222,7 +222,7 @@ with header_col2:
     st.session_state.auto_refresh = auto_refresh
 
 with header_col3:
-    if st.button("🔄 Refresh Now", width="stretch"):
+    if st.button("🔄 Refresh Now", use_container_width=True):
         st.session_state.last_refresh = datetime.now()
         shared_state.invalidate_context_cache()
         st.rerun()
