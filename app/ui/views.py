@@ -172,7 +172,7 @@ class SidebarView:
             auto_refresh = st.toggle(toggle_label, value=self.refresh_controller.auto_refresh_enabled)
             self.refresh_controller.update_auto_refresh(auto_refresh)
 
-            if st.button("Refresh Now", width="stretch"):
+            if st.button("Refresh Now", use_container_width=True):
                 self.refresh_controller.refresh_now()
 
             st.divider()

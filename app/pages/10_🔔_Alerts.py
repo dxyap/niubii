@@ -9,11 +9,19 @@ Performance optimizations:
 - Lazy module imports
 """
 
+import streamlit as st
+
+# Page configuration must be the first Streamlit command
+st.set_page_config(
+    page_title="Alerts - Oil Trading Dashboard",
+    page_icon="🔔",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 import sys
 from datetime import datetime, time, timedelta
 from pathlib import Path
-
-import streamlit as st
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent

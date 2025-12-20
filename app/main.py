@@ -45,14 +45,21 @@ __all__ = [
     "get_term_structure_cached",
 ]
 
-# Page configuration must be the first Streamlit call
-st.set_page_config(
-    page_title="Oil Trading Dashboard",
-    page_icon="🛢️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={"About": "Quantitative Oil Trading Dashboard"},
-)
+# Page configuration - only set when running as main script
+# When imported by pages, this will raise an error which we catch and ignore
+try:
+    st.set_page_config(
+        page_title="Oil Trading Dashboard",
+        page_icon="🛢️",
+        layout="wide",
+        initial_sidebar_state="expanded",
+        menu_items={"About": "Quantitative Oil Trading Dashboard"},
+    )
+except (st.errors.StreamlitSetPageConfigMustBeFirstCommandError, AttributeError, Exception):
+    # This is expected when main.py is imported by page files
+    # Pages will set their own page config as the first command
+    # Also catch AttributeError in case st.errors doesn't exist, and general Exception as fallback
+    pass
 
 from app import shared_state
 from app.components.theme import apply_theme as apply_dashboard_theme

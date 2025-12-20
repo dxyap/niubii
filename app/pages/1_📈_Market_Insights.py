@@ -11,12 +11,20 @@ Performance optimizations:
 - Research modules loaded lazily
 """
 
+import streamlit as st
+
+# Page configuration must be the first Streamlit command
+st.set_page_config(
+    page_title="Market Insights - Oil Trading Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 import math
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-
-import streamlit as st
 
 # Add project root to path (done once at module load)
 project_root = Path(__file__).parent.parent.parent
